@@ -1,0 +1,78 @@
+﻿// Views/Payments/Index.cshtml
+@model PoWorks_Rework.Models.PaymentViewModel
+@{
+    ViewData["Title"] = "Payment";
+}
+
+<div class="container-fluid py-4">
+    <h2 class="mb-4">Payment</h2>
+
+    <div class="card">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Bill Payment</h5>
+        </div>
+        <div class="card-body">
+            <form asp-action="MakePayment" asp-controller="Payments" method="post">
+                <div class="row mb-3">
+                    <label for="BillNumber" class="col-sm-2 col-form-label text-end">Bill Number</label>
+                    <div class="col-sm-6">
+                        <input type="text" class="form-control" id="BillNumber" asp-for="BillNumber" value="OR20160000007">
+                    </div>
+                    <div class="col-sm-4">
+                        <button type="button" class="btn btn-primary" id="retrieveBtn">Retrieve</button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3 row">
+                            <label for="TenantName" class="col-sm-4 col-form-label text-end">Tenant Name</label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control" id="TenantName" asp-for="TenantName" value="PoWorks" readonly>
+                            </div>
+                        </div>
+                        <div class="mb-3 row">
+                            <label for="BillAmount" class="col-sm-4 col-form-label text-end">Bill Amount</label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control" id="BillAmount" asp-for="BillAmount" value="265" readonly>
+                            </div>
+                        </div>
+                        <div class="mb-3 row">
+                            <label for="PaidAmount" class="col-sm-4 col-form-label text-end">Paid Amount</label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control" id="PaidAmount" asp-for="PaidAmount" value="265">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="mb-3 row">
+                            <label for="MeterName" class="col-sm-4 col-form-label text-end">Meter Name</label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control" id="MeterName" asp-for="MeterName" value="Meter1000" readonly>
+                            </div>
+                        </div>
+                        <div class="mb-3 row">
+                            <label for="BillDate" class="col-sm-4 col-form-label text-end">Bill Date</label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control" id="BillDate" asp-for="BillDate" value="2017-2-7" readonly>
+                            </div>
+                        </div>
+                        <div class="mb-3 row">
+                            <label for="RemainingAmount" class="col-sm-4 col-form-label text-end">Remaining Amount</label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control" id="RemainingAmount" asp-for="RemainingAmount" value="0" readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 offset-md-6 text-end">
+                        <button type="submit" class="btn btn-primary">Make Payment</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

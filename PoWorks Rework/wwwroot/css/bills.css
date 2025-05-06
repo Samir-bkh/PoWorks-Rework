@@ -1,0 +1,53 @@
+﻿/* Additional CSS for Bills page */
+.card-header {
+    background-color: transparent;
+    border-bottom: 0;
+    padding: 15px 20px;
+}
+
+    .card-header h4, .card-header h5 {
+        margin: 0;
+        font-weight: 500;
+    }
+
+    .card-header.bg-light {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid rgba(0,0,0,.125);
+    }
+
+.table {
+    margin-bottom: 0;
+}
+
+    .table th {
+        background-color: #f8f9fa;
+        font-weight: 500;
+    }
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.pagination {
+    margin-bottom: 0;
+}
+
+    .pagination .page-item.active .page-link {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+
+    .pagination .page-link {
+        color: #0d6efd;
+        padding: 0.375rem 0.75rem;
+    }
+
+.form-label {
+    margin-top: 6px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}

@@ -1,0 +1,45 @@
+﻿/* Additional CSS for Company Settings page */
+.accordion-item {
+    border: 1px solid rgba(0, 0, 0, 0.125);
+    margin-bottom: 10px;
+}
+
+.accordion-button {
+    padding: 10px 15px;
+    background-color: #f8f9fa;
+    color: #333;
+    font-weight: 500;
+}
+
+    .accordion-button:not(.collapsed) {
+        background-color: #e7f1ff;
+        color: #0c63e4;
+    }
+
+    .accordion-button:focus {
+        box-shadow: none;
+        border-color: rgba(0, 0, 0, 0.125);
+    }
+
+.accordion-body {
+    padding: 20px;
+    background-color: #fff;
+}
+
+.form-select, .form-control {
+    height: 38px;
+}
+
+.card-header {
+    background-color: transparent;
+    border-bottom: 0;
+    padding: 15px 20px;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+.form-text {
+    color: #6c757d;
+}

@@ -1,0 +1,191 @@
+﻿// Views/Company/Info.cshtml (updated to bind to the model)
+@model PoWorks_Rework.Models.CompanyInfo
+@{
+    ViewData["Title"] = "Company Info";
+}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4>Company Info</h4>
+        <div>
+            <button type="submit" form="companyInfoForm" class="btn btn-primary me-2">Save</button>
+            <button type="button" class="btn btn-secondary">Cancel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form id="companyInfoForm" asp-action="SaveInfo" asp-controller="Company" method="post">
+            <!-- General Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">General</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="CompanyName" class="form-label">Company Name</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" id="CompanyName" asp-for="CompanyName">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="RegistrationNumber" class="form-label">Registration Number</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" id="RegistrationNumber" asp-for="RegistrationNumber">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="Address1" class="form-label">Address 1</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" id="Address1" asp-for="Address1">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="Address2" class="form-label">Address 2</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" id="Address2" asp-for="Address2">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="PostCode" class="form-label">Post Code</label>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="PostCode" asp-for="PostCode">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="Country" class="form-label">Country</label>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="Country" asp-for="Country">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label for="City" class="form-label">City</label>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="City" asp-for="City">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tax Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Tax</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="GstId" class="form-label">GST ID</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" id="GstId" asp-for="GstId">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label for="GstPercentage" class="form-label">GST Percentage</label>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="input-group">
+                                <span class="input-group-text">%</span>
+                                <input type="text" class="form-control" id="GstPercentage" asp-for="GstPercentage">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contacts Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Contacts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="Phone" class="form-label">Phone</label>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="Phone" asp-for="Phone">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="Fax" class="form-label">Fax</label>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="Fax" asp-for="Fax">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label for="Email" class="form-label">Email</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="email" class="form-control" id="Email" asp-for="Email">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logo Section -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Logo</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Logo</label>
+                        </div>
+                        <div class="col-md-9">
+                            <div class="logo-preview border p-2 text-center mb-3" style="max-width: 400px; min-height: 100px;">
+                                @if (!string.IsNullOrEmpty(Model.LogoPath))
+                                {
+                                    <img src="@Model.LogoPath" alt="Company Logo" class="img-fluid" />
+                                }
+                                else
+                                {
+                                    <p class="text-muted">(No logo uploaded)</p>
+                                }
+                            </div>
+                            <div class="mb-3">
+                                <label for="logoUpload" class="form-label">Upload</label>
+                                <input class="form-control" type="file" id="logoUpload">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="alert alert-success mt-3">
+                    @TempData["SuccessMessage"]
+                </div>
+            }
+        </form>
+    </div>
+</div>

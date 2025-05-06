@@ -1,0 +1,183 @@
+﻿// Views/Meter/Management.cshtml
+@model PoWorks_Rework.Models.MeterManagementViewModel
+@{
+    ViewData["Title"] = "Meter Management";
+}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4>Meters</h4>
+        <div>
+            <button type="button" class="btn btn-primary">Import / Export</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link" asp-controller="Meter" asp-action="Readings">Meter Readings</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" asp-controller="Meter" asp-action="Management">Meter Management</a>
+            </li>
+        </ul>
+
+        <!-- Search Area -->
+        <div class="meter-search-area mb-4">
+            <div class="row mb-2">
+                <div class="col-md-2">
+                    <label for="searchCriteria" class="form-label">Search Criteria</label>
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="searchCriteria" name="SearchCriteria">
+                        <option value="Name" selected>Name</option>
+                        <option value="Type">Type</option>
+                        <option value="Parent">Parent</option>
+                        <option value="Tenant">Tenant</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="searchTerm" class="form-label">Search Term</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="searchTerm" name="SearchTerm" value="Meter0111">
+                </div>
+                <div class="col-md-6 text-end">
+                    <button type="button" class="btn btn-primary me-2">Search</button>
+                    <button type="button" class="btn btn-primary">New Meter</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Results -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Search Results</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Parent</th>
+                                <th>Last Reading</th>
+                                <th>Unit</th>
+                                <th>Tenant</th>
+                                <th>Active</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="table-primary">
+                                <td>Meter0111</td>
+                                <td>Main</td>
+                                <td></td>
+                                <td>581029</td>
+                                <td></td>
+                                <td></td>
+                                <td class="text-center"><i class="bi bi-check"></i></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center p-2 bg-light border-top">
+                    <div>
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination mb-0">
+                                <li class="page-item">
+                                    <a class="page-link" href="#" aria-label="Previous">
+                                        <span aria-hidden="true">&laquo;</span>
+                                    </a>
+                                </li>
+                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                <li class="page-item">
+                                    <a class="page-link" href="#" aria-label="Next">
+                                        <span aria-hidden="true">&raquo;</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                    <div>
+                        <span class="text-muted">1 of 1 pages (1 items)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Meter Details -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Meter Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-2">
+                        <label for="meterName" class="form-label">Name</label>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="meterName" name="MeterName" value="Meter0111">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="meterParent" class="form-label">Parent</label>
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select" id="meterParent" name="MeterParent">
+                            <option value="" selected></option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-2">
+                        <label for="meterUnit" class="form-label">Unit</label>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="meterUnit" name="MeterUnit" value="">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="lastReading" class="form-label">Last Reading</label>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="lastReading" name="LastReading" value="581029">
+                    </div>
+                </div>
+                <div class="row mb-4">
+                    <div class="col-md-2">
+                        <label for="meterActive" class="form-label">Active</label>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="meterActive" name="MeterActive" checked>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="meterType" class="form-label">Type</label>
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select" id="meterType" name="MeterType">
+                            <option value="Main" selected>Main</option>
+                            <option value="Sub">Sub</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button type="button" class="btn btn-primary">Update</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub Meters -->
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Sub Meters</h5>
+            </div>
+            <div class="card-body">
+                <!-- Sub meters would go here -->
+                <p class="text-muted">No sub meters found.</p>
+            </div>
+        </div>
+    </div>
+</div>

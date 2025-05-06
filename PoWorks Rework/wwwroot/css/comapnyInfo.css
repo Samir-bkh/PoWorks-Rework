@@ -1,0 +1,35 @@
+﻿/* Additional CSS for Company Info page */
+.card-header.bg-light {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 10px 15px;
+}
+
+.card-header h5 {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.form-label {
+    font-weight: 500;
+    margin-top: 6px;
+}
+
+.input-group-text {
+    background-color: #f8f9fa;
+    border-color: #ced4da;
+}
+
+.logo-preview {
+    background-color: #fff;
+    border-radius: 4px;
+}
+
+.card {
+    margin-bottom: 20px;
+}
+
+    .card .card {
+        border: 1px solid rgba(0,0,0,.125);
+        box-shadow: none;
+    }

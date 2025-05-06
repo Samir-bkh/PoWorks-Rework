@@ -1,0 +1,191 @@
+﻿// Views/Meter/Readings.cshtml
+@model PoWorks_Rework.Models.MeterReadingsViewModel
+@{
+    ViewData["Title"] = "Meter Readings";
+}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4>Meters</h4>
+        <div>
+            <button type="button" class="btn btn-primary">Import / Export</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link active" asp-controller="Meter" asp-action="Readings">Meter Readings</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" asp-controller="Meter" asp-action="Management">Meter Management</a>
+            </li>
+        </ul>
+
+        <!-- Meter Readings Table -->
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Parent</th>
+                        <th>Type</th>
+                        <th>Unit</th>
+                        <th>Last Reading</th>
+                        <th>Tenant</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Meter1000</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td>66666</td>
+                        <td>579652</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0001</td>
+                        <td>Meter1000</td>
+                        <td>Main</td>
+                        <td>1155</td>
+                        <td>576967</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0002</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>579705</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0003</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>584253</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0004</td>
+                        <td>Meter1000</td>
+                        <td>Main</td>
+                        <td>8888</td>
+                        <td>580946</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0005</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>585210</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0006</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>581283</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0007</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>588900</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0008</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>583696</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0009</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>578641</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0010</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>587118</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Meter0011</td>
+                        <td></td>
+                        <td>Main</td>
+                        <td></td>
+                        <td>572079</td>
+                        <td></td>
+                        <td class="text-center"><i class="bi bi-check"></i></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    <li class="page-item">
+                        <a class="page-link" href="#" aria-label="First">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#" aria-label="Previous">
+                            <span aria-hidden="true">&lsaquo;</span>
+                        </a>
+                    </li>
+                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                    <li class="page-item"><a class="page-link" href="#">2</a></li>
+                    <li class="page-item"><a class="page-link" href="#">3</a></li>
+                    <li class="page-item"><a class="page-link" href="#">4</a></li>
+                    <li class="page-item"><a class="page-link" href="#">5</a></li>
+                    <li class="page-item"><a class="page-link" href="#">6</a></li>
+                    <li class="page-item"><a class="page-link" href="#">7</a></li>
+                    <li class="page-item"><a class="page-link" href="#">8</a></li>
+                    <li class="page-item">
+                        <a class="page-link" href="#" aria-label="Next">
+                            <span aria-hidden="true">&rsaquo;</span>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#" aria-label="Last">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            <div>
+                <span class="text-muted">1 of 85 pages (1011 items)</span>
+            </div>
+        </div>
+    </div>
+</div>

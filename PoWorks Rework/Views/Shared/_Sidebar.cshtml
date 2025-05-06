@@ -1,0 +1,52 @@
+﻿// Views/Shared/_Sidebar.cshtml
+<div class="sidebar-header">
+    <h3>PoWorks</h3>
+</div>
+<div class="sidebar-menu">
+    <ul class="list-unstyled">
+        @{
+            var controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+            var action = ViewContext.RouteData.Values["action"]?.ToString() ?? string.Empty;
+        }
+        <li class="@(controller == "Home" ? "active" : "")">
+            <a asp-controller="Home" asp-action="Index">
+                <i class="bi bi-house-fill"></i> Dashboard
+            </a>
+        </li>
+        <li class="@(controller == "Company" && action == "Info" ? "active" : "")">
+            <a asp-controller="Company" asp-action="Info">
+                <i class="bi bi-info-circle-fill"></i> Company Info
+            </a>
+        </li>
+        <li class="@(controller == "Company" && action == "Settings" ? "active" : "")">
+            <a asp-controller="Company" asp-action="Settings">
+                <i class="bi bi-gear-fill"></i> Company Settings
+            </a>
+        </li>
+        <li class="@(controller == "Tenant" ? "active" : "")">
+            <a asp-controller="Tenant" asp-action="Management">
+                <i class="bi bi-people-fill"></i> Tenant Management
+            </a>
+        </li>
+        <li class="@(controller == "Meter" ? "active" : "")">
+            <a asp-controller="Meter" asp-action="Management">
+                <i class="bi bi-speedometer"></i> Meter Management
+            </a>
+        </li>
+        <li class="@(controller == "Bills" ? "active" : "")">
+            <a asp-controller="Bills" asp-action="Index">
+                <i class="bi bi-receipt"></i> Bills
+            </a>
+        </li>
+        <li class="@(controller == "Payments" ? "active" : "")">
+            <a asp-controller="Payments" asp-action="Index">
+                <i class="bi bi-credit-card"></i> Payments
+            </a>
+        </li>
+        <li class="@(controller == "Settings" ? "active" : "")">
+            <a asp-controller="Settings" asp-action="General">
+                <i class="bi bi-sliders"></i> General Settings
+            </a>
+        </li>
+    </ul>
+</div>

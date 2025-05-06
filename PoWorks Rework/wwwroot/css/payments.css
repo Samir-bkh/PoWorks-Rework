@@ -1,0 +1,34 @@
+﻿/* Additional CSS for Payments page */
+.card {
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0,0,0,.125);
+    padding: 10px 15px;
+}
+
+    .card-header h5 {
+        margin: 0;
+        font-weight: 500;
+    }
+
+.card-body {
+    padding: 20px;
+}
+
+.form-control {
+    border: 1px solid #ced4da;
+}
+
+    .form-control[readonly] {
+        background-color: #f8f9fa;
+    }
+
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}

@@ -1,0 +1,172 @@
+﻿@model PoWorks_Rework.Models.DatabaseSettings
+@{
+    ViewData["Title"] = "PostgreSQL Connection Settings";
+}
+<div class="card">
+    <div class="card-header">
+        <h4>Database Connection Settings</h4>
+    </div>
+    <div class="card-body">
+        <form asp-action="SaveGeneralSettings" asp-controller="Settings" method="post">
+            <div class="accordion" id="settingsAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingDatabase">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#collapseDatabase" aria-expanded="true" aria-controls="collapseDatabase">
+                            PostgreSQL Database Connection
+                        </button>
+                    </h2>
+                    <div id="collapseDatabase" class="accordion-collapse collapse show" aria-labelledby="headingDatabase">
+                        <div class="accordion-body">
+                            <div class="mb-3 row">
+                                <label for="Host" class="col-sm-2 col-form-label">Host</label>
+                                <div class="col-sm-10">
+                                    <input type="text" class="form-control" id="Host" asp-for="Host" placeholder="localhost">
+                                    <div class="form-text">Database server hostname or IP address</div>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label for="Port" class="col-sm-2 col-form-label">Port</label>
+                                <div class="col-sm-10">
+                                    <input type="text" class="form-control" id="Port" asp-for="Port" placeholder="5432">
+                                    <div class="form-text">PostgreSQL default port is 5432</div>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label for="Database" class="col-sm-2 col-form-label">Database</label>
+                                <div class="col-sm-10">
+                                    <input type="text" class="form-control" id="Database" asp-for="Database">
+                                    <div class="form-text">Name of the PostgreSQL database (existing or to be created)</div>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label for="Username" class="col-sm-2 col-form-label">Username</label>
+                                <div class="col-sm-10">
+                                    <input type="text" class="form-control" id="Username" asp-for="Username" placeholder="postgres">
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label for="Password" class="col-sm-2 col-form-label">Password</label>
+                                <div class="col-sm-10">
+                                    <input type="password" class="form-control" id="Password" asp-for="Password">
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label for="SSLMode" class="col-sm-2 col-form-label">SSL Mode</label>
+                                <div class="col-sm-10">
+                                    <select class="form-select" id="SSLMode" asp-for="SSLMode">
+                                        <option value="Prefer">Prefer</option>
+                                        <option value="Require">Require</option>
+                                        <option value="Disable">Disable</option>
+                                    </select>
+                                    <div class="form-text">Controls PostgreSQL SSL connection behavior</div>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <div class="col-sm-10 offset-sm-2">
+                                    <button type="button" class="btn btn-outline-primary me-2" id="testConnection">Test Connection</button>
+                                    <button type="button" class="btn btn-success" id="connectDatabase">Connect & Create DB</button>
+                                </div>
+                            </div>
+                            <div class="text-center mt-4">
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-primary" id="exportBtn">Export Connection String</button>
+                                   
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <div id="connectionResult" class="alert mt-3" style="display: none;"></div>
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <div class="alert alert-success mt-3">
+                @TempData["SuccessMessage"]
+            </div>
+        }
+    </div>
+</div>
+
+<script>
+    document.getElementById('testConnection').addEventListener('click', function() {
+        // Get form values
+        const connectionData = {
+            host: document.getElementById('Host').value,
+            port: document.getElementById('Port').value,
+            database: document.getElementById('Database').value,
+            username: document.getElementById('Username').value,
+            password: document.getElementById('Password').value,
+            sslMode: document.getElementById('SSLMode').value
+        };
+
+        // Test connection via AJAX
+        fetch('/Settings/TestConnection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            const resultElement = document.getElementById('connectionResult');
+            resultElement.style.display = 'block';
+
+            if (data.success) {
+                resultElement.className = 'alert alert-success mt-3';
+                resultElement.textContent = 'Connection successful!';
+            } else {
+                resultElement.className = 'alert alert-danger mt-3';
+                resultElement.textContent = 'Connection failed: ' + data.errorMessage;
+            }
+        })
+        .catch(error => {
+            const resultElement = document.getElementById('connectionResult');
+            resultElement.style.display = 'block';
+            resultElement.className = 'alert alert-danger mt-3';
+            resultElement.textContent = 'Error testing connection: ' + error;
+        });
+    });
+
+    document.getElementById('connectDatabase').addEventListener('click', function() {
+        // Get form values
+        const connectionData = {
+            host: document.getElementById('Host').value,
+            port: document.getElementById('Port').value,
+            database: document.getElementById('Database').value,
+            username: document.getElementById('Username').value,
+            password: document.getElementById('Password').value,
+            sslMode: document.getElementById('SSLMode').value
+        };
+
+        // Call connect endpoint via AJAX
+        fetch('/Settings/Connect', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            const resultElement = document.getElementById('connectionResult');
+            resultElement.style.display = 'block';
+
+            if (data.success) {
+                resultElement.className = 'alert alert-success mt-3';
+                resultElement.textContent = data.message;
+            } else {
+                resultElement.className = 'alert alert-danger mt-3';
+                resultElement.textContent = 'Connection failed: ' + data.errorMessage;
+            }
+        })
+        .catch(error => {
+            const resultElement = document.getElementById('connectionResult');
+            resultElement.style.display = 'block';
+            resultElement.className = 'alert alert-danger mt-3';
+            resultElement.textContent = 'Error connecting to database: ' + error;
+        });
+    });
+</script>

@@ -1,0 +1,104 @@
+﻿// Views/Bills/Index.cshtml
+@model PoWorks_Rework.Models.BillsViewModel
+@{
+    ViewData["Title"] = "Bills";
+}
+
+<div class="card">
+    <div class="card-header">
+        <h4>Bills</h4>
+    </div>
+    <div class="card-body">
+        <!-- Search Area -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="mb-3 row">
+                    <label for="searchCriteria" class="col-sm-3 col-form-label">Search Criteria</label>
+                    <div class="col-sm-9">
+                        <select class="form-select" id="searchCriteria" name="SearchCriteria">
+                            <option selected>Meter Name</option>
+                            <option>Tenant</option>
+                            <option>Bill Date</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3 row">
+                    <label for="searchTerm" class="col-sm-3 col-form-label">Search Term</label>
+                    <div class="col-sm-9">
+                        <select class="form-select" id="searchTerm" name="SearchTerm">
+                            <option selected>Meter1000</option>
+                            <option>Meter0001</option>
+                            <option>Meter0002</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 d-flex align-items-end justify-content-end">
+                <button type="button" class="btn btn-primary">Search</button>
+            </div>
+        </div>
+
+        <!-- Search Results -->
+        <div class="card mb-3">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Search Results</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Tenant</th>
+                                <th>Meter</th>
+                                <th>Bill Date</th>
+                                <th>Total Consumption</th>
+                                <th>Net Total (RM)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>PoWorks</td>
+                                <td>Meter1000</td>
+                                <td>07/02/2017</td>
+                                <td>250</td>
+                                <td>265</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center p-2 bg-light border-top">
+                    <div>
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination mb-0">
+                                <li class="page-item">
+                                    <a class="page-link" href="#" aria-label="First">
+                                        <span aria-hidden="true">&laquo;</span>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="#" aria-label="Previous">
+                                        <span aria-hidden="true">&lsaquo;</span>
+                                    </a>
+                                </li>
+                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                <li class="page-item">
+                                    <a class="page-link" href="#" aria-label="Next">
+                                        <span aria-hidden="true">&rsaquo;</span>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="#" aria-label="Last">
+                                        <span aria-hidden="true">&raquo;</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                    <div>
+                        <span class="text-muted">1 of 1 pages (1 items)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

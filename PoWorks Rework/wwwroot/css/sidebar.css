@@ -1,0 +1,64 @@
+﻿/* wwwroot/css/sidebar.css */
+.sidebar {
+    background-color: #1c2230;
+    color: white;
+    height: 100vh;
+    width: 200px;
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+}
+
+.sidebar-header {
+    padding: 20px 15px;
+    border-bottom: 1px solid #2c3a4a;
+}
+
+    .sidebar-header h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: white;
+    }
+
+.sidebar-menu {
+    padding: 15px 0;
+}
+
+    .sidebar-menu ul {
+        padding: 0;
+        margin: 0;
+    }
+
+        .sidebar-menu ul li {
+            list-style: none;
+            position: relative;
+        }
+
+            .sidebar-menu ul li a {
+                padding: 10px 15px;
+                display: block;
+                color: #999;
+                text-decoration: none;
+                transition: all 0.3s;
+                font-size: 0.9rem;
+            }
+
+                .sidebar-menu ul li a:hover {
+                    color: white;
+                    background-color: #2c3a4a;
+                }
+
+            .sidebar-menu ul li.active a {
+                color: white;
+                background-color: #2c3a4a;
+                border-left: 3px solid #007bff;
+            }
+
+            .sidebar-menu ul li i {
+                margin-right: 10px;
+                font-size: 1rem;
+            }
+
+.main-content {
+    width: calc(100% - 200px);
+}
