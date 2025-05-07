@@ -1,10 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿// Controllers/SettingsController.cs
+using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
 using System.Text.Json;
 using Npgsql;
+using PoWorks_Rework.Services;
+using System.Collections.Generic;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -12,25 +15,33 @@ namespace PoWorks_Rework.Controllers
     {
         private readonly IConfiguration _configuration;
         private readonly IWebHostEnvironment _webHostEnvironment;
+        private readonly DatabaseService _databaseService;
 
-        public SettingsController(IConfiguration configuration, IWebHostEnvironment webHostEnvironment)
+        public SettingsController(
+            IConfiguration configuration,
+            IWebHostEnvironment webHostEnvironment,
+            DatabaseService databaseService)
         {
             _configuration = configuration;
             _webHostEnvironment = webHostEnvironment;
+            _databaseService = databaseService;
         }
 
         public IActionResult General()
         {
-            // Load existing settings from configuration or use defaults
-            var settings = new DatabaseSettings
-            {
-                Host = _configuration["DatabaseSettings:Host"] ?? "localhost",
-                Port = _configuration["DatabaseSettings:Port"] ?? "5432",
-                Database = _configuration["DatabaseSettings:Database"] ?? "",
-                Username = _configuration["DatabaseSettings:Username"] ?? "postgres",
-                Password = _configuration["DatabaseSettings:Password"] ?? "",
-                SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
-            };
+            // Use the current settings from the service if initialized,
+            // otherwise load from configuration
+            var settings = _databaseService.IsInitialized
+                ? _databaseService.CurrentSettings
+                : new DatabaseSettings
+                {
+                    Host = _configuration["DatabaseSettings:Host"] ?? "localhost",
+                    Port = _configuration["DatabaseSettings:Port"] ?? "5432",
+                    Database = _configuration["DatabaseSettings:Database"] ?? "",
+                    Username = _configuration["DatabaseSettings:Username"] ?? "postgres",
+                    Password = _configuration["DatabaseSettings:Password"] ?? "",
+                    SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
+                };
 
             return View(settings);
         }
@@ -51,8 +62,18 @@ namespace PoWorks_Rework.Controllers
                         {
                             // Create tables in existing database
                             ExecuteSchemaScript(connection);
+
+                            // Save settings and initialize the service
+                            UpdateAppSettings(settings);
+                            _databaseService.Initialize(settings);
+
                             return Json(new { success = true, message = "Connected successfully and created tables." });
                         }
+
+                        // Save settings and initialize the service
+                        UpdateAppSettings(settings);
+                        _databaseService.Initialize(settings);
+
                         return Json(new { success = true, message = "Connected successfully to existing database." });
                     }
                 }
@@ -81,6 +102,10 @@ namespace PoWorks_Rework.Controllers
 
                             // Create initial schema
                             ExecuteSchemaScript(newConnection);
+
+                            // Save settings and initialize the service
+                            UpdateAppSettings(settings);
+                            _databaseService.Initialize(settings);
 
                             return Json(new { success = true, message = "Database created successfully with the required tables!" });
                         }
@@ -124,8 +149,11 @@ namespace PoWorks_Rework.Controllers
                         connection.Open();
                     }
 
-                    // Save settings to appsettings.json or your preferred configuration store
+                    // Save settings to appsettings.json 
                     UpdateAppSettings(settings);
+
+                    // Initialize the database service with new settings
+                    _databaseService.Initialize(settings);
 
                     TempData["SuccessMessage"] = "Database settings saved successfully.";
                     return RedirectToAction("General");
@@ -138,6 +166,7 @@ namespace PoWorks_Rework.Controllers
             return View("General", settings);
         }
 
+        // Other methods remain the same...
         private bool TablesExist(NpgsqlConnection connection)
         {
             using (var cmd = new NpgsqlCommand(

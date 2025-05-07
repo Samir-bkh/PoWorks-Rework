@@ -1,8 +1,13 @@
 // Program.cs
+using PoWorks_Rework.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+
+// Register the DatabaseService as a singleton
+builder.Services.AddSingleton<DatabaseService>();
 
 var app = builder.Build();
 
@@ -20,9 +25,7 @@ else
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
-
 app.UseAuthorization();
 
 app.MapControllerRoute(

@@ -1,0 +1,270 @@
+﻿@model PoWorks_Rework.Models.TenantViewModel
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="spinner-container">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="mt-2">Saving tenant data...</div>
+    </div>
+</div>
+
+<!-- Updated form to use TenantManagementController instead of TenantController -->
+<form asp-controller="TenantManagement" asp-action="SaveTenant" method="post" id="tenantForm">
+    <input type="hidden" name="Id" value="@Model.SelectedTenant.Id" />
+
+    <!-- Tenant Details -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Tenant Details</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="companyName" class="form-label">Company Name</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="companyName" name="CompanyName" value="@Model.SelectedTenant.CompanyName" required>
+                </div>
+                <div class="col-md-2">
+                    <label for="address1" class="form-label">Address 1</label>
+                </div>
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="address1" name="Address1" value="@Model.SelectedTenant.Address1">
+                </div>
+                <div class="col-md-1">
+                    <label for="unit" class="form-label">Unit</label>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="contact" class="form-label">Contact</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="contact" name="Contact" value="@Model.SelectedTenant.Contact">
+                </div>
+                <div class="col-md-2">
+                    <label for="address2" class="form-label">Address 2</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="address2" name="Address2" value="@Model.SelectedTenant.Address2">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="email" class="form-label">Email</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="email" class="form-control" id="email" name="Email" value="@Model.SelectedTenant.Email">
+                </div>
+                <div class="col-md-2">
+                    <label for="postCode" class="form-label">Post Code</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="postCode" name="PostCode" value="@Model.SelectedTenant.PostCode">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="phone" class="form-label">Phone</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="phone" name="Phone" value="@Model.SelectedTenant.Phone">
+                </div>
+                <div class="col-md-2">
+                    <label for="city" class="form-label">City</label>
+                </div>
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="city" name="City" value="@Model.SelectedTenant.City">
+                </div>
+                <div class="col-md-1">
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="active" name="Active" value="true" @(Model.SelectedTenant.Active ? "checked" : "")>
+                        <input type="hidden" name="Active" value="false" />
+                        <label class="form-check-label" for="active">Active</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Management Section -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="startDate" class="form-label">Start Date</label>
+                </div>
+                <div class="col-md-4">
+                    <input type="date" class="form-control" id="startDate" name="StartDate" value="@(string.IsNullOrEmpty(Model.SelectedTenant.StartDate) ? DateTime.Now.ToString("yyyy-MM-dd") : Model.SelectedTenant.StartDate)">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Period</label>
+                </div>
+                <div class="col-md-5">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="Period" id="periodDaily" value="Daily" @(Model.SelectedTenant.Period == "Daily" ? "checked" : "")>
+                        <label class="form-check-label" for="periodDaily">Daily</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="Period" id="periodWeekly" value="Weekly" @(Model.SelectedTenant.Period == "Weekly" ? "checked" : "")>
+                        <label class="form-check-label" for="periodWeekly">Weekly</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="Period" id="periodMonthly" value="Monthly" @(string.IsNullOrEmpty(Model.SelectedTenant.Period) || Model.SelectedTenant.Period == "Monthly" ? "checked" : "")>
+                        <label class="form-check-label" for="periodMonthly">Monthly</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="Period" id="periodQuarterly" value="Quarterly" @(Model.SelectedTenant.Period == "Quarterly" ? "checked" : "")>
+                        <label class="form-check-label" for="periodQuarterly">Quarterly</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="Period" id="periodYearly" value="Yearly" @(Model.SelectedTenant.Period == "Yearly" ? "checked" : "")>
+                        <label class="form-check-label" for="periodYearly">Yearly</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tariff Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Tariff</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-1">
+                    <label for="tariffType" class="form-label">Type</label>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" id="tariffType" name="TariffType">
+                        <option value="Company" selected="@(Model.SelectedTenant.TariffType == "Company")">Company</option>
+                        <option value="Personal" selected="@(Model.SelectedTenant.TariffType == "Personal")">Personal</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input type="number" step="0.01" class="form-control" id="baseRate" name="BaseRate" value="@Model.SelectedTenant.BaseRate">
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="text" class="form-control" id="baseRateFee" name="BaseRateFee" readonly>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-1">
+                    <label for="threshold1" class="form-label">Threshold 1</label>
+                </div>
+                <div class="col-md-3">
+                    <input type="number" step="0.01" class="form-control" id="threshold1" name="Threshold1" value="@Model.SelectedTenant.Threshold1">
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="text" class="form-control" readonly value="kWh">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="number" step="0.01" class="form-control" id="threshold1Rate" name="Threshold1Rate" value="@Model.SelectedTenant.Threshold1Rate">
+                        <span class="input-group-text">$</span>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-1">
+                    <label for="threshold2" class="form-label">Threshold 2</label>
+                </div>
+                <div class="col-md-3">
+                    <input type="number" step="0.01" class="form-control" id="threshold2" name="Threshold2" value="@Model.SelectedTenant.Threshold2">
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="text" class="form-control" readonly value="kWh">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="number" step="0.01" class="form-control" id="threshold2Rate" name="Threshold2Rate" value="@Model.SelectedTenant.Threshold2Rate">
+                        <span class="input-group-text">$</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Other Information Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Other Information</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="deposit" class="form-label">Deposit</label>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group">
+                        <input type="number" step="0.01" class="form-control" id="deposit" name="Deposit" value="@Model.SelectedTenant.Deposit">
+                        <span class="input-group-text">$</span>
+                    </div>
+                </div>
+                <div class="col-md-3 offset-md-1">
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="emailAlert" name="EmailAlert" value="true" @(Model.SelectedTenant.EmailAlert ? "checked" : "")>
+                        <input type="hidden" name="EmailAlert" value="false" />
+                        <label class="form-check-label" for="emailAlert">Email Alert</label>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2">
+                    <label for="outstanding" class="form-label">Outstanding</label>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group">
+                        <input type="number" step="0.01" class="form-control" id="outstanding" name="Outstanding" value="@Model.SelectedTenant.Outstanding" readonly>
+                        <span class="input-group-text">$</span>
+                    </div>
+                </div>
+                <div class="col-md-3 offset-md-1">
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="printBill" name="PrintBill" value="true" @(Model.SelectedTenant.PrintBill ? "checked" : "")>
+                        <input type="hidden" name="PrintBill" value="false" />
+                        <label class="form-check-label" for="printBill">Print Bill</label>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-2">
+                    <label for="overdue" class="form-label">Overdue</label>
+                </div>
+                <div class="col-md-3">
+                    <div class="input-group">
+                        <input type="number" step="0.01" class="form-control" id="overdue" name="Overdue" value="@Model.SelectedTenant.Overdue" readonly>
+                        <span class="input-group-text">$</span>
+                    </div>
+                </div>
+                <div class="col-md-3 offset-md-1">
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="emailBill" name="EmailBill" value="true" @(Model.SelectedTenant.EmailBill ? "checked" : "")>
+                        <input type="hidden" name="EmailBill" value="false" />
+                        <label class="form-check-label" for="emailBill">Email Bill</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="text-end mb-3">
+        <button type="submit" class="btn btn-success">Save</button>
+        <a href="@Url.Action("Management", "Tenant")" class="btn btn-secondary ms-2">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/tenant-scripts.js"></script>
+}

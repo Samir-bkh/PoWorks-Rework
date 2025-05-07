@@ -1,24 +1,33 @@
--- Tenants table
-CREATE TABLE IF NOT EXISTS Tenants (
-    TenantID SERIAL PRIMARY KEY,
-    DisplayName VARCHAR(100) NOT NULL,
-    Misc VARCHAR(250) NULL
+-- Create Tenants table if it doesn't exist
+CREATE TABLE IF NOT EXISTS "Tenants" (
+    "TenantID" SERIAL PRIMARY KEY,
+    "DisplayName" VARCHAR(100) NOT NULL,
+    "Misc" VARCHAR(255)
 );
 
--- Tenant Details table
-CREATE TABLE IF NOT EXISTS TenantDetails (
-    ID SERIAL PRIMARY KEY,
-    TenantID SMALLINT NOT NULL,
-    ContactName VARCHAR(50) NOT NULL,
-    ContactPhone VARCHAR(20) NULL,
-    ContactMobile VARCHAR(20) NULL,
-    ContactEmail VARCHAR(50) NOT NULL,
-    CompanyName VARCHAR(50) NOT NULL,
-    CompanyAddress VARCHAR(100) NOT NULL,
-    CompanyLocation VARCHAR(100) NULL,
-    CompanyMisc VARCHAR(250) NULL,
-    Tarif_1 MONEY NOT NULL,
-    Tarif_2 MONEY NULL,
-    Tarif_3 MONEY NULL,
-    CONSTRAINT FK_TenantDetails_Tenants FOREIGN KEY (TenantID) REFERENCES Tenants(TenantID)
+-- Create TenantDetails table if it doesn't exist
+CREATE TABLE IF NOT EXISTS "TenantDetails" (
+    "ID" SERIAL PRIMARY KEY,
+    "TenantID" INTEGER NOT NULL REFERENCES "Tenants"("TenantID"),
+    "ContactName" VARCHAR(100),
+    "ContactPhone" VARCHAR(20),
+    "ContactMobile" VARCHAR(20),
+    "ContactEmail" VARCHAR(100),
+    "CompanyName" VARCHAR(100) NOT NULL,
+    "CompanyAddress" TEXT,
+    "CompanyLocation" VARCHAR(100),
+    "CompanyMisc" VARCHAR(100),
+    "Tarif_1" MONEY DEFAULT 0,
+    "Tarif_2" MONEY DEFAULT 0,
+    "Tarif_3" MONEY DEFAULT 0,
+    "StartDate" DATE DEFAULT CURRENT_DATE,
+    "Period" VARCHAR(20) DEFAULT 'Monthly',
+    "Deposit" MONEY DEFAULT 0,
+    "Active" BOOLEAN DEFAULT TRUE,
+    "EmailAlert" BOOLEAN DEFAULT TRUE,
+    "PrintBill" BOOLEAN DEFAULT TRUE,
+    "EmailBill" BOOLEAN DEFAULT TRUE
 );
+
+-- Create index for faster tenant-related queries
+CREATE INDEX IF NOT EXISTS idx_tenantdetails_tenantid ON "TenantDetails"("TenantID");

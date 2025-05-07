@@ -1,0 +1,69 @@
+﻿// Services/DatabaseService.cs
+using Microsoft.Extensions.Configuration;
+using Npgsql;
+using PoWorks_Rework.Models;
+using System;
+
+namespace PoWorks_Rework.Services
+{
+    public class DatabaseService
+    {
+        private readonly IConfiguration _configuration;
+        private DatabaseSettings _currentSettings;
+        private NpgsqlConnection _connection;
+        private bool _isInitialized = false;
+
+        public DatabaseService(IConfiguration configuration)
+        {
+            _configuration = configuration;
+            // Load settings from configuration initially
+            LoadSettingsFromConfig();
+        }
+
+        public DatabaseSettings CurrentSettings => _currentSettings;
+
+        public bool IsInitialized => _isInitialized;
+
+        public NpgsqlConnection GetConnection()
+        {
+            if (_connection == null || _connection.State == System.Data.ConnectionState.Closed)
+            {
+                _connection = new NpgsqlConnection(_currentSettings.ToConnectionString());
+                _connection.Open();
+            }
+            return _connection;
+        }
+
+        public void Initialize(DatabaseSettings settings)
+        {
+            _currentSettings = settings;
+            _isInitialized = true;
+
+            // Close existing connection if any
+            if (_connection != null && _connection.State != System.Data.ConnectionState.Closed)
+            {
+                _connection.Close();
+                _connection = null;
+            }
+        }
+
+        private void LoadSettingsFromConfig()
+        {
+            _currentSettings = new DatabaseSettings
+            {
+                Host = _configuration["DatabaseSettings:Host"] ?? "localhost",
+                Port = _configuration["DatabaseSettings:Port"] ?? "5432",
+                Database = _configuration["DatabaseSettings:Database"] ?? "",
+                Username = _configuration["DatabaseSettings:Username"] ?? "postgres",
+                Password = _configuration["DatabaseSettings:Password"] ?? "",
+                SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
+            };
+
+            // Check if we have a valid database configuration
+            if (!string.IsNullOrEmpty(_currentSettings.Database))
+            {
+                _isInitialized = true;
+            }
+        }
+    }
+}

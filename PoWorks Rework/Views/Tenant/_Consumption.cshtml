@@ -1,0 +1,81 @@
+﻿@model PoWorks_Rework.Models.TenantViewModel
+
+<!-- Details Section -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Details</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-2">
+                <label for="overdue" class="form-label">Overdue</label>
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control" id="overdue" name="Overdue" value="$0.00" readonly>
+            </div>
+            <div class="col-md-2">
+                <label for="totalBilledOutstanding" class="form-label">Total Billed Outstanding</label>
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control" id="totalBilledOutstanding" name="TotalBilledOutstanding" value="$0.00" readonly>
+            </div>
+            <div class="col-md-2">
+                <label for="totalMonthUnbilled" class="form-label">Total Month Unbilled</label>
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control" id="totalMonthUnbilled" name="TotalMonthUnbilled" value="$0.00" readonly>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yearly Comparison Chart -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Yearly Comparison</h5>
+    </div>
+    <div class="card-body">
+        <div id="yearlyComparisonChart" style="height: 300px; width: 100%;">
+            <p class="text-center text-muted">Consumption data will be available after adding meters to this tenant.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Weekly Comparison Chart -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Weekly Comparison</h5>
+    </div>
+    <div class="card-body">
+        <div id="weeklyComparisonChart" style="height: 200px; width: 100%;">
+            <p class="text-center text-muted">Weekly consumption data will be available after adding meters to this tenant.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Meters Section -->
+<div class="card mb-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Meters</h5>
+        <button type="button" class="btn btn-primary btn-sm" disabled>Add Meter</button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>Meter</th>
+                        <th>Unit</th>
+                        <th>Last Reading</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="4" class="text-center">No meters found for this tenant. Meters functionality will be implemented in the future.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
