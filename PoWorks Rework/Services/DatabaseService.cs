@@ -21,7 +21,6 @@ namespace PoWorks_Rework.Services
         }
 
         public DatabaseSettings CurrentSettings => _currentSettings;
-
         public bool IsInitialized => _isInitialized;
 
         public NpgsqlConnection GetConnection()
@@ -29,16 +28,26 @@ namespace PoWorks_Rework.Services
             if (_connection == null || _connection.State == System.Data.ConnectionState.Closed)
             {
                 _connection = new NpgsqlConnection(_currentSettings.ToConnectionString());
+            }
+
+            // Only open the connection if it's closed
+            if (_connection.State == System.Data.ConnectionState.Closed)
+            {
                 _connection.Open();
             }
+
             return _connection;
+        }
+
+        public string GetConnectionString()
+        {
+            return _currentSettings.ToConnectionString();
         }
 
         public void Initialize(DatabaseSettings settings)
         {
             _currentSettings = settings;
             _isInitialized = true;
-
             // Close existing connection if any
             if (_connection != null && _connection.State != System.Data.ConnectionState.Closed)
             {
@@ -58,7 +67,6 @@ namespace PoWorks_Rework.Services
                 Password = _configuration["DatabaseSettings:Password"] ?? "",
                 SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
             };
-
             // Check if we have a valid database configuration
             if (!string.IsNullOrEmpty(_currentSettings.Database))
             {

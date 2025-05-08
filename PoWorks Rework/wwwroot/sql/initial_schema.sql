@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS "Tenants" (
     "DisplayName" VARCHAR(100) NOT NULL,
     "Misc" VARCHAR(255)
 );
-
 -- Create TenantDetails table if it doesn't exist
 CREATE TABLE IF NOT EXISTS "TenantDetails" (
     "ID" SERIAL PRIMARY KEY,
@@ -28,6 +27,19 @@ CREATE TABLE IF NOT EXISTS "TenantDetails" (
     "PrintBill" BOOLEAN DEFAULT TRUE,
     "EmailBill" BOOLEAN DEFAULT TRUE
 );
-
 -- Create index for faster tenant-related queries
 CREATE INDEX IF NOT EXISTS idx_tenantdetails_tenantid ON "TenantDetails"("TenantID");
+-- Create Meters table if it doesn't exist
+CREATE TABLE IF NOT EXISTS "Meters" (
+    "MeterId" SERIAL PRIMARY KEY,
+    "Name" VARCHAR(100) NOT NULL,
+    "Unit" VARCHAR(20) NOT NULL DEFAULT '',
+    "ParentId" INTEGER REFERENCES "Meters"("MeterId"),
+    "LastReading" INTEGER DEFAULT 0,
+    "Type" VARCHAR(10) CHECK ("Type" IN ('main', 'sub')) NOT NULL,
+    "Active" BOOLEAN DEFAULT TRUE,
+    "TenantID" INTEGER REFERENCES "Tenants"("TenantID")
+);
+-- Create index for faster meter queries
+CREATE INDEX IF NOT EXISTS idx_meters_tenantid ON "Meters"("TenantID");
+CREATE INDEX IF NOT EXISTS idx_meters_parentid ON "Meters"("ParentId");
