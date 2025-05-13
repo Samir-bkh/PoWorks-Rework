@@ -22,7 +22,7 @@ namespace PoWorks_Rework.Controllers
             _logger = logger;
         }
 
-        /// <summary>
+             /// <summary>
         /// Main tenant management page
         /// </summary>
         public IActionResult Management(int? id = null)
@@ -38,8 +38,6 @@ namespace PoWorks_Rework.Controllers
             {
                 SearchCriteria = "Company Name",
                 SearchTerm = "",
-                SearchResults = new List<Tenant>(),
-                SelectedTenant = new Tenant(), // Start with an empty tenant by default
                 ConsumptionData = new TenantConsumptionData(),
                 TotalPages = 1,
                 CurrentPage = 1,
@@ -48,12 +46,42 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
+                // Always load search results when the page is initially loaded
+                // This eliminates the need for auto-submit script
+                var results = GetTenants("Company Name", "", 1, 10);
+                viewModel.SearchResults = results.Items;
+                viewModel.TotalItems = results.TotalCount;
+                viewModel.TotalPages = results.TotalPages;
+                
                 // If id is provided, load that specific tenant
                 if (id.HasValue && id.Value > 0)
                 {
                     viewModel.SelectedTenant = GetTenantDetailsById(id.Value);
-                    // Load search results to show the current tenant in the list
-                    viewModel.SearchResults = GetTenants("", "", 1, 10).Items;
+                }
+                else if (viewModel.SearchResults.Count > 0)
+                {
+                    // Select the first tenant in the results if no specific tenant is requested
+                    viewModel.SelectedTenant = GetTenantDetailsById(viewModel.SearchResults[0].Id);
+                }
+                else
+                {
+                    // If no tenants found, create a new empty tenant
+                    viewModel.SelectedTenant = new Tenant
+                    {
+                        StartDate = DateTime.Now.ToString("yyyy-MM-dd"),
+                        Period = "Monthly",
+                        TariffType = "Company",
+                        BaseRate = 0.5m,
+                        Threshold1 = 100m,
+                        Threshold1Rate = 0.6m,
+                        Threshold2 = 200m,
+                        Threshold2Rate = 0.8m,
+                        Deposit = 0m,
+                        Active = true,
+                        EmailAlert = true,
+                        PrintBill = true,
+                        EmailBill = true
+                    };
                 }
             }
             catch (Exception ex)
@@ -93,6 +121,12 @@ namespace PoWorks_Rework.Controllers
                 viewModel.SearchResults = results.Items;
                 viewModel.TotalItems = results.TotalCount;
                 viewModel.TotalPages = results.TotalPages;
+
+                // Select the first tenant in the results if available
+                if (viewModel.SearchResults.Count > 0)
+                {
+                    viewModel.SelectedTenant = GetTenantDetailsById(viewModel.SearchResults[0].Id);
+                }
             }
             catch (Exception ex)
             {

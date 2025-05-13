@@ -2,9 +2,6 @@
 @{
     ViewData["Title"] = "Tenant Management";
 
-    // This ensures data is loaded on initial page load without requiring a search
-    bool isInitialLoad = Model.SearchResults == null || !Model.SearchResults.Any();
-
     // Check if we have search parameters stored in TempData (from a save operation)
     string preservedSearchCriteria = TempData["PreserveSearchCriteria"]?.ToString();
     string preservedSearchTerm = TempData["PreserveSearchTerm"]?.ToString();
@@ -78,35 +75,6 @@
             </div>
         </form>
 
-        <!-- Load initial data if no search has been performed, or after a save -->
-        @if (isInitialLoad || TempData["SuccessMessage"] != null)
-        {
-            <div id="initialDataLoader">
-                <script>
-                    // Auto-trigger search on page load if needed
-                    document.addEventListener('DOMContentLoaded', function() {
-                        // Set the search criteria and term from preserved values if available
-                    @if (!string.IsNullOrEmpty(preservedSearchCriteria))
-                    {
-                        <text>
-                                document.getElementById('searchCriteria').value = '@Html.Raw(preservedSearchCriteria)';
-                        </text>
-                    }
-
-                    @if (!string.IsNullOrEmpty(preservedSearchTerm))
-                    {
-                        <text>
-                                document.getElementById('searchTerm').value = '@Html.Raw(preservedSearchTerm)';
-                        </text>
-                    }
-
-                        // Submit the search form to get results
-                        document.getElementById('searchForm').submit();
-                    });
-                </script>
-            </div>
-        }
-
         <!-- Search Results -->
         <div class="card mb-4">
             <div class="card-header bg-light">
@@ -148,17 +116,7 @@
                             {
                                 <tr>
                                     <td colspan="7" class="text-center">
-                                        @if (isInitialLoad || TempData["SuccessMessage"] != null)
-                                        {
-                                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
-                                                <span class="visually-hidden">Loading...</span>
-                                            </div>
-                                            <span>Loading tenant data...</span>
-                                        }
-                                        else
-                                        {
-                                            <span>No tenants found. Use the search above or create a new tenant.</span>
-                                        }
+                                        <span>No tenants found. Use the search above or create a new tenant.</span>
                                     </td>
                                 </tr>
                             }
@@ -205,7 +163,7 @@
                         </div>
                     </div>
                 }
-                else
+                else if (Model.TotalItems > 0)
                 {
                     <div class="d-flex justify-content-end align-items-center p-2 bg-light border-top">
                         <span class="text-muted">@Model.TotalItems @(Model.TotalItems == 1 ? "item" : "items")</span>
@@ -241,11 +199,7 @@
 
 @section Scripts {
     <script>
-        // This script handles navigation after saving a tenant
         document.addEventListener('DOMContentLoaded', function() {
-            // Handle auto-submission for initial load or after save
-            // (Already handled in the page body with initialDataLoader)
-
             // Make sure checkboxes work correctly (to handle the hidden fields)
             document.querySelectorAll('input[type="checkbox"]').forEach(function(checkbox) {
                 checkbox.addEventListener('change', function() {
