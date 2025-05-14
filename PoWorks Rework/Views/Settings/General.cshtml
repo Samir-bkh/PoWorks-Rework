@@ -1,84 +1,185 @@
-﻿@model PoWorks_Rework.Models.DatabaseSettings
+﻿@model PoWorks_Rework.Models.GeneralSettingsViewModel
 @{
-    ViewData["Title"] = "PostgreSQL Connection Settings";
+    ViewData["Title"] = "Database Connection Settings";
 }
 <div class="card">
     <div class="card-header">
         <h4>Database Connection Settings</h4>
     </div>
     <div class="card-body">
-        <form asp-action="SaveGeneralSettings" asp-controller="Settings" method="post">
-            <div class="accordion" id="settingsAccordion">
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingDatabase">
-                        <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                                data-bs-target="#collapseDatabase" aria-expanded="true" aria-controls="collapseDatabase">
-                            PostgreSQL Database Connection
-                        </button>
-                    </h2>
-                    <div id="collapseDatabase" class="accordion-collapse collapse show" aria-labelledby="headingDatabase">
-                        <div class="accordion-body">
-                            <div class="mb-3 row">
-                                <label for="Host" class="col-sm-2 col-form-label">Host</label>
-                                <div class="col-sm-10">
-                                    <input type="text" class="form-control" id="Host" asp-for="Host" placeholder="localhost">
-                                    <div class="form-text">Database server hostname or IP address</div>
-                                </div>
-                            </div>
-                            <div class="mb-3 row">
-                                <label for="Port" class="col-sm-2 col-form-label">Port</label>
-                                <div class="col-sm-10">
-                                    <input type="text" class="form-control" id="Port" asp-for="Port" placeholder="5432">
-                                    <div class="form-text">PostgreSQL default port is 5432</div>
-                                </div>
-                            </div>
-                            <div class="mb-3 row">
-                                <label for="Database" class="col-sm-2 col-form-label">Database</label>
-                                <div class="col-sm-10">
-                                    <input type="text" class="form-control" id="Database" asp-for="Database">
-                                    <div class="form-text">Name of the PostgreSQL database (existing or to be created)</div>
-                                </div>
-                            </div>
-                            <div class="mb-3 row">
-                                <label for="Username" class="col-sm-2 col-form-label">Username</label>
-                                <div class="col-sm-10">
-                                    <input type="text" class="form-control" id="Username" asp-for="Username" placeholder="postgres">
-                                </div>
-                            </div>
-                            <div class="mb-3 row">
-                                <label for="Password" class="col-sm-2 col-form-label">Password</label>
-                                <div class="col-sm-10">
-                                    <input type="password" class="form-control" id="Password" asp-for="Password">
-                                </div>
-                            </div>
-                            <div class="mb-3 row">
-                                <label for="SSLMode" class="col-sm-2 col-form-label">SSL Mode</label>
-                                <div class="col-sm-10">
-                                    <select class="form-select" id="SSLMode" asp-for="SSLMode">
-                                        <option value="Prefer">Prefer</option>
-                                        <option value="Require">Require</option>
-                                        <option value="Disable">Disable</option>
-                                    </select>
-                                    <div class="form-text">Controls PostgreSQL SSL connection behavior</div>
-                                </div>
-                            </div>
-                            <div class="mb-3 row">
-                                <div class="col-sm-10 offset-sm-2">
-                                    <button type="button" class="btn btn-outline-primary me-2" id="testConnection">Test Connection</button>
-                                    <button type="button" class="btn btn-success" id="connectDatabase">Connect & Create DB</button>
-                                </div>
-                            </div>
-                            <div class="text-center mt-4">
-                                <div class="d-grid gap-2">
-                                    <button type="button" class="btn btn-primary" id="exportBtn">Export Connection String</button>
-                                   
+        <!-- Database Type Tabs -->
+        <ul class="nav nav-tabs mb-4" id="databaseTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="postgresql-tab" data-bs-toggle="tab" data-bs-target="#postgresql" type="button" role="tab" aria-controls="postgresql" aria-selected="true">PostgreSQL</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="sqlserver-tab" data-bs-toggle="tab" data-bs-target="#sqlserver" type="button" role="tab" aria-controls="sqlserver" aria-selected="false">SQL Server (PCVue HDS)</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="databaseTabsContent">
+            <!-- PostgreSQL Tab -->
+            <div class="tab-pane fade show active" id="postgresql" role="tabpanel" aria-labelledby="postgresql-tab">
+                <form asp-action="SaveGeneralSettings" asp-controller="Settings" method="post">
+                    <div class="accordion" id="settingsAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingDatabase">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#collapseDatabase" aria-expanded="true" aria-controls="collapseDatabase">
+                                    PostgreSQL Database Connection
+                                </button>
+                            </h2>
+                            <div id="collapseDatabase" class="accordion-collapse collapse show" aria-labelledby="headingDatabase">
+                                <div class="accordion-body">
+                                    <div class="mb-3 row">
+                                        <label for="PostgreSql_Host" class="col-sm-2 col-form-label">Host</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="PostgreSql_Host" asp-for="PostgreSql.Host" placeholder="localhost">
+                                            <div class="form-text">Database server hostname or IP address</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="PostgreSql_Port" class="col-sm-2 col-form-label">Port</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="PostgreSql_Port" asp-for="PostgreSql.Port" placeholder="5432">
+                                            <div class="form-text">PostgreSQL default port is 5432</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="PostgreSql_Database" class="col-sm-2 col-form-label">Database</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="PostgreSql_Database" asp-for="PostgreSql.Database">
+                                            <div class="form-text">Name of the PostgreSQL database (existing or to be created)</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="PostgreSql_Username" class="col-sm-2 col-form-label">Username</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="PostgreSql_Username" asp-for="PostgreSql.Username" placeholder="postgres">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="PostgreSql_Password" class="col-sm-2 col-form-label">Password</label>
+                                        <div class="col-sm-10">
+                                            <input type="password" class="form-control" id="PostgreSql_Password" asp-for="PostgreSql.Password">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="PostgreSql_SSLMode" class="col-sm-2 col-form-label">SSL Mode</label>
+                                        <div class="col-sm-10">
+                                            <select class="form-select" id="PostgreSql_SSLMode" asp-for="PostgreSql.SSLMode">
+                                                <option value="Prefer">Prefer</option>
+                                                <option value="Require">Require</option>
+                                                <option value="Disable">Disable</option>
+                                            </select>
+                                            <div class="form-text">Controls PostgreSQL SSL connection behavior</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <div class="col-sm-10 offset-sm-2">
+                                            <button type="button" class="btn btn-outline-primary me-2" id="testConnection">Test Connection</button>
+                                            <button type="button" class="btn btn-success" id="connectDatabase">Connect & Create DB</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </form>
             </div>
-        </form>
+
+            <!-- SQL Server Tab -->
+            <div class="tab-pane fade" id="sqlserver" role="tabpanel" aria-labelledby="sqlserver-tab">
+                <form id="sqlserverForm">
+                    <div class="accordion" id="sqlserverAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingSqlServer">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#collapseSqlServer" aria-expanded="true" aria-controls="collapseSqlServer">
+                                    SQL Server Connection (PCVue HDS)
+                                </button>
+                            </h2>
+                            <div id="collapseSqlServer" class="accordion-collapse collapse show" aria-labelledby="headingSqlServer">
+                                <div class="accordion-body">
+                                    <div class="mb-3 row">
+                                        <label for="SqlServer_Host" class="col-sm-2 col-form-label">Host</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="SqlServer_Host" asp-for="SqlServer.Host" placeholder="localhost">
+                                            <div class="form-text">SQL Server hostname or IP address</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="SqlServer_Port" class="col-sm-2 col-form-label">Port</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="SqlServer_Port" asp-for="SqlServer.Port" placeholder="1433">
+                                            <div class="form-text">SQL Server default port is 1433</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="SqlServer_ProjectName" class="col-sm-2 col-form-label">PCVue Project Name</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="SqlServer_ProjectName" asp-for="SqlServer.ProjectName">
+                                            <div class="form-text">The HDS database name will be [ProjectName]_DB</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="SqlServer_Database" class="col-sm-2 col-form-label">Database</label>
+                                        <div class="col-sm-10">
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" id="SqlServer_Database" asp-for="SqlServer.Database">
+                                                <button class="btn btn-outline-secondary" type="button" id="generateDbName">Generate</button>
+                                            </div>
+                                            <div class="form-text">This will be filled automatically if you use the Generate button with the PCVue Project Name</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="SqlServer_Username" class="col-sm-2 col-form-label">Username</label>
+                                        <div class="col-sm-10">
+                                            <input type="text" class="form-control" id="SqlServer_Username" asp-for="SqlServer.Username">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <label for="SqlServer_Password" class="col-sm-2 col-form-label">Password</label>
+                                        <div class="col-sm-10">
+                                            <input type="password" class="form-control" id="SqlServer_Password" asp-for="SqlServer.Password">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3 row">
+                                        <div class="col-sm-10 offset-sm-2">
+                                            <button type="button" class="btn btn-outline-primary me-2" id="testSqlServerConnection">Test Connection</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <form asp-action="SaveGeneralSettings" asp-controller="Settings" method="post" id="mainSettingsForm">
+                <!-- Hidden fields to store values from both tabs -->
+                <input type="hidden" name="PostgreSql.Host" id="hidden_PostgreSql_Host" />
+                <input type="hidden" name="PostgreSql.Port" id="hidden_PostgreSql_Port" />
+                <input type="hidden" name="PostgreSql.Database" id="hidden_PostgreSql_Database" />
+                <input type="hidden" name="PostgreSql.Username" id="hidden_PostgreSql_Username" />
+                <input type="hidden" name="PostgreSql.Password" id="hidden_PostgreSql_Password" />
+                <input type="hidden" name="PostgreSql.SSLMode" id="hidden_PostgreSql_SSLMode" />
+
+                <input type="hidden" name="SqlServer.Host" id="hidden_SqlServer_Host" />
+                <input type="hidden" name="SqlServer.Port" id="hidden_SqlServer_Port" />
+                <input type="hidden" name="SqlServer.Database" id="hidden_SqlServer_Database" />
+                <input type="hidden" name="SqlServer.Username" id="hidden_SqlServer_Username" />
+                <input type="hidden" name="SqlServer.Password" id="hidden_SqlServer_Password" />
+                <input type="hidden" name="SqlServer.ProjectName" id="hidden_SqlServer_ProjectName" />
+
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-primary" id="saveAllSettings">Save All Settings</button>
+                </div>
+            </form>
+        </div>
+
         <div id="connectionResult" class="alert mt-3" style="display: none;"></div>
         @if (TempData["SuccessMessage"] != null)
         {
@@ -86,87 +187,176 @@
                 @TempData["SuccessMessage"]
             </div>
         }
+
+        @if (TempData["WarningMessage"] != null)
+        {
+            <div class="alert alert-warning mt-3">
+                @TempData["WarningMessage"]
+            </div>
+        }
+
+        @if (TempData["ErrorMessage"] != null)
+        {
+            <div class="alert alert-danger mt-3">
+                @TempData["ErrorMessage"]
+            </div>
+        }
     </div>
 </div>
 
 <script>
-    document.getElementById('testConnection').addEventListener('click', function() {
-        // Get form values
-        const connectionData = {
-            host: document.getElementById('Host').value,
-            port: document.getElementById('Port').value,
-            database: document.getElementById('Database').value,
-            username: document.getElementById('Username').value,
-            password: document.getElementById('Password').value,
-            sslMode: document.getElementById('SSLMode').value
-        };
+    document.addEventListener('DOMContentLoaded', function() {
+        // PostgreSQL Connection Testing
+        document.getElementById('testConnection').addEventListener('click', function() {
+            // Get form values
+            const connectionData = {
+                host: document.getElementById('PostgreSql_Host').value,
+                port: document.getElementById('PostgreSql_Port').value,
+                database: document.getElementById('PostgreSql_Database').value,
+                username: document.getElementById('PostgreSql_Username').value,
+                password: document.getElementById('PostgreSql_Password').value,
+                sslMode: document.getElementById('PostgreSql_SSLMode').value
+            };
 
-        // Test connection via AJAX
-        fetch('/Settings/TestConnection', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(connectionData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            const resultElement = document.getElementById('connectionResult');
-            resultElement.style.display = 'block';
+            // Test connection via AJAX
+            fetch('/Settings/TestConnection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(connectionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultElement = document.getElementById('connectionResult');
+                resultElement.style.display = 'block';
 
-            if (data.success) {
-                resultElement.className = 'alert alert-success mt-3';
-                resultElement.textContent = 'Connection successful!';
-            } else {
+                if (data.success) {
+                    resultElement.className = 'alert alert-success mt-3';
+                    resultElement.textContent = 'PostgreSQL connection successful!';
+                } else {
+                    resultElement.className = 'alert alert-danger mt-3';
+                    resultElement.textContent = 'PostgreSQL connection failed: ' + data.errorMessage;
+                }
+            })
+            .catch(error => {
+                const resultElement = document.getElementById('connectionResult');
+                resultElement.style.display = 'block';
                 resultElement.className = 'alert alert-danger mt-3';
-                resultElement.textContent = 'Connection failed: ' + data.errorMessage;
-            }
-        })
-        .catch(error => {
-            const resultElement = document.getElementById('connectionResult');
-            resultElement.style.display = 'block';
-            resultElement.className = 'alert alert-danger mt-3';
-            resultElement.textContent = 'Error testing connection: ' + error;
+                resultElement.textContent = 'Error testing connection: ' + error;
+            });
         });
-    });
 
-    document.getElementById('connectDatabase').addEventListener('click', function() {
-        // Get form values
-        const connectionData = {
-            host: document.getElementById('Host').value,
-            port: document.getElementById('Port').value,
-            database: document.getElementById('Database').value,
-            username: document.getElementById('Username').value,
-            password: document.getElementById('Password').value,
-            sslMode: document.getElementById('SSLMode').value
-        };
+        document.getElementById('connectDatabase').addEventListener('click', function() {
+            // Get form values
+            const connectionData = {
+                host: document.getElementById('PostgreSql_Host').value,
+                port: document.getElementById('PostgreSql_Port').value,
+                database: document.getElementById('PostgreSql_Database').value,
+                username: document.getElementById('PostgreSql_Username').value,
+                password: document.getElementById('PostgreSql_Password').value,
+                sslMode: document.getElementById('PostgreSql_SSLMode').value
+            };
 
-        // Call connect endpoint via AJAX
-        fetch('/Settings/Connect', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(connectionData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            const resultElement = document.getElementById('connectionResult');
-            resultElement.style.display = 'block';
+            // Call connect endpoint via AJAX
+            fetch('/Settings/Connect', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(connectionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultElement = document.getElementById('connectionResult');
+                resultElement.style.display = 'block';
 
-            if (data.success) {
-                resultElement.className = 'alert alert-success mt-3';
-                resultElement.textContent = data.message;
-            } else {
+                if (data.success) {
+                    resultElement.className = 'alert alert-success mt-3';
+                    resultElement.textContent = data.message;
+                } else {
+                    resultElement.className = 'alert alert-danger mt-3';
+                    resultElement.textContent = 'Connection failed: ' + data.errorMessage;
+                }
+            })
+            .catch(error => {
+                const resultElement = document.getElementById('connectionResult');
+                resultElement.style.display = 'block';
                 resultElement.className = 'alert alert-danger mt-3';
-                resultElement.textContent = 'Connection failed: ' + data.errorMessage;
+                resultElement.textContent = 'Error connecting to database: ' + error;
+            });
+        });
+
+        // SQL Server Connection Testing
+        document.getElementById('testSqlServerConnection').addEventListener('click', function() {
+            // Get form values
+            const connectionData = {
+                host: document.getElementById('SqlServer_Host').value,
+                port: document.getElementById('SqlServer_Port').value,
+                database: document.getElementById('SqlServer_Database').value,
+                username: document.getElementById('SqlServer_Username').value,
+                password: document.getElementById('SqlServer_Password').value,
+                projectName: document.getElementById('SqlServer_ProjectName').value
+            };
+
+            // Test connection via AJAX
+            fetch('/Settings/TestSqlServerConnection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(connectionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultElement = document.getElementById('connectionResult');
+                resultElement.style.display = 'block';
+
+                if (data.success) {
+                    resultElement.className = 'alert alert-success mt-3';
+                    resultElement.textContent = 'SQL Server connection successful!';
+                } else {
+                    resultElement.className = 'alert alert-danger mt-3';
+                    resultElement.textContent = 'SQL Server connection failed: ' + data.errorMessage;
+                }
+            })
+            .catch(error => {
+                const resultElement = document.getElementById('connectionResult');
+                resultElement.style.display = 'block';
+                resultElement.className = 'alert alert-danger mt-3';
+                resultElement.textContent = 'Error testing SQL Server connection: ' + error;
+            });
+        });
+
+        // Generate database name from project name
+        document.getElementById('generateDbName').addEventListener('click', function() {
+            const projectName = document.getElementById('SqlServer_ProjectName').value;
+            if (projectName) {
+                document.getElementById('SqlServer_Database').value = projectName + '_DB';
+            } else {
+                alert('Please enter a PCVue Project Name first');
             }
-        })
-        .catch(error => {
-            const resultElement = document.getElementById('connectionResult');
-            resultElement.style.display = 'block';
-            resultElement.className = 'alert alert-danger mt-3';
-            resultElement.textContent = 'Error connecting to database: ' + error;
+        });
+
+        // Save all settings
+        document.getElementById('saveAllSettings').addEventListener('click', function() {
+            // Transfer values from visible forms to hidden form fields
+            document.getElementById('hidden_PostgreSql_Host').value = document.getElementById('PostgreSql_Host').value;
+            document.getElementById('hidden_PostgreSql_Port').value = document.getElementById('PostgreSql_Port').value;
+            document.getElementById('hidden_PostgreSql_Database').value = document.getElementById('PostgreSql_Database').value;
+            document.getElementById('hidden_PostgreSql_Username').value = document.getElementById('PostgreSql_Username').value;
+            document.getElementById('hidden_PostgreSql_Password').value = document.getElementById('PostgreSql_Password').value;
+            document.getElementById('hidden_PostgreSql_SSLMode').value = document.getElementById('PostgreSql_SSLMode').value;
+
+            document.getElementById('hidden_SqlServer_Host').value = document.getElementById('SqlServer_Host').value;
+            document.getElementById('hidden_SqlServer_Port').value = document.getElementById('SqlServer_Port').value;
+            document.getElementById('hidden_SqlServer_Database').value = document.getElementById('SqlServer_Database').value;
+            document.getElementById('hidden_SqlServer_Username').value = document.getElementById('SqlServer_Username').value;
+            document.getElementById('hidden_SqlServer_Password').value = document.getElementById('SqlServer_Password').value;
+            document.getElementById('hidden_SqlServer_ProjectName').value = document.getElementById('SqlServer_ProjectName').value;
+
+            // Submit the form with all settings
+            document.getElementById('mainSettingsForm').submit();
         });
     });
 </script>

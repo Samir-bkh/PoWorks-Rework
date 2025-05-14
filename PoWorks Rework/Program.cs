@@ -9,6 +9,7 @@ builder.Services.AddScoped<PoWorks_Rework.Repositories.MeterRepository>();
 
 // Register the DatabaseService as a singleton
 builder.Services.AddSingleton<DatabaseService>();
+builder.Services.AddSingleton<SqlServerService>();
 
 var app = builder.Build();
 

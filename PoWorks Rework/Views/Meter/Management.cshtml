@@ -27,11 +27,13 @@
     </div>
 }
 
+@await Html.PartialAsync("_ImportExportModal")
+
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h4>Meters</h4>
         <div>
-            <button type="button" class="btn btn-primary">Import / Export</button>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importExportModal">Import / Export</button>
         </div>
     </div>
     <div class="card-body">
@@ -220,6 +222,32 @@
                                 <input type="text" class="form-control" id="LastReading" name="LastReading" value="@Model.SelectedMeter.LastReading">
                             </div>
                         </div>
+                        <div class="row mb-3">
+                            <div class="col-md-2">
+                                <label for="TenantId" class="form-label">Tenant</label>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions">
+                                </select>
+                                <small class="form-text text-muted">Link this meter to a tenant from the database</small>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="Type" class="form-label">Type</label>
+                            </div>
+                            <div class="col-md-4">
+                                @{
+                                    // Pre-determine the selected type value
+                                    var typeOptions = new List<SelectListItem>
+                            {
+                            new SelectListItem { Value = "Main", Text = "Main", Selected = Model.SelectedMeter.Type == "Main" },
+                            new SelectListItem { Value = "Sub", Text = "Sub", Selected = Model.SelectedMeter.Type == "Sub" }
+                            };
+                                }
+                                <select class="form-select" id="Type" name="Type"
+                                        asp-items="typeOptions">
+                                </select>
+                            </div>
+                        </div>
                         <div class="row mb-4">
                             <div class="col-md-2">
                                 <label for="Active" class="form-label">Active</label>
@@ -239,22 +267,6 @@
                                         <input class="form-check-input" type="checkbox" id="Active" name="Active">
                                     }
                                 </div>
-                            </div>
-                            <div class="col-md-2">
-                                <label for="Type" class="form-label">Type</label>
-                            </div>
-                            <div class="col-md-4">
-                                @{
-                                    // Pre-determine the selected type value
-                                    var typeOptions = new List<SelectListItem>
-                            {
-                            new SelectListItem { Value = "Main", Text = "Main", Selected = Model.SelectedMeter.Type == "Main" },
-                            new SelectListItem { Value = "Sub", Text = "Sub", Selected = Model.SelectedMeter.Type == "Sub" }
-                            };
-                                }
-                                <select class="form-select" id="Type" name="Type"
-                                        asp-items="typeOptions">
-                                </select>
                             </div>
                         </div>
                         <div class="text-end">
@@ -383,9 +395,7 @@
                             <label for="TenantId" class="form-label">Tenant</label>
                         </div>
                         <div class="col-md-9">
-                            <select class="form-select" id="TenantId" name="TenantId">
-                                <option value="">None</option>
-                                <!-- We'll need to populate this with tenants from the DB -->
+                            <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions">
                             </select>
                         </div>
                     </div>
@@ -470,9 +480,7 @@
                                 <label for="SubMeterTenantId" class="form-label">Tenant</label>
                             </div>
                             <div class="col-md-9">
-                                <select class="form-select" id="SubMeterTenantId" name="TenantId">
-                                    <option value="">None</option>
-                                    <!-- We'll need to populate this with tenants from the DB -->
+                                <select class="form-select" id="SubMeterTenantId" name="TenantId" asp-items="Model.TenantOptions">
                                 </select>
                             </div>
                         </div>
@@ -495,6 +503,27 @@
             </div>
         </div>
     </div>
+}
+
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set the correct selected tenant
+            const tenantId = '@Model.SelectedMeter?.TenantId';
+            if (tenantId) {
+                const tenantSelect = document.getElementById('TenantId');
+                if (tenantSelect) {
+                    for (let i = 0; i < tenantSelect.options.length; i++) {
+                        if (tenantSelect.options[i].value === tenantId) {
+                            tenantSelect.options[i].selected = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    </script>
 }
 
 @using Microsoft.AspNetCore.Mvc.Rendering

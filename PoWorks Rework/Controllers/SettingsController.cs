@@ -8,6 +8,7 @@ using System.Text.Json;
 using Npgsql;
 using PoWorks_Rework.Services;
 using System.Collections.Generic;
+using Microsoft.Data.SqlClient; // Add this for SQL Server connection
 
 namespace PoWorks_Rework.Controllers
 {
@@ -16,22 +17,25 @@ namespace PoWorks_Rework.Controllers
         private readonly IConfiguration _configuration;
         private readonly IWebHostEnvironment _webHostEnvironment;
         private readonly DatabaseService _databaseService;
+        private readonly SqlServerService _sqlServerService;
 
         public SettingsController(
             IConfiguration configuration,
             IWebHostEnvironment webHostEnvironment,
-            DatabaseService databaseService)
+            DatabaseService databaseService,
+            SqlServerService sqlServerService)
         {
             _configuration = configuration;
             _webHostEnvironment = webHostEnvironment;
             _databaseService = databaseService;
+            _sqlServerService = sqlServerService;
         }
 
         public IActionResult General()
         {
             // Use the current settings from the service if initialized,
             // otherwise load from configuration
-            var settings = _databaseService.IsInitialized
+            var pgSettings = _databaseService.IsInitialized
                 ? _databaseService.CurrentSettings
                 : new DatabaseSettings
                 {
@@ -43,7 +47,26 @@ namespace PoWorks_Rework.Controllers
                     SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
                 };
 
-            return View(settings);
+            // Load SQL Server settings from the service
+            var sqlSettings = _sqlServerService.IsInitialized
+                ? _sqlServerService.CurrentSettings
+                : new SqlServerSettings
+                {
+                    Host = _configuration["SqlServerSettings:Host"] ?? "localhost",
+                    Port = _configuration["SqlServerSettings:Port"] ?? "1433",
+                    Database = _configuration["SqlServerSettings:Database"] ?? "",
+                    Username = _configuration["SqlServerSettings:Username"] ?? "",
+                    Password = _configuration["SqlServerSettings:Password"] ?? "",
+                    ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? ""
+                };
+
+            var viewModel = new GeneralSettingsViewModel
+            {
+                PostgreSql = pgSettings,
+                SqlServer = sqlSettings
+            };
+
+            return View(viewModel);
         }
 
         [HttpPost]
@@ -137,25 +160,50 @@ namespace PoWorks_Rework.Controllers
         }
 
         [HttpPost]
-        public IActionResult SaveGeneralSettings(DatabaseSettings settings)
+        public IActionResult SaveGeneralSettings(GeneralSettingsViewModel model)
         {
             if (ModelState.IsValid)
             {
                 try
                 {
-                    // Test connection before saving
-                    using (var connection = new NpgsqlConnection(settings.ToConnectionString()))
+                    // Test PostgreSQL connection before saving
+                    using (var connection = new NpgsqlConnection(model.PostgreSql.ToConnectionString()))
                     {
                         connection.Open();
                     }
 
-                    // Save settings to appsettings.json 
-                    UpdateAppSettings(settings);
+                    // Save PostgreSQL settings to appsettings.json 
+                    UpdateAppSettings(model.PostgreSql);
 
                     // Initialize the database service with new settings
-                    _databaseService.Initialize(settings);
+                    _databaseService.Initialize(model.PostgreSql);
 
-                    TempData["SuccessMessage"] = "Database settings saved successfully.";
+                    // If SQL Server settings are provided, save them too
+                    if (!string.IsNullOrEmpty(model.SqlServer.Host) && !string.IsNullOrEmpty(model.SqlServer.Database))
+                    {
+                        // Try to test connection
+                        try
+                        {
+                            using (var connection = new SqlConnection(model.SqlServer.ToConnectionString()))
+                            {
+                                connection.Open();
+                            }
+
+                            // Connection successful, save SQL Server settings
+                            UpdateSqlServerSettings(model.SqlServer);
+                            TempData["SuccessMessage"] = "Database settings saved successfully.";
+                        }
+                        catch (Exception ex)
+                        {
+                            // Don't fail the entire operation if SQL Server connection fails
+                            TempData["WarningMessage"] = $"PostgreSQL settings saved, but SQL Server connection failed: {ex.Message}";
+                        }
+                    }
+                    else
+                    {
+                        TempData["SuccessMessage"] = "PostgreSQL database settings saved successfully.";
+                    }
+
                     return RedirectToAction("General");
                 }
                 catch (Exception ex)
@@ -163,7 +211,33 @@ namespace PoWorks_Rework.Controllers
                     ModelState.AddModelError("", $"Failed to connect to database: {ex.Message}");
                 }
             }
-            return View("General", settings);
+            UpdateSqlServerSettings(model.SqlServer);
+            _sqlServerService.Initialize(model.SqlServer);
+            return View("General", model);
+        }
+
+        [HttpPost]
+        public IActionResult TestSqlServerConnection([FromBody] SqlServerSettings settings)
+        {
+            try
+            {
+                // If database name is not specified but project name is, generate the database name
+                if (string.IsNullOrEmpty(settings.Database) && !string.IsNullOrEmpty(settings.ProjectName))
+                {
+                    settings.Database = $"{settings.ProjectName}_DB";
+                }
+
+                using (var connection = new SqlConnection(settings.ToConnectionString()))
+                {
+                    connection.Open();
+                    // If we get here, connection was successful
+                    return Json(new { success = true });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
         }
 
         // Other methods remain the same...
@@ -189,7 +263,7 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        // Helper method to update appsettings.json
+        // Helper method to update appsettings.json for PostgreSQL
         private void UpdateAppSettings(DatabaseSettings settings)
         {
             var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
@@ -218,6 +292,42 @@ namespace PoWorks_Rework.Controllers
 
             // Add or update the DatabaseSettings section
             updatedSettings["DatabaseSettings"] = dbSettings;
+
+            // Save back to file
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
+            System.IO.File.WriteAllText(appSettingsPath, updatedJson);
+        }
+
+        // Helper method to update appsettings.json for SQL Server
+        private void UpdateSqlServerSettings(SqlServerSettings settings)
+        {
+            var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
+            var json = System.IO.File.ReadAllText(appSettingsPath);
+            var jsonSettings = JsonDocument.Parse(json);
+
+            // Create a new dictionary with updated values
+            var updatedSettings = new Dictionary<string, object>();
+
+            // Copy existing settings
+            foreach (var element in jsonSettings.RootElement.EnumerateObject())
+            {
+                updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
+            }
+
+            // Update SQL Server settings
+            var sqlSettings = new Dictionary<string, string>
+            {
+                { "Host", settings.Host },
+                { "Port", settings.Port },
+                { "Database", settings.Database },
+                { "Username", settings.Username },
+                { "Password", settings.Password },
+                { "ProjectName", settings.ProjectName }
+            };
+
+            // Add or update the SqlServerSettings section
+            updatedSettings["SqlServerSettings"] = sqlSettings;
 
             // Save back to file
             var options = new JsonSerializerOptions { WriteIndented = true };

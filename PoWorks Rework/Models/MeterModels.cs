@@ -1,5 +1,6 @@
 ﻿// Models/MeterModels.cs
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace PoWorks_Rework.Models
 {
@@ -12,6 +13,8 @@ namespace PoWorks_Rework.Models
         public int TotalPages { get; set; } = 1;
         public int CurrentPage { get; set; } = 1;
         public int TotalItems { get; set; } = 0;
+
+        public List<SelectListItem> TenantOptions { get; set; } = new List<SelectListItem>();
     }
 
     public class MeterSearchCriteria

@@ -1,5 +1,6 @@
 ﻿// Controllers/MeterController.cs
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Repositories;
@@ -20,6 +21,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         // Controllers/MeterController.cs - Update the Management method
+        // Update the Management method in MeterController
         public async Task<IActionResult> Management(int? id = null, int page = 1, int pageSize = 10)
         {
             // Check if database is initialized
@@ -33,7 +35,8 @@ namespace PoWorks_Rework.Controllers
             var viewModel = new MeterManagementViewModel
             {
                 SearchCriteria = searchCriteria,
-                CurrentPage = page
+                CurrentPage = page,
+                TenantOptions = GetTenantOptions() // Add this line to load tenant options
             };
 
             try
@@ -89,7 +92,6 @@ namespace PoWorks_Rework.Controllers
                 return View(viewModel);
             }
         }
-
         [HttpPost]
         public async Task<IActionResult> Search(MeterSearchCriteria searchCriteria, int page = 1, int pageSize = 10)
         {
@@ -105,7 +107,8 @@ namespace PoWorks_Rework.Controllers
                 var viewModel = new MeterManagementViewModel
                 {
                     SearchCriteria = searchCriteria,
-                    CurrentPage = page
+                    CurrentPage = page,
+                    TenantOptions = GetTenantOptions() // Add this line to load tenant options
                 };
 
                 // Get search results
@@ -407,6 +410,8 @@ namespace PoWorks_Rework.Controllers
             return RedirectToAction("Management", new { id = meter.Id });
         }
 
+
+
         public async Task<IActionResult> Readings(int page = 1, int pageSize = 10)
         {
             // Check if database is initialized
@@ -438,5 +443,52 @@ namespace PoWorks_Rework.Controllers
                 return View(new MeterReadingsViewModel());
             }
         }
+    
+
+    // Add this method to the MeterController class
+private List<SelectListItem> GetTenantOptions()
+        {
+            var options = new List<SelectListItem>
+    {
+        new SelectListItem { Value = "", Text = "None" }
+    };
+
+            try
+            {
+                // Create a brand new connection for this operation
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    connection.Open();
+
+                    string sql = @"
+                SELECT t.""TenantID"", td.""CompanyName""
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
+                ORDER BY td.""CompanyName""";
+
+                    using var cmd = new NpgsqlCommand(sql, connection);
+                    using var reader = cmd.ExecuteReader();
+
+                    while (reader.Read())
+                    {
+                        int tenantId = reader.GetInt32(0);
+                        string companyName = !reader.IsDBNull(1) ? reader.GetString(1) : $"Tenant ID: {tenantId}";
+
+                        options.Add(new SelectListItem
+                        {
+                            Value = tenantId.ToString(),
+                            Text = companyName
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting tenant options: {ex.Message}");
+            }
+
+            return options;
+        }
+
     }
 }
