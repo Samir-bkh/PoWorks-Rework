@@ -1,0 +1,849 @@
+﻿@model PoWorks_Rework.Models.HDSMeterSelectionViewModel
+
+<!-- HDS Meter Selection Modal -->
+<div class="modal fade" id="hdsMeterSelectionModal" tabindex="-1" aria-labelledby="hdsMeterSelectionModalLabel" aria-hidden="true" data-table-name="@Model.TableName">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="hdsMeterSelectionModalLabel">
+                    Select Meters to Import from @Model.TableName
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex align-items-center">
+                            <h6 class="mb-0 me-3">Available Meters</h6>
+                            <span id="selectionStatus" class="badge bg-primary">Selected 0 of @Model.HdsMeters.Count meters</span>
+                        </div>
+                        <div>
+                            <button type="button" id="selectAllBtn" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-check-all"></i> Select All
+                            </button>
+                            <button type="button" id="deselectAllBtn" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-x-lg"></i> Deselect All
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filter -->
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input type="text" class="form-control" id="filterInput" placeholder="Filter meters by name...">
+                        <span class="input-group-text" id="filterStatus">
+                            Showing @Model.HdsMeters.Count of @Model.HdsMeters.Count meters
+                        </span>
+                    </div>
+
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-bordered table-hover" id="hdsMeterTable">
+                            <thead class="sticky-top bg-light">
+                                <tr>
+                                    <th style="width: 50px;" class="text-center">Import</th>
+                                    <th>HDS Meter Name</th>
+                                    <th>Unit (Secondary Name)</th>
+                                    <th>Parent Meter</th>
+                                    <th style="width: 80px;">Type</th>
+                                    <th style="width: 80px;">Active</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model != null && Model.HdsMeters != null && Model.HdsMeters.Any())
+                                {
+                                    @for (int i = 0; i < Model.HdsMeters.Count; i++)
+                                    {
+                                        var meter = Model.HdsMeters[i];
+                                        <tr>
+                                            <td class="text-center">
+                                                <div class="form-check d-flex justify-content-center">
+                                                    <input class="form-check-input meter-checkbox" type="checkbox"
+                                                           id="meter_@i" name="SelectedMeters[@i].IsSelected" value="true" checked>
+                                                    <input type="hidden" name="SelectedMeters[@i].IsSelected" value="false">
+                                                    <input type="hidden" name="SelectedMeters[@i].HdsMeterName" value="@meter.HdsMeterName" />
+                                                </div>
+                                            </td>
+                                            <td>@meter.HdsMeterName</td>
+                                            <td>
+                                                <input type="text" class="form-control form-control-sm"
+                                                       name="SelectedMeters[@i].Unit" value="@meter.Unit">
+                                            </td>
+                                            <td>
+                                                <select class="form-select form-select-sm" name="SelectedMeters[@i].ParentMeterId">
+                                                    <option value="">None</option>
+                                                    @foreach (var parentOption in Model.ParentMeterOptions)
+                                                    {
+                                                        if (parentOption.Value == meter.ParentMeterId)
+                                                        {
+                                                            <option value="@parentOption.Value" selected>@parentOption.Text</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@parentOption.Value">@parentOption.Text</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <select class="form-select form-select-sm" name="SelectedMeters[@i].Type">
+                                                    @if (meter.Type == "Main")
+                                                    {
+                                                        <option value="Main" selected>Main</option>
+                                                        <option value="Sub">Sub</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Main">Main</option>
+                                                        <option value="Sub" selected>Sub</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="form-check d-flex justify-content-center">
+                                                    @if (meter.Active)
+                                                    {
+                                                        <input class="form-check-input" type="checkbox"
+                                                               id="active_@i" name="SelectedMeters[@i].Active" value="true" checked>
+                                                        <input type="hidden" name="SelectedMeters[@i].Active" value="false">
+                                                    }
+                                                    else
+                                                    {
+                                                        <input class="form-check-input" type="checkbox"
+                                                               id="active_@i" name="SelectedMeters[@i].Active" value="true">
+                                                        <input type="hidden" name="SelectedMeters[@i].Active" value="false">
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center">No meters found in the selected HDS table.</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>Tip:</strong> You can set common properties for all selected meters using the controls below.
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header bg-light">Bulk Set Type</div>
+                            <div class="card-body">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="bulkType" id="bulkTypeMain" value="Main">
+                                    <label class="form-check-label" for="bulkTypeMain">Main</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="bulkType" id="bulkTypeSub" value="Sub">
+                                    <label class="form-check-label" for="bulkTypeSub">Sub</label>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="applyBulkType">Apply Type</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header bg-light">Bulk Set Parent</div>
+                            <div class="card-body">
+                                <select class="form-select mb-2" id="bulkParent">
+                                    <option value="">None</option>
+                                    @foreach (var parentOption in Model?.ParentMeterOptions ?? new List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>())
+                                    {
+                                        <option value="@parentOption.Value">@parentOption.Text</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="applyBulkParent">Apply Parent</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header bg-light">Bulk Set Active Status</div>
+                            <div class="card-body">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="bulkActive" value="true" checked>
+                                    <label class="form-check-label" for="bulkActive">Active</label>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="applyBulkActive">Apply Status</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="meterImportProgressContainer" class="w-100 d-none">
+                    <div class="progress mb-2">
+                        <div id="meterImportProgressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                    </div>
+                    <div id="meterImportStatus" class="text-center mb-2">Ready to import meters</div>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="importSelectedBtn">Import Selected</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    /**
+     * Debug utility functions
+     */
+    const DEBUG = {
+        log: function(message, data) {
+            const timestamp = new Date().toISOString().substr(11, 8);
+            console.log(`%c[${timestamp}] ${message}`, 'font-weight: bold; color: blue;', data || '');
+        },
+        error: function(message, error) {
+            const timestamp = new Date().toISOString().substr(11, 8);
+            console.error(`%c[${timestamp}] ERROR: ${message}`, 'font-weight: bold; color: red;', error || '');
+        },
+        warn: function(message, data) {
+            const timestamp = new Date().toISOString().substr(11, 8);
+            console.warn(`%c[${timestamp}] WARNING: ${message}`, 'font-weight: bold; color: orange;', data || '');
+        },
+        info: function(message, data) {
+            const timestamp = new Date().toISOString().substr(11, 8);
+            console.info(`%c[${timestamp}] INFO: ${message}`, 'font-weight: bold; color: green;', data || '');
+        },
+        group: function(label) {
+            console.group(`%c${label}`, 'font-weight: bold; color: purple;');
+        },
+        groupEnd: function() {
+            console.groupEnd();
+        },
+        checkboxStatus: function() {
+            const checkboxes = document.querySelectorAll('.meter-checkbox');
+            const checkedBoxes = document.querySelectorAll('.meter-checkbox:checked');
+
+            DEBUG.group('🔍 CHECKBOX STATUS');
+            DEBUG.log(`Total checkboxes: ${checkboxes.length}`);
+            DEBUG.log(`Checked checkboxes: ${checkedBoxes.length}`);
+
+            // Log the state of each checkbox and its hidden input
+            checkboxes.forEach((checkbox, index) => {
+                const hiddenInput = checkbox.nextElementSibling;
+                console.log(
+                    `%cCheckbox #${index} (${checkbox.id}): ${checkbox.checked ? '✅' : '❌'} ` +
+                    `Hidden input disabled: ${hiddenInput?.disabled ? '✅' : '❌'}`,
+                    'color: #666;'
+                );
+            });
+            DEBUG.groupEnd();
+
+            return {total: checkboxes.length, checked: checkedBoxes.length};
+        },
+        elementInfo: function(selector, description) {
+            const elements = document.querySelectorAll(selector);
+            DEBUG.log(`${description || selector}: Found ${elements.length} elements`);
+            elements.forEach((el, index) => {
+                console.log(`  Element #${index}:`, el);
+            });
+            return elements;
+        }
+    };
+
+    // Wait for the modal to be shown
+    document.addEventListener('DOMContentLoaded', function() {
+        DEBUG.log('🚀 DOM Content Loaded - Setting up HDS Meter Selection Modal');
+
+        var modal = document.getElementById('hdsMeterSelectionModal');
+        DEBUG.log('Modal element found?', !!modal);
+
+        if (modal) {
+            // Initialize modal when it's shown
+            modal.addEventListener('shown.bs.modal', function() {
+                DEBUG.info('🔔 Modal shown event fired - Initializing modal');
+                initializeModal();
+            });
+
+            // Or initialize immediately if already visible
+            if ($(modal).is(':visible')) {
+                DEBUG.info('Modal is already visible - Initializing immediately');
+                initializeModal();
+            }
+        } else {
+            DEBUG.error('Modal element not found! Check the ID: hdsMeterSelectionModal');
+        }
+    });
+
+    // Initialize modal functionality
+    function initializeModal() {
+        DEBUG.group('🔧 INITIALIZING MODAL');
+        DEBUG.log('Starting initialization of HDS Meter Selection Modal');
+
+        try {
+            // Setup checkbox functionality
+            DEBUG.log('Setting up checkboxes...');
+            setupCheckboxes();
+
+            // Setup select/deselect buttons
+            DEBUG.log('Setting up select/deselect buttons...');
+            setupSelectButtons();
+
+            // Setup filter functionality
+            DEBUG.log('Setting up filter functionality...');
+            setupFilter();
+
+            // Setup bulk actions
+            DEBUG.log('Setting up bulk actions...');
+            setupBulkActions();
+
+            // Setup import button
+            DEBUG.log('Setting up import button...');
+            setupImportButton();
+
+            // Update counter initially
+            DEBUG.log('Updating selection counter...');
+            updateCounter();
+
+            DEBUG.info('Modal initialization completed successfully! ✅');
+        } catch (error) {
+            DEBUG.error('Failed to initialize modal', error);
+        }
+
+        DEBUG.groupEnd();
+    }
+
+    // Setup checkbox functionality
+    function setupCheckboxes() {
+        DEBUG.group('🔳 SETUP CHECKBOXES');
+
+        // Check if checkboxes exist
+        var checkboxes = document.querySelectorAll('.meter-checkbox');
+        DEBUG.log(`Found ${checkboxes.length} checkboxes to configure`);
+
+        if (checkboxes.length === 0) {
+            DEBUG.warn('No checkboxes found with class .meter-checkbox');
+        }
+
+        checkboxes.forEach(function(checkbox, index) {
+            DEBUG.log(`Configuring checkbox #${index}: ${checkbox.id}`);
+
+            // Disable corresponding hidden input when checkbox is checked
+            checkbox.addEventListener('change', function(event) {
+                DEBUG.log(`Checkbox #${index} changed. New state: ${this.checked ? 'CHECKED' : 'UNCHECKED'}`);
+
+                // Find the next hidden input (which is the "false" value)
+                var hiddenInput = this.nextElementSibling;
+                if (hiddenInput && hiddenInput.type === 'hidden') {
+                    // Disable it when checkbox is checked, enable when unchecked
+                    hiddenInput.disabled = this.checked;
+                    DEBUG.log(`Set hidden input's disabled state to: ${hiddenInput.disabled}`);
+                } else {
+                    DEBUG.warn(`No hidden input found for checkbox #${index} (${this.id})`);
+                }
+
+                // Update the selection counter
+                updateCounter();
+            });
+
+            // Set initial state
+            var hiddenInput = checkbox.nextElementSibling;
+            if (hiddenInput && hiddenInput.type === 'hidden') {
+                hiddenInput.disabled = checkbox.checked;
+                DEBUG.log(`Set initial hidden input's disabled state to: ${hiddenInput.disabled}`);
+            } else {
+                DEBUG.warn(`No hidden input found for checkbox #${index} (${checkbox.id})`);
+            }
+        });
+
+        DEBUG.info(`Successfully configured ${checkboxes.length} checkboxes`);
+        DEBUG.groupEnd();
+    }
+
+    // Setup select all and deselect all buttons
+    function setupSelectButtons() {
+        DEBUG.group('🔘 SETUP SELECT BUTTONS');
+
+        var selectAllBtn = document.getElementById('selectAllBtn');
+        var deselectAllBtn = document.getElementById('deselectAllBtn');
+
+        DEBUG.log('Select All button found?', !!selectAllBtn);
+        DEBUG.log('Deselect All button found?', !!deselectAllBtn);
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', function(event) {
+                DEBUG.group('🔄 SELECT ALL BUTTON CLICKED');
+                DEBUG.log('Select All button clicked');
+                DEBUG.log('Before select all:');
+                DEBUG.checkboxStatus();
+
+                var checkboxes = document.querySelectorAll('.meter-checkbox');
+                DEBUG.log(`Found ${checkboxes.length} checkboxes to select`);
+
+                try {
+                    checkboxes.forEach(function(checkbox, index) {
+                        checkbox.checked = true;
+                        DEBUG.log(`Set checkbox #${index} (${checkbox.id}) to CHECKED`);
+
+                        // Find and disable the hidden input
+                        var hiddenInput = checkbox.nextElementSibling;
+                        if (hiddenInput && hiddenInput.type === 'hidden') {
+                            hiddenInput.disabled = true;
+                            DEBUG.log(`Disabled hidden input for checkbox #${index}`);
+                        } else {
+                            DEBUG.warn(`No hidden input found for checkbox #${index}`);
+                        }
+                    });
+
+                    DEBUG.log('After select all:');
+                    DEBUG.checkboxStatus();
+
+                    updateCounter();
+                    DEBUG.info('Select All operation completed successfully');
+                } catch (error) {
+                    DEBUG.error('Error in Select All operation', error);
+                }
+
+                DEBUG.groupEnd();
+            });
+        } else {
+            DEBUG.error('Select All button not found!');
+        }
+
+        if (deselectAllBtn) {
+            deselectAllBtn.addEventListener('click', function(event) {
+                DEBUG.group('🔄 DESELECT ALL BUTTON CLICKED');
+                DEBUG.log('Deselect All button clicked');
+                DEBUG.log('Before deselect all:');
+                DEBUG.checkboxStatus();
+
+                var checkboxes = document.querySelectorAll('.meter-checkbox');
+                DEBUG.log(`Found ${checkboxes.length} checkboxes to deselect`);
+
+                try {
+                    checkboxes.forEach(function(checkbox, index) {
+                        checkbox.checked = false;
+                        DEBUG.log(`Set checkbox #${index} (${checkbox.id}) to UNCHECKED`);
+
+                        // Find and enable the hidden input
+                        var hiddenInput = checkbox.nextElementSibling;
+                        if (hiddenInput && hiddenInput.type === 'hidden') {
+                            hiddenInput.disabled = false;
+                            DEBUG.log(`Enabled hidden input for checkbox #${index}`);
+                        } else {
+                            DEBUG.warn(`No hidden input found for checkbox #${index}`);
+                        }
+                    });
+
+                    DEBUG.log('After deselect all:');
+                    DEBUG.checkboxStatus();
+
+                    updateCounter();
+                    DEBUG.info('Deselect All operation completed successfully');
+                } catch (error) {
+                    DEBUG.error('Error in Deselect All operation', error);
+                }
+
+                DEBUG.groupEnd();
+            });
+        } else {
+            DEBUG.error('Deselect All button not found!');
+        }
+
+        DEBUG.info('Select/Deselect buttons setup completed');
+        DEBUG.groupEnd();
+    }
+
+    // Update the selection counter
+    function updateCounter() {
+        DEBUG.group('🔢 UPDATE COUNTER');
+
+        var checkboxes = document.querySelectorAll('.meter-checkbox');
+        var checkedCount = 0;
+
+        DEBUG.log(`Found ${checkboxes.length} total checkboxes`);
+
+        checkboxes.forEach(function(checkbox, index) {
+            if (checkbox.checked) {
+                checkedCount++;
+                DEBUG.log(`Checkbox #${index} (${checkbox.id}) is checked`);
+            }
+        });
+
+        DEBUG.log(`Total checked: ${checkedCount} out of ${checkboxes.length}`);
+
+        // Update the selection status badge
+        var statusBadge = document.getElementById('selectionStatus');
+        if (statusBadge) {
+            statusBadge.textContent = 'Selected ' + checkedCount + ' of ' + checkboxes.length + ' meters';
+            DEBUG.log(`Updated status badge: ${statusBadge.textContent}`);
+        } else {
+            DEBUG.warn('Status badge element not found!');
+        }
+
+        // Update import button text
+        var importBtn = document.getElementById('importSelectedBtn');
+        if (importBtn) {
+            importBtn.textContent = checkedCount > 0 ?
+                'Import Selected (' + checkedCount + ')' :
+                'Import Selected';
+            DEBUG.log(`Updated import button text: ${importBtn.textContent}`);
+        } else {
+            DEBUG.warn('Import button element not found!');
+        }
+
+        DEBUG.info('Counter update completed');
+        DEBUG.groupEnd();
+
+        return {total: checkboxes.length, checked: checkedCount};
+    }
+
+    // Setup filter functionality
+    function setupFilter() {
+        DEBUG.group('🔍 SETUP FILTER');
+
+        var filterInput = document.getElementById('filterInput');
+        DEBUG.log('Filter input found?', !!filterInput);
+
+        if (filterInput) {
+            filterInput.addEventListener('input', function() {
+                DEBUG.group('FILTER CHANGED');
+                var filterText = this.value.toLowerCase();
+                DEBUG.log(`Filter text: "${filterText}"`);
+
+                var rows = document.querySelectorAll('#hdsMeterTable tbody tr');
+                var visibleCount = 0;
+                var totalCount = rows.length;
+
+                DEBUG.log(`Processing ${rows.length} table rows for filtering`);
+
+                rows.forEach(function(row, index) {
+                    var meterName = row.cells[1].textContent.toLowerCase();
+
+                    if (meterName.includes(filterText)) {
+                        row.style.display = '';
+                        visibleCount++;
+                        DEBUG.log(`Row #${index} MATCHES filter: "${meterName}"`);
+                    } else {
+                        row.style.display = 'none';
+                        DEBUG.log(`Row #${index} HIDDEN (no match): "${meterName}"`);
+                    }
+                });
+
+                // Update filter status
+                var filterStatus = document.getElementById('filterStatus');
+                if (filterStatus) {
+                    filterStatus.textContent = 'Showing ' + visibleCount + ' of ' + totalCount + ' meters';
+                    DEBUG.log(`Updated filter status: ${filterStatus.textContent}`);
+                } else {
+                    DEBUG.warn('Filter status element not found!');
+                }
+
+                DEBUG.info(`Filter results: ${visibleCount} matches out of ${totalCount} total`);
+                DEBUG.groupEnd();
+            });
+
+            DEBUG.info('Filter functionality setup completed');
+        } else {
+            DEBUG.error('Filter input element not found!');
+        }
+
+        DEBUG.groupEnd();
+    }
+
+    // Setup bulk actions
+    function setupBulkActions() {
+        DEBUG.group('📦 SETUP BULK ACTIONS');
+
+        // Get selected checkboxes (the ones for "Import")
+        function getSelectedRows() {
+            DEBUG.group('🔍 GETTING SELECTED ROWS');
+
+            var checkboxes = document.querySelectorAll('.meter-checkbox:checked');
+            var rows = [];
+
+            DEBUG.log(`Found ${checkboxes.length} checked checkboxes`);
+
+            checkboxes.forEach(function(checkbox, index) {
+                // Get the row index from the checkbox ID
+                var id = checkbox.id;
+                var rowIndex = id.split('_')[1];
+
+                if (rowIndex !== undefined) {
+                    rows.push(rowIndex);
+                    DEBUG.log(`Added row index ${rowIndex} from checkbox ${id}`);
+                } else {
+                    DEBUG.warn(`Could not extract row index from checkbox ID: ${id}`);
+                }
+            });
+
+            DEBUG.log(`Selected rows (${rows.length}):`, rows);
+            DEBUG.groupEnd();
+
+            return rows;
+        }
+
+        // Bulk Type
+        var applyBulkTypeBtn = document.getElementById('applyBulkType');
+        DEBUG.log('Bulk Type button found?', !!applyBulkTypeBtn);
+
+        if (applyBulkTypeBtn) {
+            applyBulkTypeBtn.addEventListener('click', function() {
+                DEBUG.group('📝 BULK TYPE BUTTON CLICKED');
+                DEBUG.log('Apply Bulk Type button clicked');
+
+                var typeValue = '';
+                var radioButtons = document.getElementsByName('bulkType');
+
+                DEBUG.log(`Found ${radioButtons.length} type radio buttons`);
+
+                for (var i = 0; i < radioButtons.length; i++) {
+                    if (radioButtons[i].checked) {
+                        typeValue = radioButtons[i].value;
+                        DEBUG.log(`Selected type: ${typeValue} (from radio button #${i})`);
+                        break;
+                    }
+                }
+
+                if (!typeValue) {
+                    DEBUG.warn('No type selected!');
+                    alert('Please select a type to apply.');
+                    DEBUG.groupEnd();
+                    return;
+                }
+
+                var selectedRows = getSelectedRows();
+                if (selectedRows.length === 0) {
+                    DEBUG.warn('No rows selected!');
+                    alert('Please select at least one meter first.');
+                    DEBUG.groupEnd();
+                    return;
+                }
+
+                // Apply to selected rows
+                DEBUG.log(`Applying type "${typeValue}" to ${selectedRows.length} rows`);
+
+                selectedRows.forEach(function(rowIndex) {
+                    var typeSelect = document.querySelector('select[name="SelectedMeters[' + rowIndex + '].Type"]');
+                    if (typeSelect) {
+                        typeSelect.value = typeValue;
+                        DEBUG.log(`Set type for row ${rowIndex} to "${typeValue}"`);
+                    } else {
+                        DEBUG.warn(`Type select not found for row ${rowIndex}`);
+                    }
+                });
+
+                DEBUG.info(`Successfully applied type "${typeValue}" to ${selectedRows.length} rows`);
+                DEBUG.groupEnd();
+            });
+        } else {
+            DEBUG.error('Apply Bulk Type button not found!');
+        }
+
+        // Bulk Parent
+        var applyBulkParentBtn = document.getElementById('applyBulkParent');
+        DEBUG.log('Bulk Parent button found?', !!applyBulkParentBtn);
+
+        if (applyBulkParentBtn) {
+            applyBulkParentBtn.addEventListener('click', function() {
+                DEBUG.group('👪 BULK PARENT BUTTON CLICKED');
+                DEBUG.log('Apply Bulk Parent button clicked');
+
+                var parentValue = document.getElementById('bulkParent').value;
+                DEBUG.log(`Selected parent value: "${parentValue}"`);
+
+                var selectedRows = getSelectedRows();
+                if (selectedRows.length === 0) {
+                    DEBUG.warn('No rows selected!');
+                    alert('Please select at least one meter first.');
+                    DEBUG.groupEnd();
+                    return;
+                }
+
+                // Apply to selected rows
+                DEBUG.log(`Applying parent "${parentValue}" to ${selectedRows.length} rows`);
+
+                selectedRows.forEach(function(rowIndex) {
+                    var parentSelect = document.querySelector('select[name="SelectedMeters[' + rowIndex + '].ParentMeterId"]');
+                    if (parentSelect) {
+                        parentSelect.value = parentValue;
+                        DEBUG.log(`Set parent for row ${rowIndex} to "${parentValue}"`);
+                    } else {
+                        DEBUG.warn(`Parent select not found for row ${rowIndex}`);
+                    }
+                });
+
+                DEBUG.info(`Successfully applied parent "${parentValue}" to ${selectedRows.length} rows`);
+                DEBUG.groupEnd();
+            });
+        } else {
+            DEBUG.error('Apply Bulk Parent button not found!');
+        }
+
+        // Bulk Active
+        var applyBulkActiveBtn = document.getElementById('applyBulkActive');
+        DEBUG.log('Bulk Active button found?', !!applyBulkActiveBtn);
+
+        if (applyBulkActiveBtn) {
+            applyBulkActiveBtn.addEventListener('click', function() {
+                DEBUG.group('🔄 BULK ACTIVE BUTTON CLICKED');
+                DEBUG.log('Apply Bulk Active button clicked');
+
+                var activeValue = document.getElementById('bulkActive').checked;
+                DEBUG.log(`Selected active state: ${activeValue ? 'ACTIVE' : 'INACTIVE'}`);
+
+                var selectedRows = getSelectedRows();
+                if (selectedRows.length === 0) {
+                    DEBUG.warn('No rows selected!');
+                    alert('Please select at least one meter first.');
+                    DEBUG.groupEnd();
+                    return;
+                }
+
+                // Apply to selected rows
+                DEBUG.log(`Applying active state "${activeValue}" to ${selectedRows.length} rows`);
+
+                selectedRows.forEach(function(rowIndex) {
+                    var activeCheckbox = document.getElementById('active_' + rowIndex);
+                    if (activeCheckbox) {
+                        activeCheckbox.checked = activeValue;
+                        DEBUG.log(`Set active state for row ${rowIndex} to ${activeValue ? 'ACTIVE' : 'INACTIVE'}`);
+
+                        // Handle hidden input
+                        var hiddenInput = activeCheckbox.nextElementSibling;
+                        if (hiddenInput && hiddenInput.type === 'hidden') {
+                            hiddenInput.disabled = activeValue;
+                            DEBUG.log(`Set hidden input's disabled state to ${activeValue}`);
+                        } else {
+                            DEBUG.warn(`Hidden input not found for active checkbox in row ${rowIndex}`);
+                        }
+                    } else {
+                        DEBUG.warn(`Active checkbox not found for row ${rowIndex}`);
+                    }
+                });
+
+                DEBUG.info(`Successfully applied active state "${activeValue}" to ${selectedRows.length} rows`);
+                DEBUG.groupEnd();
+            });
+        } else {
+            DEBUG.error('Apply Bulk Active button not found!');
+        }
+
+        DEBUG.info('Bulk actions setup completed');
+        DEBUG.groupEnd();
+    }
+
+    // Setup import button
+    function setupImportButton() {
+        DEBUG.group('📤 SETUP IMPORT BUTTON');
+
+        var importBtn = document.getElementById('importSelectedBtn');
+        DEBUG.log('Import button found?', !!importBtn);
+
+        if (importBtn) {
+            importBtn.addEventListener('click', function() {
+                DEBUG.group('🚀 IMPORT BUTTON CLICKED');
+                DEBUG.log('Import button clicked');
+
+                var selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+                DEBUG.log(`Found ${selectedCheckboxes.length} selected meters to import`);
+
+                if (selectedCheckboxes.length === 0) {
+                    DEBUG.warn('No meters selected for import!');
+                    alert('Please select at least one meter to import.');
+                    DEBUG.groupEnd();
+                    return;
+                }
+
+                // Show progress container
+                var progressContainer = document.getElementById('meterImportProgressContainer');
+                if (progressContainer) {
+                    progressContainer.classList.remove('d-none');
+                    DEBUG.log('Displayed progress container');
+                } else {
+                    DEBUG.warn('Progress container element not found!');
+                }
+
+                // Reset progress bar
+                var progressBar = document.getElementById('meterImportProgressBar');
+                if (progressBar) {
+                    progressBar.style.width = '0%';
+                    progressBar.setAttribute('aria-valuenow', '0');
+                    progressBar.textContent = '0%';
+                    DEBUG.log('Reset progress bar to 0%');
+                } else {
+                    DEBUG.warn('Progress bar element not found!');
+                }
+
+                // Update status text
+                var statusText = document.getElementById('meterImportStatus');
+                if (statusText) {
+                    statusText.textContent = 'Starting import...';
+                    DEBUG.log('Updated status text: "Starting import..."');
+                } else {
+                    DEBUG.warn('Status text element not found!');
+                }
+
+                // Simulate progress (would be replaced with actual AJAX call)
+                DEBUG.log('Starting simulated import process');
+                var progress = 0;
+                var interval = setInterval(function() {
+                    progress += 5;
+                    DEBUG.log(`Import progress: ${progress}%`);
+
+                    if (progressBar) {
+                        progressBar.style.width = progress + '%';
+                        progressBar.setAttribute('aria-valuenow', progress);
+                        progressBar.textContent = progress + '%';
+                    }
+
+                    if (statusText) {
+                        var currentMeter = Math.ceil((progress / 100) * selectedCheckboxes.length);
+
+                        if (progress < 100) {
+                            statusText.textContent = 'Importing meter ' +
+                                currentMeter + ' of ' + selectedCheckboxes.length + '...';
+                            DEBUG.log(`Updated status: Importing meter ${currentMeter} of ${selectedCheckboxes.length}`);
+                        } else {
+                            statusText.textContent = 'Import completed successfully!';
+                            DEBUG.log('Import complete! Updated status: "Import completed successfully!"');
+                            clearInterval(interval);
+
+                            // Show success message
+                            DEBUG.log('Setting timeout for success message');
+                            setTimeout(function() {
+                                DEBUG.log(`Showing success alert for ${selectedCheckboxes.length} meters`);
+                                alert('Successfully imported ' + selectedCheckboxes.length + ' meters.');
+                                DEBUG.info('Import process completed successfully');
+                                // Optionally close the modal
+                                // $('#hdsMeterSelectionModal').modal('hide');
+                            }, 500);
+                        }
+                    }
+                }, 100);
+
+                DEBUG.log('Import process initiated');
+                DEBUG.groupEnd();
+            });
+
+            DEBUG.info('Import button setup completed');
+        } else {
+            DEBUG.error('Import button not found!');
+        }
+
+        DEBUG.groupEnd();
+    }
+
+    // Expose debugging functions to the global scope for console access
+    window.HDSDebug = {
+        checkStatus: DEBUG.checkboxStatus,
+        logElements: function(selector) {
+            return DEBUG.elementInfo(selector, 'Manual element check');
+        },
+        reInitialize: initializeModal
+    };
+
+    // Log that debugging is enabled
+    DEBUG.info('🐞 HDS Meter Selection Modal Debugging is ENABLED');
+    console.log('%c👉 Use window.HDSDebug in console to access debugging functions', 'font-weight: bold; color: purple; font-size: 14px;');
