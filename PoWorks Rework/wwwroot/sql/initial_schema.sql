@@ -73,3 +73,170 @@ CREATE TABLE "MeterReadings" (
 -- Add indices for better performance
 CREATE INDEX idx_meterreadings_meterid ON "MeterReadings"("MeterId");
 CREATE INDEX idx_meterreadings_timestamp ON "MeterReadings"("Timestamp");
+
+-- Create Daily meter readings aggregate table
+CREATE TABLE IF NOT EXISTS "MeterReadingsDaily" (
+    "DailyReadingId" SERIAL PRIMARY KEY,
+    "MeterId" INTEGER REFERENCES "Meters"("MeterId"),
+    "ReadingDate" DATE NOT NULL,
+    "MinValue" NUMERIC,
+    "MaxValue" NUMERIC,
+    "AvgValue" NUMERIC,
+    "SumValue" NUMERIC,
+    "ReadingCount" INTEGER,
+    "LastUpdated" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create Monthly meter readings aggregate table
+CREATE TABLE IF NOT EXISTS "MeterReadingsMonthly" (
+    "MonthlyReadingId" SERIAL PRIMARY KEY,
+    "MeterId" INTEGER REFERENCES "Meters"("MeterId"),
+    "Year" INTEGER NOT NULL,
+    "Month" INTEGER NOT NULL,
+    "MinValue" NUMERIC,
+    "MaxValue" NUMERIC,
+    "AvgValue" NUMERIC,
+    "SumValue" NUMERIC,
+    "ReadingCount" INTEGER,
+    "LastUpdated" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_meter_month UNIQUE("MeterId", "Year", "Month")
+);
+
+-- Create Yearly meter readings aggregate table
+CREATE TABLE IF NOT EXISTS "MeterReadingsYearly" (
+    "YearlyReadingId" SERIAL PRIMARY KEY,
+    "MeterId" INTEGER REFERENCES "Meters"("MeterId"),
+    "Year" INTEGER NOT NULL,
+    "MinValue" NUMERIC,
+    "MaxValue" NUMERIC,
+    "AvgValue" NUMERIC,
+    "SumValue" NUMERIC,
+    "ReadingCount" INTEGER,
+    "LastUpdated" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_meter_year UNIQUE("MeterId", "Year")
+);
+
+-- Add indices for better performance
+CREATE INDEX idx_meterreadingsdaily_meterid ON "MeterReadingsDaily"("MeterId");
+CREATE INDEX idx_meterreadingsdaily_date ON "MeterReadingsDaily"("ReadingDate");
+
+CREATE INDEX idx_meterreadingsmonthly_meterid ON "MeterReadingsMonthly"("MeterId");
+CREATE INDEX idx_meterreadingsmonthly_year_month ON "MeterReadingsMonthly"("Year", "Month");
+
+CREATE INDEX idx_meterreadingsyearly_meterid ON "MeterReadingsYearly"("MeterId");
+CREATE INDEX idx_meterreadingsyearly_year ON "MeterReadingsYearly"("Year");
+
+-- Function to aggregate readings into daily table
+CREATE OR REPLACE FUNCTION aggregate_daily_readings()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Insert or update daily aggregation
+    INSERT INTO "MeterReadingsDaily" ("MeterId", "ReadingDate", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "LastUpdated")
+    SELECT 
+        NEW."MeterId",
+        DATE(NEW."Timestamp"),
+        COALESCE(MIN("Value"), NEW."Value"),
+        COALESCE(MAX("Value"), NEW."Value"),
+        AVG("Value"),
+        SUM("Value"),
+        COUNT(*),
+        CURRENT_TIMESTAMP
+    FROM "MeterReadings"
+    WHERE "MeterId" = NEW."MeterId" AND DATE("Timestamp") = DATE(NEW."Timestamp")
+    GROUP BY "MeterId", DATE("Timestamp")
+    ON CONFLICT ("MeterId", "ReadingDate") DO UPDATE SET
+        "MinValue" = EXCLUDED."MinValue",
+        "MaxValue" = EXCLUDED."MaxValue",
+        "AvgValue" = EXCLUDED."AvgValue", 
+        "SumValue" = EXCLUDED."SumValue",
+        "ReadingCount" = EXCLUDED."ReadingCount",
+        "LastUpdated" = CURRENT_TIMESTAMP;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to aggregate readings into monthly table
+CREATE OR REPLACE FUNCTION aggregate_monthly_readings()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Insert or update monthly aggregation
+    INSERT INTO "MeterReadingsMonthly" ("MeterId", "Year", "Month", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "LastUpdated")
+    SELECT 
+        NEW."MeterId",
+        EXTRACT(YEAR FROM NEW."Timestamp"),
+        EXTRACT(MONTH FROM NEW."Timestamp"),
+        COALESCE(MIN("Value"), NEW."Value"),
+        COALESCE(MAX("Value"), NEW."Value"),
+        AVG("Value"),
+        SUM("Value"),
+        COUNT(*),
+        CURRENT_TIMESTAMP
+    FROM "MeterReadings"
+    WHERE "MeterId" = NEW."MeterId" 
+        AND EXTRACT(YEAR FROM "Timestamp") = EXTRACT(YEAR FROM NEW."Timestamp")
+        AND EXTRACT(MONTH FROM "Timestamp") = EXTRACT(MONTH FROM NEW."Timestamp")
+    GROUP BY "MeterId", EXTRACT(YEAR FROM "Timestamp"), EXTRACT(MONTH FROM "Timestamp")
+    ON CONFLICT ("MeterId", "Year", "Month") DO UPDATE SET
+        "MinValue" = EXCLUDED."MinValue",
+        "MaxValue" = EXCLUDED."MaxValue",
+        "AvgValue" = EXCLUDED."AvgValue", 
+        "SumValue" = EXCLUDED."SumValue",
+        "ReadingCount" = EXCLUDED."ReadingCount",
+        "LastUpdated" = CURRENT_TIMESTAMP;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to aggregate readings into yearly table
+CREATE OR REPLACE FUNCTION aggregate_yearly_readings()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Insert or update yearly aggregation
+    INSERT INTO "MeterReadingsYearly" ("MeterId", "Year", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "LastUpdated")
+    SELECT 
+        NEW."MeterId",
+        EXTRACT(YEAR FROM NEW."Timestamp"),
+        COALESCE(MIN("Value"), NEW."Value"),
+        COALESCE(MAX("Value"), NEW."Value"),
+        AVG("Value"),
+        SUM("Value"),
+        COUNT(*),
+        CURRENT_TIMESTAMP
+    FROM "MeterReadings"
+    WHERE "MeterId" = NEW."MeterId" 
+        AND EXTRACT(YEAR FROM "Timestamp") = EXTRACT(YEAR FROM NEW."Timestamp")
+    GROUP BY "MeterId", EXTRACT(YEAR FROM "Timestamp")
+    ON CONFLICT ("MeterId", "Year") DO UPDATE SET
+        "MinValue" = EXCLUDED."MinValue",
+        "MaxValue" = EXCLUDED."MaxValue",
+        "AvgValue" = EXCLUDED."AvgValue", 
+        "SumValue" = EXCLUDED."SumValue",
+        "ReadingCount" = EXCLUDED."ReadingCount",
+        "LastUpdated" = CURRENT_TIMESTAMP;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add unique constraint to MeterReadingsDaily
+ALTER TABLE "MeterReadingsDaily" ADD CONSTRAINT unique_meter_day UNIQUE("MeterId", "ReadingDate");
+
+-- Create trigger for daily aggregation
+CREATE TRIGGER trigger_aggregate_daily_readings
+AFTER INSERT ON "MeterReadings"
+FOR EACH ROW
+EXECUTE FUNCTION aggregate_daily_readings();
+
+-- Create trigger for monthly aggregation
+CREATE TRIGGER trigger_aggregate_monthly_readings
+AFTER INSERT ON "MeterReadings"
+FOR EACH ROW
+EXECUTE FUNCTION aggregate_monthly_readings();
+
+-- Create trigger for yearly aggregation
+CREATE TRIGGER trigger_aggregate_yearly_readings
+AFTER INSERT ON "MeterReadings"
+FOR EACH ROW
+EXECUTE FUNCTION aggregate_yearly_readings();
