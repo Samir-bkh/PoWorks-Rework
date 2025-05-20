@@ -59,5 +59,7 @@ namespace PoWorks_Rework.Models
         public string ErrorMessage { get; set; } = "";
         public List<string> ImportedMeters { get; set; } = new List<string>();
         public List<string> ErrorMeters { get; set; } = new List<string>();
+        // Add detailed error information - maps meter names to error messages
+        public Dictionary<string, string> DetailedErrors { get; set; } = new Dictionary<string, string>();
     }
 }

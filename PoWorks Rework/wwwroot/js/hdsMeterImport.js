@@ -1,62 +1,69 @@
 ﻿/**
- * HDS Meter Import Functionality
- * 
- * This script handles the complete process of importing meters and their
- * readings from PCVue HDS SQL Server database into the PoWorks PostgreSQL database.
- * 
- * Features:
- * - Select/deselect meters from HDS database
- * - Configure meter properties (type, parent, units, etc.)
- * - Import meters to the Meters table
- * - Import historical readings to the MeterReadings table
- * - Progress tracking and error handling
+ * hdsMeterImport.js - Complete implementation for HDS meter import functionality
+ * This file handles all the functionality for the HDS meter selection and import modal
  */
 
 // Wait for the document to be fully loaded
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('HDS Meter Import JS loaded');
+    console.log('HDS Meter Import JS loaded - DOM Content Loaded');
 
-    // Set up event delegation for the parent page
+    // Initialize event handlers that need to be set up immediately
+    initializeEventHandlers();
+
+    // Try to initialize immediately if the modal is already in the DOM
+    const modal = document.getElementById('hdsMeterSelectionModal');
+    if (modal) {
+        console.log('Modal already in DOM, initializing directly');
+        // Use setTimeout to ensure this runs after everything else is loaded
+        setTimeout(initializeModal, 100);
+    }
+});
+
+/**
+ * Set up all event handlers using event delegation
+ */
+function initializeEventHandlers() {
+    // Set up event delegation for the entire document
     document.body.addEventListener('click', function (event) {
         // Handle Select All button click
         if (event.target.id === 'selectAllBtn' || event.target.closest('#selectAllBtn')) {
-            console.log('Select All button clicked');
+            console.log('Select All button clicked (delegated)');
             handleSelectAll();
         }
 
         // Handle Deselect All button click
         if (event.target.id === 'deselectAllBtn' || event.target.closest('#deselectAllBtn')) {
-            console.log('Deselect All button clicked');
+            console.log('Deselect All button clicked (delegated)');
             handleDeselectAll();
         }
 
         // Handle Apply Bulk Type button click
         if (event.target.id === 'applyBulkType' || event.target.closest('#applyBulkType')) {
-            console.log('Apply Bulk Type button clicked');
+            console.log('Apply Bulk Type button clicked (delegated)');
             applyBulkType();
         }
 
         // Handle Apply Bulk Parent button click
         if (event.target.id === 'applyBulkParent' || event.target.closest('#applyBulkParent')) {
-            console.log('Apply Bulk Parent button clicked');
+            console.log('Apply Bulk Parent button clicked (delegated)');
             applyBulkParent();
         }
 
         // Handle Apply Bulk Active button click
         if (event.target.id === 'applyBulkActive' || event.target.closest('#applyBulkActive')) {
-            console.log('Apply Bulk Active button clicked');
+            console.log('Apply Bulk Active button clicked (delegated)');
             applyBulkActive();
         }
 
         // Handle Import Selected button click
         if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
-            console.log('Import Selected button clicked');
+            console.log('Import Selected button clicked (delegated)');
             handleImport();
         }
 
         // Handle Load Meters Button click
         if (event.target.id === 'loadMetersBtn' || event.target.closest('#loadMetersBtn')) {
-            console.log('Load Meters button clicked');
+            console.log('Load Meters button clicked (delegated)');
             handleLoadMeters(event);
         }
     });
@@ -84,91 +91,6 @@ document.addEventListener('DOMContentLoaded', function () {
             handleCheckboxChange(event.target);
         }
     });
-
-    // Initialize date pickers with default values
-    initializeDateRange();
-});
-
-/**
- * Initialize date picker fields with default values
- */
-function initializeDateRange() {
-    const today = new Date();
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(today.getMonth() - 1);
-
-    // Format dates as ISO strings (YYYY-MM-DD)
-    const endDateStr = today.toISOString().split('T')[0];
-    const startDateStr = oneMonthAgo.toISOString().split('T')[0];
-
-    // Set default date range for import
-    const startDateInput = document.getElementById('importStartDate');
-    const endDateInput = document.getElementById('importEndDate');
-
-    if (startDateInput) startDateInput.value = startDateStr;
-    if (endDateInput) endDateInput.value = endDateStr;
-}
-
-/**
- * Load meters from the selected HDS table
- */
-function handleLoadMeters(event) {
-    // Prevent default behavior if this is a button click
-    if (event) {
-        event.preventDefault();
-    }
-
-    const button = document.getElementById('loadMetersBtn');
-    if (!button) return;
-
-    const tableName = document.getElementById('pcvueTable').value;
-    const startDate = document.getElementById('importStartDate').value;
-    const endDate = document.getElementById('importEndDate').value;
-    const limit = document.getElementById('importLimit').value;
-
-    if (!tableName) {
-        alert('Please select a table to load meters from.');
-        return;
-    }
-
-    // Show loading indicator
-    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
-    button.disabled = true;
-
-    // Build the query parameter string
-    let queryParams = `tableName=${encodeURIComponent(tableName)}`;
-    if (startDate) queryParams += `&startDate=${encodeURIComponent(startDate)}`;
-    if (endDate) queryParams += `&endDate=${encodeURIComponent(endDate)}`;
-    if (limit) queryParams += `&limit=${encodeURIComponent(limit)}`;
-
-    // Fetch meters from the selected table
-    fetch(`/HdsImport/GetMetersFromTable?${queryParams}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Failed to load meters: ${response.statusText}`);
-            }
-            return response.text();
-        })
-        .then(html => {
-            // Insert the meter selection modal into the page
-            document.getElementById('hdsMeterSelectionContainer').innerHTML = html;
-
-            // Show the modal
-            const hdsMeterSelectionModal = new bootstrap.Modal(document.getElementById('hdsMeterSelectionModal'));
-            hdsMeterSelectionModal.show();
-
-            // Reset the button
-            button.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
-            button.disabled = false;
-        })
-        .catch(error => {
-            console.error('Error loading meters:', error);
-            alert(`Error loading meters: ${error.message}`);
-
-            // Reset the button
-            button.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
-            button.disabled = false;
-        });
 }
 
 /**
@@ -182,6 +104,46 @@ function initializeModal() {
 
     // Update selection counter
     updateCounter();
+
+    // Link skipExisting and updateExisting checkboxes
+    const skipExistingCheck = document.getElementById('skipExisting');
+    const updateExistingCheck = document.getElementById('updateExisting');
+
+    if (skipExistingCheck && updateExistingCheck) {
+        updateExistingCheck.addEventListener('change', function () {
+            if (this.checked) {
+                skipExistingCheck.checked = true;
+                skipExistingCheck.disabled = true;
+            } else {
+                skipExistingCheck.disabled = false;
+            }
+        });
+
+        skipExistingCheck.addEventListener('change', function () {
+            if (!this.checked) {
+                updateExistingCheck.checked = false;
+            }
+        });
+    }
+
+    // Toggle readings date and limit fields based on importReadings checkbox
+    const importReadingsCheck = document.getElementById('importReadings');
+    const readingsDateControls = document.querySelectorAll('#readingsStartDate, #readingsEndDate, #readingsLimit');
+
+    if (importReadingsCheck && readingsDateControls.length > 0) {
+        // Set initial state
+        const isEnabled = importReadingsCheck.checked;
+        readingsDateControls.forEach(control => {
+            control.disabled = !isEnabled;
+        });
+
+        // Add change listener
+        importReadingsCheck.addEventListener('change', function () {
+            readingsDateControls.forEach(control => {
+                control.disabled = !this.checked;
+            });
+        });
+    }
 
     console.log('Modal initialization complete');
 }
@@ -423,6 +385,164 @@ function applyBulkActive() {
 }
 
 /**
+ * Load meters from PCVue HDS
+ */
+function handleLoadMeters(event) {
+    // Prevent default behavior if this is a button click
+    if (event) {
+        event.preventDefault();
+    }
+
+    const button = document.getElementById('loadMetersBtn');
+    if (!button) return;
+
+    const tableName = document.getElementById('pcvueTable').value;
+    const startDate = document.getElementById('importStartDate').value;
+    const endDate = document.getElementById('importEndDate').value;
+    const limit = document.getElementById('importLimit').value;
+
+    if (!tableName) {
+        alert('Please select a table to load meters from.');
+        return;
+    }
+
+    // Show loading indicator
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+    button.disabled = true;
+
+    // Build the query parameter string
+    let queryParams = `tableName=${encodeURIComponent(tableName)}`;
+    if (startDate) queryParams += `&startDate=${encodeURIComponent(startDate)}`;
+    if (endDate) queryParams += `&endDate=${encodeURIComponent(endDate)}`;
+    if (limit) queryParams += `&limit=${encodeURIComponent(limit)}`;
+
+    // Fetch meters from the selected table
+    fetch(`/HdsImport/GetMetersFromTable?${queryParams}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load meters: ${response.statusText}`);
+            }
+            return response.text();
+        })
+        .then(html => {
+            // Insert the meter selection modal into the page
+            const container = document.getElementById('hdsMeterSelectionContainer');
+            if (container) {
+                container.innerHTML = html;
+            } else {
+                console.error('No container found for meter selection modal');
+                throw new Error('Container element for meter selection modal not found');
+            }
+
+            // Show the modal
+            const modalElement = document.getElementById('hdsMeterSelectionModal');
+            if (modalElement) {
+                const hdsMeterSelectionModal = new bootstrap.Modal(modalElement);
+                hdsMeterSelectionModal.show();
+            } else {
+                console.error('Modal element not found after loading HTML');
+                throw new Error('Modal element not found after loading HTML');
+            }
+
+            // Reset the button
+            button.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
+            button.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error loading meters:', error);
+            alert(`Error loading meters: ${error.message}`);
+
+            // Reset the button
+            button.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
+            button.disabled = false;
+        });
+}
+
+/**
+ * Gather data from all selected meters
+ */
+function gatherSelectedMetersData() {
+    const selectedMeters = [];
+    const selectedRows = getSelectedRows();
+
+    console.log(`Gathering data for ${selectedRows.length} selected rows`);
+
+    selectedRows.forEach(function (rowIndex) {
+        try {
+            // Get meter data from form fields
+            const hdsMeterName = document.querySelector(`input[name="SelectedMeters[${rowIndex}].HdsMeterName"]`).value;
+            const unit = document.querySelector(`input[name="SelectedMeters[${rowIndex}].Unit"]`).value || '';
+            const parentMeterId = document.querySelector(`select[name="SelectedMeters[${rowIndex}].ParentMeterId"]`).value;
+            const type = document.querySelector(`select[name="SelectedMeters[${rowIndex}].Type"]`).value;
+
+            // Make sure we get a boolean value for active
+            const activeCheckbox = document.getElementById(`active_${rowIndex}`);
+            const active = activeCheckbox ? activeCheckbox.checked : true;
+
+            console.log(`Meter ${hdsMeterName}: type=${type}, parentMeterId=${parentMeterId}, active=${active}`);
+
+            selectedMeters.push({
+                hdsMeterName: hdsMeterName,
+                unit: unit,
+                parentMeterId: parentMeterId,
+                type: type,
+                active: active
+            });
+        } catch (error) {
+            console.error(`Error gathering data for row ${rowIndex}:`, error);
+        }
+    });
+
+    console.log(`Successfully gathered data for ${selectedMeters.length} meters`);
+    return selectedMeters;
+}
+
+/**
+ * Display a detailed error or success message
+ */
+function showDetailedMessage(data) {
+    // Format a detailed message
+    let message = '';
+
+    if (data.success) {
+        message = `Successfully imported ${data.importedCount} meters.`;
+    } else {
+        message = `Import completed with ${data.errorCount} errors:\n\n`;
+
+        // Add detailed error messages if available
+        if (data.detailedErrors && Object.keys(data.detailedErrors).length > 0) {
+            for (const [meterName, errorMsg] of Object.entries(data.detailedErrors)) {
+                message += `• ${meterName}: ${errorMsg}\n\n`;
+            }
+        } else if (data.errorMeters && data.errorMeters.length > 0) {
+            message += `Errors occurred on: ${data.errorMeters.join(', ')}\n\n`;
+        }
+
+        if (data.errorMessage) {
+            message += `Error message: ${data.errorMessage}`;
+        }
+    }
+
+    // Display the message in a custom modal for better formatting
+    const errorModalElement = document.getElementById('importErrorModal');
+    if (errorModalElement) {
+        const errorContent = document.getElementById('importErrorContent');
+        if (errorContent) {
+            // Format the message for HTML display (convert newlines to <br>)
+            errorContent.innerHTML = message.replace(/\n/g, '<br>');
+            const errorModal = new bootstrap.Modal(errorModalElement);
+            errorModal.show();
+        } else {
+            // Fallback to alert if modal content element not found
+            alert(message);
+        }
+    } else {
+        // Fallback to regular alert if no custom modal exists
+        alert(message);
+    }
+}
+
+/**
  * Handle the import process
  */
 function handleImport() {
@@ -445,11 +565,19 @@ function handleImport() {
     console.log(`Successfully collected ${selectedMeters.length} meters data`);
 
     // Get import options
-    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name');
+    const modalElement = document.getElementById('hdsMeterSelectionModal');
+    const tableName = modalElement ? modalElement.getAttribute('data-table-name') : '';
+
+    if (!tableName) {
+        console.error('No table name found in modal data attribute');
+        alert('Error: Missing table name information. Please reload the meter selection dialog.');
+        return;
+    }
+
     const skipExisting = document.getElementById('skipExisting')?.checked || false;
     const updateExisting = document.getElementById('updateExisting')?.checked || false;
     const createMissingTenants = document.getElementById('createMissingTenants')?.checked || false;
-    const importReadings = document.getElementById('importReadings')?.checked || true;
+    const importReadings = document.getElementById('importReadings')?.checked || false;
     const startDate = document.getElementById('readingsStartDate')?.value || '';
     const endDate = document.getElementById('readingsEndDate')?.value || '';
     const limit = parseInt(document.getElementById('readingsLimit')?.value || '1000');
@@ -509,65 +637,51 @@ function handleImport() {
         body: JSON.stringify(importRequest)
     })
         .then(response => {
+            // Log the raw response
+            console.log('Raw response:', response);
+
             if (!response.ok) {
-                const contentType = response.headers.get("content-type");
-                if (contentType && contentType.indexOf("application/json") !== -1) {
-                    return response.json().then(data => {
-                        throw new Error(`Import failed: ${data.errorMessage || response.statusText}`);
-                    });
-                } else {
-                    return response.text().then(text => {
+                return response.text().then(text => {
+                    console.error('Error response text:', text);
+                    try {
+                        // Try to parse as JSON
+                        const jsonData = JSON.parse(text);
+                        throw new Error(jsonData.errorMessage || response.statusText);
+                    } catch (e) {
+                        // If parsing fails, just use the text
                         throw new Error(`Import failed: ${text || response.statusText}`);
-                    });
-                }
+                    }
+                });
             }
-            return response.json();
+
+            return response.text().then(text => {
+                console.log('Response text:', text);
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error('Error parsing JSON response:', e);
+                    throw new Error('Error parsing server response. Please check the console for details.');
+                }
+            });
         })
         .then(data => {
             console.log('Import response:', data);
 
-            if (data.success) {
-                // Update progress to 100%
-                if (progressBar) {
-                    progressBar.style.width = '100%';
-                    progressBar.setAttribute('aria-valuenow', '100');
-                    progressBar.textContent = '100%';
-                }
+            // Update progress to 100%
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.setAttribute('aria-valuenow', '100');
+                progressBar.textContent = '100%';
+            }
 
-                if (statusText) {
-                    statusText.textContent = `Import completed: ${data.importedCount} meters imported, ${data.errorCount} errors.`;
-                }
+            if (statusText) {
+                statusText.textContent = `Import completed: ${data.importedCount} meters imported, ${data.errorCount} errors.`;
+            }
 
-                // Show success message with details
-                setTimeout(function () {
-                    // Format a detailed message
-                    let message = `Successfully imported ${data.importedCount} meters`;
-                    if (data.errorCount > 0) {
-                        message += ` with ${data.errorCount} errors.\n\nErrors occurred on: ${data.errorMeters.join(', ')}`;
-                    } else {
-                        message += '.';
-                    }
-
-                    if (data.importedReadings) {
-                        message += `\n\nAlso imported ${data.importedReadings} historical readings.`;
-                    }
-
-                    alert(message);
-
-                    // Close the modal
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('hdsMeterSelectionModal'));
-                    if (modal) {
-                        modal.hide();
-                    }
-
-                    // Optionally refresh the page or table
-                    window.location.href = '/Meter/Management';
-                }, 1000);
-            } else {
-                // Show error message
-                if (statusText) {
-                    statusText.textContent = `Import failed: ${data.errorMessage}`;
-                }
+            // Show success or error message with details
+            setTimeout(function () {
+                // Show detailed message
+                showDetailedMessage(data);
 
                 // Re-enable the import button
                 if (importBtn) {
@@ -575,9 +689,17 @@ function handleImport() {
                     importBtn.textContent = 'Import Selected';
                 }
 
-                // Show alert with error
-                alert(`Import failed: ${data.errorMessage}`);
-            }
+                // Only close the modal on success
+                if (data.success) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('hdsMeterSelectionModal'));
+                    if (modal) {
+                        modal.hide();
+                    }
+
+                    // Optionally refresh the page or table
+                    window.location.href = '/Meter/Management';
+                }
+            }, 1000);
         })
         .catch(error => {
             console.error('Error during import:', error);
@@ -598,68 +720,7 @@ function handleImport() {
         });
 }
 
-/**
- * Gather data from all selected meters
- */
-function gatherSelectedMetersData() {
-    const selectedMeters = [];
-    const selectedRows = getSelectedRows();
-
-    console.log(`Gathering data for ${selectedRows.length} selected rows`);
-
-    selectedRows.forEach(function (rowIndex) {
-        try {
-            // Get meter data from form fields
-            const hdsMeterName = document.querySelector(`input[name="SelectedMeters[${rowIndex}].HdsMeterName"]`).value;
-            const unit = document.querySelector(`input[name="SelectedMeters[${rowIndex}].Unit"]`).value || '';
-            const parentMeterId = document.querySelector(`select[name="SelectedMeters[${rowIndex}].ParentMeterId"]`).value;
-            const type = document.querySelector(`select[name="SelectedMeters[${rowIndex}].Type"]`).value;
-
-            // Make sure we get a boolean value for active
-            const activeCheckbox = document.getElementById(`active_${rowIndex}`);
-            const active = activeCheckbox ? activeCheckbox.checked : true;
-
-            console.log(`Meter ${hdsMeterName}: type=${type}, parentMeterId=${parentMeterId}, active=${active}`);
-
-            selectedMeters.push({
-                hdsMeterName: hdsMeterName,
-                unit: unit,
-                parentMeterId: parentMeterId,
-                type: type,
-                active: active
-            });
-        } catch (error) {
-            console.error(`Error gathering data for row ${rowIndex}:`, error);
-        }
-    });
-
-    console.log(`Successfully gathered data for ${selectedMeters.length} meters`);
-    return selectedMeters;
-}
-
-/**
- * Add event handler for when the modal is about to close
- * This is useful to confirm if the user wants to discard changes
- */
-document.addEventListener('DOMContentLoaded', function () {
-    document.body.addEventListener('hide.bs.modal', function (event) {
-        if (event.target.id === 'hdsMeterSelectionModal') {
-            // Check if there are selected meters
-            const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
-            if (selectedCheckboxes.length > 0) {
-                // Only prompt if user hasn't just imported (check if progress is 100%)
-                const progressBar = document.getElementById('meterImportProgressBar');
-                if (!progressBar || progressBar.style.width !== '100%') {
-                    if (!confirm('You have selected meters that have not been imported. Are you sure you want to close this window?')) {
-                        event.preventDefault();
-                    }
-                }
-            }
-        }
-    });
-});
-
-// Make key functions available in the global scope for debugging and external access
+// Make key functions available in the global scope
 window.HDSMeterImport = {
     initialize: initializeModal,
     selectAll: handleSelectAll,
@@ -670,7 +731,6 @@ window.HDSMeterImport = {
     applyBulkParent: applyBulkParent,
     applyBulkActive: applyBulkActive,
     handleImport: handleImport,
-    loadMeters: handleLoadMeters
+    loadMeters: handleLoadMeters,
+    gatherSelectedMetersData: gatherSelectedMetersData
 };
-
-console.log('HDS Meter Import JS initialization complete');
