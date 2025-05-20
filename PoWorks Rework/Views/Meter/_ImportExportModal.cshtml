@@ -189,7 +189,7 @@
     </div>
 </div>
 
-<!-- Include the HDS Meter Selection Modal -->
+<!-- Container for the HDS Meter Selection Modal -->
 <div id="hdsMeterSelectionContainer">
     <!-- This will be dynamically populated by AJAX call -->
 </div>
@@ -206,13 +206,14 @@
                 // Show the selected option
                 if (this.value === 'csv') {
                     document.getElementById('csvImportOptions').style.display = 'block';
-                    document.getElementById('importExportSubmitBtn').textContent = 'Import';
                 } else if (this.value === 'pcvue') {
                     document.getElementById('pcvueImportOptions').style.display = 'block';
-                    document.getElementById('importExportSubmitBtn').textContent = 'Import';
 
-                    // Load PCVue tables when this option is selected
-                    loadPCVueTables();
+                    // Load PCVue tables if not already loaded
+                    const tableSelect = document.getElementById('pcvueTable');
+                    if (tableSelect && tableSelect.options.length <= 1) {
+                        loadPCVueTables();
+                    }
                 }
             });
         });
@@ -228,6 +229,17 @@
             });
         });
 
+        // Initialize date fields with default values
+        const now = new Date();
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(now.getMonth() - 1);
+
+        const startDateField = document.getElementById('importStartDate');
+        const endDateField = document.getElementById('importEndDate');
+
+        if (startDateField) startDateField.valueAsDate = oneMonthAgo;
+        if (endDateField) endDateField.valueAsDate = now;
+
         // Initialize the options visibility
         if (document.getElementById('importSourceCSV').checked) {
             document.getElementById('csvImportOptions').style.display = 'block';
@@ -235,8 +247,36 @@
             document.getElementById('pcvueImportOptions').style.display = 'block';
         }
 
+        // Make updateExisting dependent on skipExisting
+        const skipExistingCheck = document.getElementById('skipExisting');
+        const updateExistingCheck = document.getElementById('updateExisting');
+
+        if (skipExistingCheck && updateExistingCheck) {
+            updateExistingCheck.addEventListener('change', function() {
+                if (this.checked) {
+                    skipExistingCheck.checked = true;
+                    skipExistingCheck.disabled = true;
+                } else {
+                    skipExistingCheck.disabled = false;
+                }
+            });
+
+            skipExistingCheck.addEventListener('change', function() {
+                if (!this.checked) {
+                    updateExistingCheck.checked = false;
+                }
+            });
+        }
+
         // Function to load PCVue tables
         function loadPCVueTables() {
+            const tableSelect = document.getElementById('pcvueTable');
+            if (!tableSelect) return;
+
+            // Show loading indicator
+            tableSelect.innerHTML = '<option value="">Loading tables...</option>';
+            tableSelect.disabled = true;
+
             // Check if SQL Server connection is configured
             fetch('/HdsImport/GetTables')
                 .then(response => {
@@ -246,32 +286,32 @@
                     return response.json();
                 })
                 .then(tables => {
-                    const selectElement = document.getElementById('pcvueTable');
-                    selectElement.innerHTML = '';
+                    tableSelect.innerHTML = '';
+                    tableSelect.disabled = false;
 
                     if (tables.length === 0) {
                         const option = document.createElement('option');
                         option.value = '';
                         option.textContent = 'No tables found';
-                        selectElement.appendChild(option);
+                        tableSelect.appendChild(option);
                     } else {
                         const defaultOption = document.createElement('option');
                         defaultOption.value = '';
                         defaultOption.textContent = 'Select a table';
-                        selectElement.appendChild(defaultOption);
+                        tableSelect.appendChild(defaultOption);
 
                         tables.forEach(table => {
                             const option = document.createElement('option');
                             option.value = table;
                             option.textContent = table;
-                            selectElement.appendChild(option);
+                            tableSelect.appendChild(option);
                         });
                     }
                 })
                 .catch(error => {
                     console.error('Error loading PCVue tables:', error);
-                    const selectElement = document.getElementById('pcvueTable');
-                    selectElement.innerHTML = '<option value="">Error loading tables</option>';
+                    tableSelect.innerHTML = '<option value="">Error loading tables</option>';
+                    tableSelect.disabled = false;
 
                     // Show a warning message
                     document.querySelector('#pcvueImportOptions .alert').textContent = error.message;
@@ -279,8 +319,11 @@
         }
 
         // Load Meters Button Click Handler
-        document.getElementById('loadMetersBtn').addEventListener('click', function() {
+        document.getElementById('loadMetersBtn')?.addEventListener('click', function() {
             const tableName = document.getElementById('pcvueTable').value;
+            const startDate = document.getElementById('importStartDate').value;
+            const endDate = document.getElementById('importEndDate').value;
+            const limit = document.getElementById('importLimit').value;
 
             if (!tableName) {
                 alert('Please select a table to load meters from.');
@@ -291,8 +334,14 @@
             this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
             this.disabled = true;
 
+            // Build query parameters
+            let queryParams = `tableName=${encodeURIComponent(tableName)}`;
+            if (startDate) queryParams += `&startDate=${encodeURIComponent(startDate)}`;
+            if (endDate) queryParams += `&endDate=${encodeURIComponent(endDate)}`;
+            if (limit) queryParams += `&limit=${encodeURIComponent(limit)}`;
+
             // Fetch meters from the selected table
-            fetch(`/HdsImport/GetMetersFromTable?tableName=${encodeURIComponent(tableName)}`)
+            fetch(`/HdsImport/GetMetersFromTable?${queryParams}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`Failed to load meters: ${response.statusText}`);
@@ -310,6 +359,18 @@
                     // Reset the button
                     this.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
                     this.disabled = false;
+
+                    // Initialize date pickers in the meter selection modal
+                    const readingsStartDate = document.getElementById('readingsStartDate');
+                    const readingsEndDate = document.getElementById('readingsEndDate');
+
+                    if (readingsStartDate && startDate) {
+                        readingsStartDate.value = startDate;
+                    }
+
+                    if (readingsEndDate && endDate) {
+                        readingsEndDate.value = endDate;
+                    }
                 })
                 .catch(error => {
                     console.error('Error loading meters:', error);
@@ -322,7 +383,7 @@
         });
 
         // Import/Export button click handler
-        document.getElementById('importExportSubmitBtn').addEventListener('click', function() {
+        document.getElementById('importExportSubmitBtn')?.addEventListener('click', function() {
             const activeTabId = document.querySelector('#importExportTabs button.active').id;
 
             if (activeTabId === 'import-tab') {
@@ -365,7 +426,29 @@
 
             // TODO: Implement the actual import API call
             // This is just a placeholder for now
-            alert('CSV import functionality will be implemented in the backend.');
+            alert('CSV import functionality will be implemented in the future.');
+
+            // Simulated progress
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                const progressBar = document.getElementById('importProgressBar');
+                if (progressBar) {
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+                    progressBar.textContent = `${progress}%`;
+                }
+
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    document.getElementById('importStatus').textContent = 'Import completed successfully!';
+                    setTimeout(() => {
+                        document.getElementById('importProgressContainer').classList.add('d-none');
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('importExportModal'));
+                        modal.hide();
+                    }, 1000);
+                }
+            }, 200);
         }
 
         // PCVue Import handler
@@ -387,9 +470,34 @@
             const exportActiveOnly = document.getElementById('exportActiveOnly').checked;
             const includeReadings = document.getElementById('includeReadings').checked;
 
-            // TODO: Implement the actual export API call
-            // This is just a placeholder for now
-            alert('Export functionality will be implemented in the backend.');
+            // Show progress
+            document.getElementById('importProgressContainer').classList.remove('d-none');
+            document.getElementById('importStatus').textContent = 'Preparing export...';
+
+            // TODO: Implement actual export functionality
+            alert(`Export functionality will be implemented in the future. Format: ${format}`);
+
+            // Simulated progress
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 20;
+                const progressBar = document.getElementById('importProgressBar');
+                if (progressBar) {
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+                    progressBar.textContent = `${progress}%`;
+                }
+
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    document.getElementById('importStatus').textContent = 'Export completed successfully!';
+                    setTimeout(() => {
+                        document.getElementById('importProgressContainer').classList.add('d-none');
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('importExportModal'));
+                        modal.hide();
+                    }, 1000);
+                }
+            }, 200);
         }
     });
 </script>

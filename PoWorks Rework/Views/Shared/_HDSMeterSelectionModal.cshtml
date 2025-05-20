@@ -44,7 +44,7 @@
                                 <tr>
                                     <th style="width: 50px;" class="text-center">Import</th>
                                     <th>HDS Meter Name</th>
-                                    <th>Unit (Secondary Name)</th>
+                                    <th>Unit</th>
                                     <th>Parent Meter</th>
                                     <th style="width: 80px;">Type</th>
                                     <th style="width: 80px;">Active</th>
@@ -88,15 +88,15 @@
                                             </td>
                                             <td>
                                                 <select class="form-select form-select-sm" name="SelectedMeters[@i].Type">
-                                                    @if (meter.Type == "Main")
-                                                    {
-                                                        <option value="Main" selected>Main</option>
-                                                        <option value="Sub">Sub</option>
-                                                    }
-                                                    else
+                                                    @if (meter.Type?.ToLower() == "sub")
                                                     {
                                                         <option value="Main">Main</option>
                                                         <option value="Sub" selected>Sub</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Main" selected>Main</option>
+                                                        <option value="Sub">Sub</option>
                                                     }
                                                 </select>
                                             </td>
@@ -105,14 +105,12 @@
                                                     @if (meter.Active)
                                                     {
                                                         <input class="form-check-input" type="checkbox"
-                                                               id="active_@i" name="SelectedMeters[@i].Active" value="true" checked>
-                                                        <input type="hidden" name="SelectedMeters[@i].Active" value="false">
+                                                               id="active_@i" name="SelectedMeters[@i].Active" checked>
                                                     }
                                                     else
                                                     {
                                                         <input class="form-check-input" type="checkbox"
-                                                               id="active_@i" name="SelectedMeters[@i].Active" value="true">
-                                                        <input type="hidden" name="SelectedMeters[@i].Active" value="false">
+                                                               id="active_@i" name="SelectedMeters[@i].Active">
                                                     }
                                                 </div>
                                             </td>
@@ -130,6 +128,7 @@
                     </div>
                 </div>
 
+                <!-- Bulk Operations Controls -->
                 <div class="alert alert-info">
                     <strong>Tip:</strong> You can set common properties for all selected meters using the controls below.
                 </div>
@@ -179,6 +178,61 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Import Options -->
+                <div class="card mt-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">Import Options</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="skipExisting" value="true" checked>
+                                    <label class="form-check-label" for="skipExisting">
+                                        Skip existing meters (based on name)
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="updateExisting" value="true">
+                                    <label class="form-check-label" for="updateExisting">
+                                        Update existing meters instead of skipping
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="createMissingParents" value="true" checked>
+                                    <label class="form-check-label" for="createMissingParents">
+                                        Create missing parent meters automatically
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="importReadings" value="true" checked>
+                                    <label class="form-check-label" for="importReadings">
+                                        Import historical readings for selected meters
+                                    </label>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label for="readingsStartDate" class="form-label small">Start Date</label>
+                                            <input type="date" class="form-control form-control-sm" id="readingsStartDate">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="readingsEndDate" class="form-label small">End Date</label>
+                                            <input type="date" class="form-control form-control-sm" id="readingsEndDate">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="readingsLimit" class="form-label small">Maximum readings per meter</label>
+                                    <input type="number" class="form-control form-control-sm" id="readingsLimit" value="1000" min="1" max="10000">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <div id="meterImportProgressContainer" class="w-100 d-none">
@@ -193,3 +247,51 @@
         </div>
     </div>
 </div>
+
+<script>
+    // Initialize date pickers when modal is shown
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set default date range (past 30 days)
+        const today = new Date();
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(today.getMonth() - 1);
+
+        // Format dates to YYYY-MM-DD
+        const endDateStr = today.toISOString().split('T')[0];
+        const startDateStr = oneMonthAgo.toISOString().split('T')[0];
+
+        // Set the date values
+        const startDateInput = document.getElementById('readingsStartDate');
+        const endDateInput = document.getElementById('readingsEndDate');
+
+        if (startDateInput) startDateInput.value = startDateStr;
+        if (endDateInput) endDateInput.value = endDateStr;
+
+        // Link skipExisting and updateExisting checkboxes
+        const skipExistingCheck = document.getElementById('skipExisting');
+        const updateExistingCheck = document.getElementById('updateExisting');
+
+        if (skipExistingCheck && updateExistingCheck) {
+            updateExistingCheck.addEventListener('change', function() {
+                if (this.checked) {
+                    skipExistingCheck.checked = true;
+                    skipExistingCheck.disabled = true;
+                } else {
+                    skipExistingCheck.disabled = false;
+                }
+            });
+        }
+
+        // Toggle readings date and limit fields based on importReadings checkbox
+        const importReadingsCheck = document.getElementById('importReadings');
+        const readingsDateControls = document.querySelectorAll('#readingsStartDate, #readingsEndDate, #readingsLimit');
+
+        if (importReadingsCheck && readingsDateControls.length > 0) {
+            importReadingsCheck.addEventListener('change', function() {
+                readingsDateControls.forEach(control => {
+                    control.disabled = !this.checked;
+                });
+            });
+        }
+    });
+</script>

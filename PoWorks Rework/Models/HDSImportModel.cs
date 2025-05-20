@@ -1,5 +1,5 @@
-﻿// Models/HDSImportModels.cs
-using Microsoft.AspNetCore.Mvc.Rendering;
+﻿using Microsoft.AspNetCore.Mvc.Rendering;
+using System;
 using System.Collections.Generic;
 
 namespace PoWorks_Rework.Models
@@ -10,6 +10,7 @@ namespace PoWorks_Rework.Models
         public string HdsMeterName { get; set; } = "";
         public string Unit { get; set; } = "";
         public string ParentMeterId { get; set; } = "";
+        public string TenantId { get; set; } = "";
         public string Type { get; set; } = "Main";
         public bool Active { get; set; } = true;
         public bool IsSelected { get; set; } = true;
@@ -39,6 +40,13 @@ namespace PoWorks_Rework.Models
         public bool SkipExisting { get; set; } = true;
         public bool UpdateExisting { get; set; } = false;
         public bool CreateMissingParents { get; set; } = false;
+        public bool CreateMissingTenants { get; set; } = false;
+
+        // Reading import options
+        public bool ImportReadings { get; set; } = true;
+        public string ReadingsStartDate { get; set; }
+        public string ReadingsEndDate { get; set; }
+        public int ReadingsLimit { get; set; } = 1000;
     }
 
     // Response for import operation
@@ -47,6 +55,7 @@ namespace PoWorks_Rework.Models
         public bool Success { get; set; }
         public int ImportedCount { get; set; }
         public int ErrorCount { get; set; }
+        public int ImportedReadings { get; set; }
         public string ErrorMessage { get; set; } = "";
         public List<string> ImportedMeters { get; set; } = new List<string>();
         public List<string> ErrorMeters { get; set; } = new List<string>();
