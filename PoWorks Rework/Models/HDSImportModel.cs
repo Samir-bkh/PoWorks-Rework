@@ -50,7 +50,7 @@ namespace PoWorks_Rework.Models
     }
 
     // Response for import operation
-    public class ImportMetersResponse
+     public class ImportMetersResponse
     {
         public bool Success { get; set; }
         public int ImportedCount { get; set; }

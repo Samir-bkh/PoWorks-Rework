@@ -34,6 +34,39 @@ namespace PoWorks_Rework.Controllers
             _databaseService = databaseService;
         }
 
+        [HttpPost]
+        public IActionResult PrintSelectedMeters(string tableName, int selectedCount, List<string> selectedMeterNames, List<string> selectedMeterTypes, List<string> selectedMeterUnits)
+        {
+            Console.WriteLine("\n=====================================================");
+            Console.WriteLine("PRINT SELECTED METERS DATA");
+            Console.WriteLine("=====================================================");
+            Console.WriteLine($"Table Name: {tableName}");
+            Console.WriteLine($"Selected meters count: {selectedCount}");
+
+            if (selectedMeterNames != null && selectedMeterNames.Count > 0)
+            {
+                Console.WriteLine("\nSelected meters:");
+                for (int i = 0; i < selectedMeterNames.Count; i++)
+                {
+                    string meterName = selectedMeterNames[i];
+                    string meterType = (selectedMeterTypes != null && i < selectedMeterTypes.Count) ? selectedMeterTypes[i] : "Unknown";
+                    string meterUnit = (selectedMeterUnits != null && i < selectedMeterUnits.Count) ? selectedMeterUnits[i] : "";
+
+                    Console.WriteLine($"  Meter {i + 1}: {meterName}");
+                    Console.WriteLine($"    Type: {meterType}");
+                    Console.WriteLine($"    Unit: {meterUnit}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("No meter names received");
+            }
+
+            Console.WriteLine("=====================================================\n");
+
+            // Return a simple result that won't redirect or close the modal
+            return Content("Selected meters data printed to terminal");
+        }
         [HttpGet]
         public async Task<IActionResult> GetTables()
         {
@@ -101,75 +134,55 @@ namespace PoWorks_Rework.Controllers
         [HttpPost]
         public async Task<IActionResult> ImportMeters([FromBody] ImportMetersRequest request)
         {
-            // Log directly to terminal at start of method
             Console.WriteLine("=====================================================");
             Console.WriteLine($"IMPORT METERS STARTED: Request received with {request?.Meters?.Count ?? 0} meters");
             Console.WriteLine("=====================================================");
 
-            if (!_databaseService.IsInitialized)
+            if (request == null || request.Meters == null || request.Meters.Count == 0)
             {
-                Console.WriteLine("ERROR: PostgreSQL database is not configured.");
-                return BadRequest("PostgreSQL database is not configured.");
+                return BadRequest(new ImportMetersResponse
+                {
+                    Success = false,
+                    ErrorMessage = "No meters provided in request or request is null"
+                });
             }
+
+            // Create a response object
+            var response = new ImportMetersResponse
+            {
+                Success = true,
+                ImportedCount = 0,
+                ErrorCount = 0,
+                ImportedMeters = new List<string>(),
+                ErrorMeters = new List<string>(),
+                DetailedErrors = new Dictionary<string, string>()
+            };
 
             try
             {
-                // Print information about the database connection
-                Console.WriteLine($"Database connection string (masked): {MaskConnectionString(_databaseService.GetConnectionString())}");
-
-                // Check if request data is valid
-                if (request == null)
-                {
-                    Console.WriteLine("ERROR: Request object is null");
-                    return BadRequest("Request cannot be null");
-                }
-
-                if (request.Meters == null || request.Meters.Count == 0)
-                {
-                    Console.WriteLine("ERROR: No meters provided in request");
-                    return BadRequest("No meters provided");
-                }
-
-                // Print import options
-                Console.WriteLine($"Import options: SkipExisting={request.Options?.SkipExisting}, UpdateExisting={request.Options?.UpdateExisting}");
-
-                // Prepare response object with detailed error information
-                var response = new ImportMetersResponse
-                {
-                    Success = true,
-                    ImportedCount = 0,
-                    ErrorCount = 0,
-                    ImportedMeters = new List<string>(),
-                    ErrorMeters = new List<string>(),
-                    DetailedErrors = new Dictionary<string, string>()
-                };
-
-                // Process each meter with detailed terminal logging
                 Console.WriteLine("\nProcessing meters one by one:");
                 Console.WriteLine("-----------------------------------------------------");
 
                 foreach (var meter in request.Meters)
                 {
+                    if (meter == null || string.IsNullOrEmpty(meter.HdsMeterName))
+                    {
+                        Console.WriteLine("ERROR: Invalid meter data - Meter is null or has no name");
+                        response.ErrorCount++;
+                        response.ErrorMeters.Add("Unknown meter");
+                        response.DetailedErrors.Add("Unknown meter", "Meter data is null or missing name");
+                        continue;
+                    }
+
+                    Console.WriteLine($"\nProcessing meter: {meter.HdsMeterName}");
+
                     try
                     {
-                        if (meter == null || string.IsNullOrEmpty(meter.HdsMeterName))
-                        {
-                            Console.WriteLine("ERROR: Invalid meter data - Meter is null or has no name");
-                            response.ErrorCount++;
-                            response.ErrorMeters.Add("Unknown meter");
-                            response.DetailedErrors.Add("Unknown meter", "Meter data is null or missing name");
-                            continue;
-                        }
-
-                        Console.WriteLine($"\nProcessing meter: {meter.HdsMeterName}");
-                        Console.WriteLine($"  Type: {meter.Type}, Active: {meter.Active}, Unit: {meter.Unit ?? "None"}, ParentId: {meter.ParentMeterId ?? "None"}");
-
-                        // Step 1: Check if meter exists (if SkipExisting is true)
+                        // Check if meter exists
                         int? existingMeterId = null;
                         if (request.Options.SkipExisting || request.Options.UpdateExisting)
                         {
                             existingMeterId = await CheckIfMeterExistsByName(meter.HdsMeterName);
-                            Console.WriteLine($"  Meter existence check result: {(existingMeterId.HasValue ? $"Found with ID {existingMeterId}" : "Not found")}");
 
                             if (existingMeterId.HasValue && request.Options.SkipExisting && !request.Options.UpdateExisting)
                             {
@@ -178,126 +191,50 @@ namespace PoWorks_Rework.Controllers
                             }
                         }
 
-                        // Step 2: Create or update meter
+                        // Create or update meter
                         int meterId;
                         if (existingMeterId.HasValue && request.Options.UpdateExisting)
                         {
-                            // Update existing meter
-                            try
-                            {
-                                Console.WriteLine($"  Updating existing meter with ID {existingMeterId}");
-                                meterId = await UpdateExistingMeterWithHDSItem(existingMeterId.Value, meter);
-                                Console.WriteLine($"  Successfully updated meter with ID: {meterId}");
-                            }
-                            catch (Exception ex)
-                            {
-                                string errorMessage = $"Error updating meter {meter.HdsMeterName}: {ex.Message}";
-                                if (ex.InnerException != null)
-                                {
-                                    errorMessage += $" - {ex.InnerException.Message}";
-                                }
-
-                                Console.WriteLine($"  ERROR updating meter: {errorMessage}");
-                                Console.WriteLine($"  Exception stack trace: {ex.StackTrace}");
-
-                                response.ErrorCount++;
-                                response.ErrorMeters.Add(meter.HdsMeterName);
-                                response.DetailedErrors.Add(meter.HdsMeterName, errorMessage);
-                                continue;
-                            }
+                            meterId = await UpdateExistingMeterWithHDSItem(existingMeterId.Value, meter);
                         }
                         else
                         {
-                            // Create new meter
-                            try
-                            {
-                                Console.WriteLine($"  Creating new meter");
-                                meterId = await CreateNewMeterFromHDSItem(meter);
-                                Console.WriteLine($"  Successfully created new meter with ID: {meterId}");
-                            }
-                            catch (Exception ex)
-                            {
-                                string errorMessage = $"Error creating meter {meter.HdsMeterName}: {ex.Message}";
-                                if (ex.InnerException != null)
-                                {
-                                    errorMessage += $" - {ex.InnerException.Message}";
-                                }
-
-                                Console.WriteLine($"  ERROR creating meter: {errorMessage}");
-                                Console.WriteLine($"  Exception stack trace: {ex.StackTrace}");
-
-                                response.ErrorCount++;
-                                response.ErrorMeters.Add(meter.HdsMeterName);
-                                response.DetailedErrors.Add(meter.HdsMeterName, errorMessage);
-                                continue;
-                            }
+                            meterId = await CreateNewMeterFromHDSItem(meter);
                         }
 
-                        // Mark as successfully imported
+                        // Success - record the meter
                         response.ImportedCount++;
                         response.ImportedMeters.Add(meter.HdsMeterName);
-                        Console.WriteLine($"  Meter {meter.HdsMeterName} successfully imported");
+                        Console.WriteLine($"  Meter {meter.HdsMeterName} successfully imported with ID {meterId}");
                     }
                     catch (Exception ex)
                     {
-                        string meterName = meter?.HdsMeterName ?? "Unknown meter";
-                        string errorMessage = $"Unexpected error processing meter {meterName}: {ex.Message}";
-                        if (ex.InnerException != null)
-                        {
-                            errorMessage += $" - {ex.InnerException.Message}";
-                        }
-
-                        Console.WriteLine($"  CRITICAL ERROR: {errorMessage}");
-                        Console.WriteLine($"  Exception stack trace: {ex.StackTrace}");
+                        string errorMessage = $"Error with meter {meter.HdsMeterName}: {ex.Message}";
+                        Console.WriteLine($"  ERROR: {errorMessage}");
 
                         response.ErrorCount++;
-                        response.ErrorMeters.Add(meterName);
-                        response.DetailedErrors.Add(meterName, errorMessage);
+                        response.ErrorMeters.Add(meter.HdsMeterName);
+                        response.DetailedErrors.Add(meter.HdsMeterName, errorMessage);
                     }
                 }
 
-                // Update the success flag based on errors
+                // Update success flag based on results
                 response.Success = response.ErrorCount == 0;
-
-                // If we had errors, add an overall error message
-                if (response.ErrorCount > 0)
-                {
-                    response.ErrorMessage = $"Import completed with {response.ErrorCount} errors. See detailed error messages.";
-                }
 
                 Console.WriteLine("\n-----------------------------------------------------");
                 Console.WriteLine($"IMPORT COMPLETED: {response.ImportedCount} meters imported, {response.ErrorCount} errors");
-                if (response.ErrorCount > 0)
-                {
-                    Console.WriteLine("\nERROR SUMMARY:");
-                    foreach (var error in response.DetailedErrors)
-                    {
-                        Console.WriteLine($"- {error.Key}: {error.Value}");
-                    }
-                }
                 Console.WriteLine("=====================================================");
 
                 return Json(response);
             }
             catch (Exception ex)
             {
-                string errorMessage = $"Fatal error during meter import: {ex.Message}";
-                if (ex.InnerException != null)
-                {
-                    errorMessage += $" - {ex.InnerException.Message}";
-                }
+                Console.WriteLine($"CRITICAL ERROR: {ex.Message}");
 
-                Console.WriteLine("\n=====================================================");
-                Console.WriteLine($"CRITICAL IMPORT ERROR: {errorMessage}");
-                Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
-                Console.WriteLine("=====================================================");
+                response.Success = false;
+                response.ErrorMessage = $"Fatal error: {ex.Message}";
 
-                return StatusCode(500, new ImportMetersResponse
-                {
-                    Success = false,
-                    ErrorMessage = errorMessage,
-                    DetailedErrors = new Dictionary<string, string> { { "Global error", errorMessage } }
-                });
+                return StatusCode(500, response);
             }
         }
 
@@ -322,7 +259,6 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        // Add detailed console logging to CreateNewMeterFromHDSItem method
         private async Task<int> CreateNewMeterFromHDSItem(HDSMeterItem meter)
         {
             Console.WriteLine($"  CreateNewMeterFromHDSItem started for {meter?.HdsMeterName ?? "null"}");
@@ -349,75 +285,106 @@ namespace PoWorks_Rework.Controllers
                     await connection.OpenAsync();
                     Console.WriteLine("  Database connection opened successfully");
 
-                    string sql = @"
-                INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"")
-                VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active, @TenantId)
-                RETURNING ""MeterId""";
-
-                    Console.WriteLine("  SQL Insert statement prepared");
-                    Console.WriteLine($"  SQL: {sql}");
-
-                    using (var command = new NpgsqlCommand(sql, connection))
+                    // Begin a transaction for data integrity - adding this from MeterController pattern
+                    using (var transaction = await connection.BeginTransactionAsync())
                     {
-                        // Set parameters with extensive logging
-                        command.Parameters.AddWithValue("@Name", meter.HdsMeterName);
-                        Console.WriteLine($"  Parameter @Name set to: {meter.HdsMeterName}");
-
-                        command.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
-                        Console.WriteLine($"  Parameter @Unit set to: {meter.Unit ?? ""}");
-
-                        // Handle parent meter ID
-                        if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int parentId))
+                        try
                         {
-                            command.Parameters.AddWithValue("@ParentId", parentId);
-                            Console.WriteLine($"  Parameter @ParentId set to: {parentId}");
+                            string sql = @"
+                    INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"")
+                    VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active, @TenantId)
+                    RETURNING ""MeterId""";
+
+                            Console.WriteLine("  SQL Insert statement prepared");
+                            Console.WriteLine($"  SQL: {sql}");
+
+                            using (var command = new NpgsqlCommand(sql, connection, transaction))
+                            {
+                                // Set parameters with extensive logging and following MeterController pattern
+                                command.Parameters.AddWithValue("@Name", meter.HdsMeterName);
+                                Console.WriteLine($"  Parameter @Name set to: {meter.HdsMeterName}");
+
+                                // Critical fix: Always use empty string for Unit if null/empty to satisfy NOT NULL constraint
+                                command.Parameters.AddWithValue("@Unit", string.IsNullOrEmpty(meter.Unit) ? "" : meter.Unit);
+                                Console.WriteLine($"  Parameter @Unit set to: {(string.IsNullOrEmpty(meter.Unit) ? "[empty string]" : meter.Unit)}");
+
+                                // Handle parent meter ID - improved parsing with int.TryParse
+                                int? parentId = null;
+                                if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
+                                {
+                                    parentId = pid;
+                                    command.Parameters.AddWithValue("@ParentId", parentId.Value);
+                                    Console.WriteLine($"  Parameter @ParentId set to: {parentId}");
+                                }
+                                else
+                                {
+                                    command.Parameters.AddWithValue("@ParentId", DBNull.Value);
+                                    Console.WriteLine("  Parameter @ParentId set to NULL");
+                                }
+
+                                // Parse last reading if provided, or use 0 as default
+                                int lastReading = 0;
+                                // Use default value of 0 for last reading
+                                command.Parameters.AddWithValue("@LastReading", lastReading);
+                                Console.WriteLine($"  Parameter @LastReading set to: {lastReading}");
+
+                                // Critical fix: Ensure type is lowercase for DB and matches constraint values ('main' or 'sub')
+                                string meterType = (string.IsNullOrEmpty(meter.Type) ? "main" : meter.Type.ToLower());
+                                // Ensure it's one of the allowed values
+                                if (meterType != "main" && meterType != "sub")
+                                {
+                                    meterType = "main"; // Default to 'main' if invalid
+                                }
+                                command.Parameters.AddWithValue("@Type", meterType);
+                                Console.WriteLine($"  Parameter @Type set to: {meterType}");
+
+                                // Ensure active is a boolean value
+                                command.Parameters.AddWithValue("@Active", meter.Active);
+                                Console.WriteLine($"  Parameter @Active set to: {meter.Active}");
+
+                                // Handle tenant ID if provided
+                                int? tenantId = null;
+                                if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
+                                {
+                                    tenantId = tid;
+                                    command.Parameters.AddWithValue("@TenantId", tenantId.Value);
+                                    Console.WriteLine($"  Parameter @TenantId set to: {tenantId}");
+                                }
+                                else
+                                {
+                                    command.Parameters.AddWithValue("@TenantId", DBNull.Value);
+                                    Console.WriteLine("  Parameter @TenantId set to NULL");
+                                }
+
+                                // Execute and get the new meter ID
+                                Console.WriteLine("  Executing SQL INSERT command");
+
+                                var result = await command.ExecuteScalarAsync();
+                                Console.WriteLine($"  Execute result: {result}");
+
+                                if (result == null || result == DBNull.Value)
+                                {
+                                    Console.WriteLine("  ERROR: Insert operation did not return a meter ID");
+                                    throw new Exception("Insert operation did not return a meter ID");
+                                }
+
+                                int newMeterId = Convert.ToInt32(result);
+                                Console.WriteLine($"  New meter created with ID: {newMeterId}");
+
+                                // Commit the transaction since everything was successful
+                                await transaction.CommitAsync();
+                                Console.WriteLine("  Transaction committed successfully");
+
+                                return newMeterId;
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            command.Parameters.AddWithValue("@ParentId", DBNull.Value);
-                            Console.WriteLine("  Parameter @ParentId set to NULL");
+                            // Roll back the transaction on error
+                            await transaction.RollbackAsync();
+                            Console.WriteLine($"  ERROR: Transaction rolled back: {ex.Message}");
+                            throw;
                         }
-
-                        // Set default last reading to 0
-                        command.Parameters.AddWithValue("@LastReading", 0);
-                        Console.WriteLine("  Parameter @LastReading set to: 0");
-
-                        // Ensure type is lowercase for DB consistency
-                        string meterType = (meter.Type ?? "main").ToLower();
-                        command.Parameters.AddWithValue("@Type", meterType);
-                        Console.WriteLine($"  Parameter @Type set to: {meterType}");
-
-                        // Ensure active is a boolean value
-                        command.Parameters.AddWithValue("@Active", meter.Active);
-                        Console.WriteLine($"  Parameter @Active set to: {meter.Active} (type: {meter.Active.GetType().Name})");
-
-                        // Handle tenant ID if provided
-                        if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tenantId))
-                        {
-                            command.Parameters.AddWithValue("@TenantId", tenantId);
-                            Console.WriteLine($"  Parameter @TenantId set to: {tenantId}");
-                        }
-                        else
-                        {
-                            command.Parameters.AddWithValue("@TenantId", DBNull.Value);
-                            Console.WriteLine("  Parameter @TenantId set to NULL");
-                        }
-
-                        // Execute and get the new meter ID
-                        Console.WriteLine("  Executing SQL INSERT command");
-
-                        var result = await command.ExecuteScalarAsync();
-                        Console.WriteLine($"  Execute result: {result}");
-
-                        if (result == null || result == DBNull.Value)
-                        {
-                            Console.WriteLine("  ERROR: Insert operation did not return a meter ID");
-                            throw new Exception("Insert operation did not return a meter ID");
-                        }
-
-                        int newMeterId = Convert.ToInt32(result);
-                        Console.WriteLine($"  New meter created with ID: {newMeterId}");
-                        return newMeterId;
                     }
                 }
                 catch (NpgsqlException npgEx)
@@ -1052,3 +1019,4 @@ namespace PoWorks_Rework.Controllers
         #endregion
     }
 }
+

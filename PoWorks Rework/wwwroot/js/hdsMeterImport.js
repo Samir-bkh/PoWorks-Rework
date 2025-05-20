@@ -547,177 +547,65 @@ function showDetailedMessage(data) {
  */
 function handleImport() {
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
-
     if (selectedCheckboxes.length === 0) {
         alert('Please select at least one meter to import.');
         return;
     }
 
-    console.log(`Starting import of ${selectedCheckboxes.length} meters`);
-
-    // Gather all selected meters data
-    const selectedMeters = gatherSelectedMetersData();
-    if (!selectedMeters.length) {
-        alert('Error collecting meter data. Please try again.');
+    // Get the form and clear previous hidden inputs
+    const importForm = document.getElementById('hdsImportForm');
+    if (!importForm) {
+        alert('Import form not found.');
         return;
     }
 
-    console.log(`Successfully collected ${selectedMeters.length} meters data`);
+    // Remove any previous dynamic hidden inputs
+    document.querySelectorAll('.dynamic-hidden-input').forEach(el => el.remove());
 
-    // Get import options
-    const modalElement = document.getElementById('hdsMeterSelectionModal');
-    const tableName = modalElement ? modalElement.getAttribute('data-table-name') : '';
+    // Add selected meters as hidden inputs
+    let meterIndex = 0;
+    selectedCheckboxes.forEach((checkbox, index) => {
+        const meterId = checkbox.id.split('_')[1];
+        if (!meterId) return;
 
-    if (!tableName) {
-        console.error('No table name found in modal data attribute');
-        alert('Error: Missing table name information. Please reload the meter selection dialog.');
-        return;
-    }
+        // Get meter data from form fields
+        const hdsMeterName = document.querySelector(`input[name="SelectedMeters[${meterId}].HdsMeterName"]`).value;
+        const unit = document.querySelector(`input[name="SelectedMeters[${meterId}].Unit"]`).value || '';
+        const parentMeterId = document.querySelector(`select[name="SelectedMeters[${meterId}].ParentMeterId"]`).value;
+        const type = document.querySelector(`select[name="SelectedMeters[${meterId}].Type"]`).value;
+        const active = document.getElementById(`active_${meterId}`).checked;
 
-    const skipExisting = document.getElementById('skipExisting')?.checked || false;
-    const updateExisting = document.getElementById('updateExisting')?.checked || false;
-    const createMissingTenants = document.getElementById('createMissingTenants')?.checked || false;
-    const importReadings = document.getElementById('importReadings')?.checked || false;
-    const startDate = document.getElementById('readingsStartDate')?.value || '';
-    const endDate = document.getElementById('readingsEndDate')?.value || '';
-    const limit = parseInt(document.getElementById('readingsLimit')?.value || '1000');
+        // Create hidden inputs for this meter's data
+        const createHiddenInput = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            input.className = 'dynamic-hidden-input';
+            importForm.appendChild(input);
+        };
 
-    // Create import request payload
-    const importRequest = {
-        meters: selectedMeters,
-        tableName: tableName,
-        options: {
-            skipExisting: skipExisting,
-            updateExisting: updateExisting,
-            createMissingParents: true,
-            createMissingTenants: createMissingTenants,
-            importReadings: importReadings,
-            readingsStartDate: startDate,
-            readingsEndDate: endDate,
-            readingsLimit: limit
-        }
-    };
+        createHiddenInput(`Meters[${meterIndex}].HdsMeterName`, hdsMeterName);
+        createHiddenInput(`Meters[${meterIndex}].Unit`, unit);
+        createHiddenInput(`Meters[${meterIndex}].ParentMeterId`, parentMeterId);
+        createHiddenInput(`Meters[${meterIndex}].Type`, type);
+        createHiddenInput(`Meters[${meterIndex}].Active`, active);
+        meterIndex++;
+    });
 
-    console.log('Import request:', JSON.stringify(importRequest, null, 2));
+    // Add import options
+    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name');
+    document.getElementById('hiddenTableName').value = tableName;
+    document.getElementById('hiddenSkipExisting').value = document.getElementById('skipExisting').checked;
+    document.getElementById('hiddenUpdateExisting').value = document.getElementById('updateExisting').checked;
+    document.getElementById('hiddenCreateMissingParents').value = document.getElementById('createMissingParents').checked;
 
-    // Show progress container
-    const progressContainer = document.getElementById('meterImportProgressContainer');
-    if (progressContainer) {
-        progressContainer.classList.remove('d-none');
-    }
+    // Show loading progress
+    document.getElementById('meterImportProgressContainer').classList.remove('d-none');
+    document.getElementById('meterImportStatus').textContent = 'Submitting import request...';
 
-    // Reset progress bar
-    const progressBar = document.getElementById('meterImportProgressBar');
-    if (progressBar) {
-        progressBar.style.width = '0%';
-        progressBar.setAttribute('aria-valuenow', '0');
-        progressBar.textContent = '0%';
-    }
-
-    // Update status text
-    const statusText = document.getElementById('meterImportStatus');
-    if (statusText) {
-        statusText.textContent = 'Starting import...';
-    }
-
-    // Disable the import button to prevent multiple clicks
-    const importBtn = document.getElementById('importSelectedBtn');
-    if (importBtn) {
-        importBtn.disabled = true;
-        importBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
-    }
-
-    // Perform the import
-    fetch('/HdsImport/ImportMeters', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(importRequest)
-    })
-        .then(response => {
-            // Log the raw response
-            console.log('Raw response:', response);
-
-            if (!response.ok) {
-                return response.text().then(text => {
-                    console.error('Error response text:', text);
-                    try {
-                        // Try to parse as JSON
-                        const jsonData = JSON.parse(text);
-                        throw new Error(jsonData.errorMessage || response.statusText);
-                    } catch (e) {
-                        // If parsing fails, just use the text
-                        throw new Error(`Import failed: ${text || response.statusText}`);
-                    }
-                });
-            }
-
-            return response.text().then(text => {
-                console.log('Response text:', text);
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    console.error('Error parsing JSON response:', e);
-                    throw new Error('Error parsing server response. Please check the console for details.');
-                }
-            });
-        })
-        .then(data => {
-            console.log('Import response:', data);
-
-            // Update progress to 100%
-            if (progressBar) {
-                progressBar.style.width = '100%';
-                progressBar.setAttribute('aria-valuenow', '100');
-                progressBar.textContent = '100%';
-            }
-
-            if (statusText) {
-                statusText.textContent = `Import completed: ${data.importedCount} meters imported, ${data.errorCount} errors.`;
-            }
-
-            // Show success or error message with details
-            setTimeout(function () {
-                // Show detailed message
-                showDetailedMessage(data);
-
-                // Re-enable the import button
-                if (importBtn) {
-                    importBtn.disabled = false;
-                    importBtn.textContent = 'Import Selected';
-                }
-
-                // Only close the modal on success
-                if (data.success) {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('hdsMeterSelectionModal'));
-                    if (modal) {
-                        modal.hide();
-                    }
-
-                    // Optionally refresh the page or table
-                    window.location.href = '/Meter/Management';
-                }
-            }, 1000);
-        })
-        .catch(error => {
-            console.error('Error during import:', error);
-
-            // Show error in status
-            if (statusText) {
-                statusText.textContent = `Error: ${error.message}`;
-            }
-
-            // Re-enable the import button
-            if (importBtn) {
-                importBtn.disabled = false;
-                importBtn.textContent = 'Import Selected';
-            }
-
-            // Show alert with error
-            alert(`Import failed: ${error.message}`);
-        });
+    // Submit the form
+    importForm.submit();
 }
 
 // Make key functions available in the global scope
