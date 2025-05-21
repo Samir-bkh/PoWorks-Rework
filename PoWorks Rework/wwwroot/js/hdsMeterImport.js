@@ -545,6 +545,9 @@ function showDetailedMessage(data) {
 /**
  * Handle the import process
  */
+/**
+ * Handle the import process
+ */
 function handleImport() {
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
     if (selectedCheckboxes.length === 0) {
@@ -577,9 +580,11 @@ function handleImport() {
     const skipExisting = document.getElementById('skipExisting').checked;
     const updateExisting = document.getElementById('updateExisting').checked;
     const createMissingParents = document.getElementById('createMissingParents').checked;
+    const importReadings = document.getElementById('importReadings')?.checked || false;
 
-    // Gather meter data
+    // Gather meter data and keep track of meter names for readings import
     const meters = [];
+    const meterNames = [];
     selectedCheckboxes.forEach((checkbox) => {
         const row = checkbox.closest('tr');
         const meterName = row.querySelector('td:nth-child(2)').textContent.trim();
@@ -598,6 +603,8 @@ function handleImport() {
             active: active,
             lastReading: lastReading
         });
+
+        meterNames.push(meterName);
     });
 
     // Update status
@@ -606,7 +613,7 @@ function handleImport() {
     }
 
     // Send import request
-    fetch('/HdsImport/ImportMeters', {
+    fetch('/Import/ImportMeters', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -626,27 +633,50 @@ function handleImport() {
             return response.json();
         })
         .then(data => {
-            // Update progress to 100%
+            // Update progress to 50% if we'll import readings, otherwise 100%
             if (progressBar) {
-                progressBar.style.width = '100%';
-                progressBar.setAttribute('aria-valuenow', '100');
-                progressBar.textContent = '100%';
+                const progressValue = importReadings ? 50 : 100;
+                progressBar.style.width = `${progressValue}%`;
+                progressBar.setAttribute('aria-valuenow', progressValue.toString());
+                progressBar.textContent = `${progressValue}%`;
             }
 
             // Update status text
             if (statusText) {
                 if (data.success) {
-                    statusText.textContent = `Import completed: ${data.importedCount} imported, ${data.updatedCount} updated, ${data.skippedCount} skipped.`;
+                    const statusMsg = `Meters imported: ${data.importedCount}, updated: ${data.updatedCount}, skipped: ${data.skippedCount}`;
+                    statusText.textContent = importReadings ?
+                        `${statusMsg}. Now importing readings...` : statusMsg;
                 } else {
                     statusText.textContent = `Import completed with ${data.errorCount} errors.`;
                 }
             }
 
-            // Show detailed results message
+            // Show detailed results message for meter import
             showDetailedMessage(data);
 
-            // If successful with no errors, close the modal after a delay
-            if (data.success && data.errorCount === 0) {
+            // If meter import was successful and we should import readings
+            if (data.success && importReadings && (data.importedCount > 0 || data.updatedCount > 0)) {
+                // Get date range and limit if specified
+                const startDate = document.getElementById('readingsStartDate')?.value;
+                const endDate = document.getElementById('readingsEndDate')?.value;
+                const limit = document.getElementById('readingsLimit')?.value;
+
+                // Import readings
+                importMeterReadings(meterNames, tableName, startDate, endDate, limit, progressBar, statusText).then(() => {
+                    // Close modal after a delay if everything was successful
+                    setTimeout(() => {
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('hdsMeterSelectionModal'));
+                        if (modal) {
+                            modal.hide();
+                        }
+
+                        // Reload the page to show the imported meters
+                        window.location.reload();
+                    }, 2000);
+                });
+            } else if (data.success && data.errorCount === 0 && !importReadings) {
+                // If not importing readings and everything was successful, close the modal after a delay
                 setTimeout(() => {
                     const modal = bootstrap.Modal.getInstance(document.getElementById('hdsMeterSelectionModal'));
                     if (modal) {
@@ -668,6 +698,115 @@ function handleImport() {
 
             // Show error message
             alert(`Error importing meters: ${error.message}`);
+        });
+}
+
+/**
+ * Import readings for the given meters
+ */
+/**
+ * Import readings for the given meters
+ */
+function importMeterReadings(meterNames, tableName, startDate, endDate, limit, progressBar, statusText) {
+    if (!meterNames || meterNames.length === 0) {
+        console.warn('No meters provided for readings import');
+        return Promise.resolve();
+    }
+
+    console.log('===== IMPORT READINGS - CLIENT SIDE =====');
+    console.log(`Importing readings for ${meterNames.length} meters from table ${tableName}`);
+    console.log('Meter names:', meterNames);
+    console.log('Date range:', startDate, 'to', endDate);
+    console.log('Limit:', limit);
+
+    // Prepare the request body
+    const requestBody = {
+        tableName: tableName,
+        meterNames: meterNames
+    };
+
+    // Add optional parameters if provided
+    if (startDate) requestBody.startDate = startDate;
+    if (endDate) requestBody.endDate = endDate;
+    if (limit) requestBody.limit = parseInt(limit);
+
+    console.log('Request payload:', JSON.stringify(requestBody));
+
+    // Send the request
+    return fetch('/Import/ImportMeterReadings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+    })
+        .then(response => {
+            console.log('Response status:', response.status, response.statusText);
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Import readings response data:', data);
+
+            // Update progress to 100%
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.setAttribute('aria-valuenow', '100');
+                progressBar.textContent = '100%';
+            }
+
+            // Update status text
+            if (statusText) {
+                if (data.success) {
+                    statusText.textContent = `Readings import completed: ${data.totalReadingsImported} readings from ${data.totalMetersProcessed} meters.`;
+                } else {
+                    statusText.textContent = `Readings import completed with errors: ${data.error || data.errorMessage}`;
+                }
+            }
+
+            // Show detailed results in a modal or alert
+            let message = `Readings import results:\n`;
+            message += `- Total readings imported: ${data.totalReadingsImported}\n`;
+            message += `- Meters processed: ${data.totalMetersProcessed}\n`;
+
+            if (data.errorMeters && data.errorMeters.length > 0) {
+                message += `\nErrors occurred for ${data.errorMeters.length} meters:\n`;
+                data.errorMeters.forEach(meter => {
+                    message += `- ${meter}: ${data.detailedErrors[meter] || 'Unknown error'}\n`;
+                });
+            }
+
+            console.log('Final import message:', message);
+
+            // Only show a modal/alert if there were errors
+            if (!data.success || (data.errorMeters && data.errorMeters.length > 0)) {
+                alert(message);
+            }
+
+            return data;
+        })
+        .catch(error => {
+            console.error('Error importing readings:', error);
+
+            // Update progress bar to indicate error
+            if (progressBar) {
+                progressBar.classList.add('bg-danger');
+            }
+
+            // Update status text
+            if (statusText) {
+                statusText.textContent = `Error importing readings: ${error.message}`;
+            }
+
+            // Show error message
+            alert(`Error importing readings: ${error.message}`);
+
+            return {
+                success: false,
+                error: error.message
+            };
         });
 }
 
