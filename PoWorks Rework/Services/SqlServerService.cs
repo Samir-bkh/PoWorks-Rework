@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using PoWorks_Rework.Models;
+using Microsoft.Extensions.Logging;
 
 namespace PoWorks_Rework.Services
 {
@@ -175,7 +176,8 @@ namespace PoWorks_Rework.Services
                         Unit = i % 3 == 0 ? "m³/h" : (i % 3 == 1 ? "bar" : "°C"),
                         Type = "Main",
                         Active = true,
-                        IsSelected = true
+                        IsSelected = true,
+                        LastReading = (1000 + i * 50).ToString()
                     });
                 }
             }
