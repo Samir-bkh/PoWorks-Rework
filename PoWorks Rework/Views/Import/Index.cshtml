@@ -586,11 +586,95 @@
             return selectedMeters;
         }
 
-        // Import selected meters
-        function importSelectedMeters() {
-            // Implementation will go here
-            alert('Import functionality will be implemented soon');
-        }
+                    // Improved importSelectedMeters function
+                function importSelectedMeters() {
+                    const selectedMeters = getSelectedMeters();
+
+                    if (selectedMeters.length === 0) {
+                        alert('Please select at least one meter to import');
+                        return;
+                    }
+
+                    // Get import options
+                    const tableName = document.getElementById('hdsTable').value;
+
+                    // Show progress indicator
+                    const importBtn = document.getElementById('importSelectedBtn');
+                    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
+                    importBtn.disabled = true;
+
+                    console.log('Importing meters:', selectedMeters);
+
+                    // Format data for the server
+                    const meters = selectedMeters.map(meter => {
+                        return {
+                            hdsMeterName: meter.name,
+                            unit: meter.unit || "",
+                            parentMeterId: meter.parentId || "",
+                            type: meter.type.toLowerCase(), // Make sure type is lowercase as expected by server
+                            active: !!meter.active, // Ensure boolean
+                            lastReading: "0" // Default value if not available
+                        };
+                    });
+
+                    console.log('Formatted meters for import:', meters);
+
+                    // Send import request to server
+                    fetch('/Import/ImportMeters', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            tableName: tableName,
+                            meters: meters,
+                            skipExisting: true,
+                            updateExisting: false,
+                            createMissingParents: false
+                        })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Reset button
+                        importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected';
+                        importBtn.disabled = false;
+
+                        console.log('Import response:', data);
+
+                        // Show result message
+                        if (data.success) {
+                            // Format success message
+                            let message = `Import completed:\n`;
+                            message += `- ${data.importedCount} meters imported\n`;
+                            message += `- ${data.updatedCount || 0} meters updated\n`;
+                            message += `- ${data.skippedCount || 0} meters skipped`;
+
+                            if (data.importedCount === 0 && data.updatedCount === 0 && data.skippedCount === 0) {
+                                message += `\n\nWarning: No meters were processed. Check server logs.`;
+                            }
+
+                            alert(message);
+                        } else {
+                            // Format error message
+                            let errorMsg = `Import failed: ${data.error || data.errorMessage || 'Unknown error'}`;
+                            alert(errorMsg);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error importing meters:', error);
+
+                        // Reset button
+                        importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected';
+                        importBtn.disabled = false;
+
+                        alert(`Error importing meters: ${error.message}`);
+                    });
+                }
 
         // Parse CSV file
         function parseCsvFile() {

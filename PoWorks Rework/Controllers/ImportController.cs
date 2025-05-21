@@ -122,7 +122,8 @@ namespace PoWorks_Rework.Controllers
                 var errorMeters = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
 
-                using (var connection = _databaseService.GetConnection())
+                // Create a NEW connection instead of using the service's shared connection
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
 
@@ -135,6 +136,8 @@ namespace PoWorks_Rework.Controllers
                         {
                             try
                             {
+                                _logger.LogInformation($"Processing meter: {meter.HdsMeterName}, Type: {meter.Type}, Unit: {meter.Unit}");
+
                                 // Skip empty meter names
                                 if (string.IsNullOrWhiteSpace(meter.HdsMeterName))
                                 {
@@ -147,7 +150,7 @@ namespace PoWorks_Rework.Controllers
                                 bool meterExists = false;
                                 int existingMeterId = 0;
 
-                                using (var checkCommand = new Npgsql.NpgsqlCommand(
+                                using (var checkCommand = new NpgsqlCommand(
                                     @"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", connection, transaction))
                                 {
                                     checkCommand.Parameters.AddWithValue("@Name", meter.HdsMeterName);
@@ -156,6 +159,8 @@ namespace PoWorks_Rework.Controllers
                                     if (meterExists)
                                         existingMeterId = Convert.ToInt32(result);
                                 }
+
+                                _logger.LogInformation($"Meter {meter.HdsMeterName} exists: {meterExists}, SkipExisting: {request.SkipExisting}, UpdateExisting: {request.UpdateExisting}");
 
                                 // Skip existing meter if requested
                                 if (meterExists && request.SkipExisting && !request.UpdateExisting)
@@ -173,7 +178,7 @@ namespace PoWorks_Rework.Controllers
                                     if (int.TryParse(meter.ParentMeterId, out int parsedParentId))
                                     {
                                         // Check if parent exists
-                                        using (var parentCheckCommand = new Npgsql.NpgsqlCommand(
+                                        using (var parentCheckCommand = new NpgsqlCommand(
                                             @"SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @MeterId", connection, transaction))
                                         {
                                             parentCheckCommand.Parameters.AddWithValue("@MeterId", parsedParentId);
@@ -182,11 +187,11 @@ namespace PoWorks_Rework.Controllers
                                             if (parentCount > 0)
                                             {
                                                 parentId = parsedParentId;
+                                                _logger.LogInformation($"Parent meter found with ID: {parentId}");
                                             }
                                             else if (request.CreateMissingParents)
                                             {
                                                 // Create a missing parent if requested
-                                                // This would be implemented in a real app, for now just log
                                                 _logger.LogWarning($"Parent meter with ID {parsedParentId} not found for {meter.HdsMeterName}");
                                                 parentId = null;
                                             }
@@ -214,11 +219,13 @@ namespace PoWorks_Rework.Controllers
                                     type = meter.Type.ToLower();
                                 }
 
+                                _logger.LogInformation($"Will insert: {!meterExists}, Will update: {meterExists && request.UpdateExisting}");
+
                                 // Insert or update the meter
                                 if (meterExists && request.UpdateExisting)
                                 {
                                     // Update existing meter
-                                    using (var updateCommand = new Npgsql.NpgsqlCommand(
+                                    using (var updateCommand = new NpgsqlCommand(
                                         @"UPDATE ""Meters"" SET 
                                   ""Unit"" = @Unit,
                                   ""ParentId"" = @ParentId,
@@ -234,15 +241,18 @@ namespace PoWorks_Rework.Controllers
                                         updateCommand.Parameters.AddWithValue("@Type", type);
                                         updateCommand.Parameters.AddWithValue("@Active", meter.Active);
 
-                                        await updateCommand.ExecuteNonQueryAsync();
-                                        updatedCount++;
-                                        _logger.LogInformation($"Updated meter: {meter.HdsMeterName}");
+                                        int rowsAffected = await updateCommand.ExecuteNonQueryAsync();
+                                        _logger.LogInformation($"Updated meter: {meter.HdsMeterName}, Rows affected: {rowsAffected}");
+                                        if (rowsAffected > 0)
+                                        {
+                                            updatedCount++;
+                                        }
                                     }
                                 }
                                 else if (!meterExists)
                                 {
                                     // Insert new meter
-                                    using (var insertCommand = new Npgsql.NpgsqlCommand(
+                                    using (var insertCommand = new NpgsqlCommand(
                                         @"INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"")
                                   VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active)
                                   RETURNING ""MeterId""", connection, transaction))
@@ -259,6 +269,12 @@ namespace PoWorks_Rework.Controllers
                                         _logger.LogInformation($"Imported new meter: {meter.HdsMeterName}, ID: {newMeterId}");
                                     }
                                 }
+                                else
+                                {
+                                    // This case happens when the meter exists but we're not updating
+                                    _logger.LogInformation($"Meter {meter.HdsMeterName} exists but not updating due to settings");
+                                    skippedCount++;
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -272,7 +288,6 @@ namespace PoWorks_Rework.Controllers
 
                         // Commit the transaction
                         await transaction.CommitAsync();
-
                         _logger.LogInformation($"Import completed: {importedCount} imported, {updatedCount} updated, {skippedCount} skipped, {errorCount} errors");
 
                         return Json(new
