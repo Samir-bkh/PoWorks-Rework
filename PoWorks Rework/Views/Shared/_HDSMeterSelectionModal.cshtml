@@ -90,13 +90,13 @@
                                                 <select class="form-select form-select-sm" name="SelectedMeters[@i].Type">
                                                     @if (meter.Type?.ToLower() == "sub")
                                                     {
-                                                        <option value="Main">Main</option>
-                                                        <option value="Sub" selected>Sub</option>
+                                                        <option value="main">Main</option>
+                                                        <option value="sub" selected>Sub</option>
                                                     }
                                                     else
                                                     {
-                                                        <option value="Main" selected>Main</option>
-                                                        <option value="Sub">Sub</option>
+                                                        <option value="main" selected>Main</option>
+                                                        <option value="sub">Sub</option>
                                                     }
                                                 </select>
                                             </td>
@@ -105,12 +105,14 @@
                                                     @if (meter.Active)
                                                     {
                                                         <input class="form-check-input" type="checkbox"
-                                                               id="active_@i" name="SelectedMeters[@i].Active" checked>
+                                                               id="active_@i" name="SelectedMeters[@i].Active" value="true" checked>
+                                                        <input type="hidden" name="SelectedMeters[@i].Active" value="false" disabled>
                                                     }
                                                     else
                                                     {
                                                         <input class="form-check-input" type="checkbox"
-                                                               id="active_@i" name="SelectedMeters[@i].Active">
+                                                               id="active_@i" name="SelectedMeters[@i].Active" value="true">
+                                                        <input type="hidden" name="SelectedMeters[@i].Active" value="false">
                                                     }
                                                 </div>
                                             </td>
@@ -128,8 +130,7 @@
                     </div>
                 </div>
 
-              
-                <!-- Add this inside the HDS meter selection modal -->
+                <!-- Import form for importing meters -->
                 <form id="hdsImportForm" asp-controller="HdsImport" asp-action="ImportMeters" method="post">
                     <!-- Hidden inputs for selected meters will be added dynamically -->
                     <input type="hidden" name="tableName" id="hiddenTableName" />
@@ -138,86 +139,31 @@
                     <input type="hidden" name="createMissingParents" id="hiddenCreateMissingParents" />
                     <!-- Other hidden inputs for import options -->
                 </form>
+            </div>
 
-              
             <div class="modal-footer">
-                <div id="meterImportProgressContainer" class="w-100 d-none">
-                    <div class="progress mb-2">
-                        <div id="meterImportProgressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-                    </div>
-                    <div id="meterImportStatus" class="text-center mb-2">Ready to import meters</div>
-                </div>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <!-- Replace the existing button with this: -->
-                <!-- Replace the existing import button with this small form -->
-                <form action="/HdsImport/PrintSelectedMeters" method="post" target="print-frame">
-                    <!-- Table name -->
-                    <input type="hidden" name="tableName" value="@Model.TableName" />
 
-                    <!-- Add a simple list of selected meter IDs -->
-                    <div id="selected-meters-container">
-                        <!-- This will be filled dynamically by JavaScript -->
-                    </div>
 
-                    <!-- Simple submit button -->
-                    <button type="submit" class="btn btn-success" id="print-button">Print Selected Data</button>
+                <!-- Print form for printing selected meters -->
+                <form id="printForm" action="/HdsImport/PrintSelectedMeters" method="post" target="print-frame">
+                    <input type="hidden" name="tableName" value="@(Model?.TableName ?? "")" />
+                    <input type="hidden" name="selectedCount" id="selectedCount" value="0" />
+                    <!-- Just a container for selected meters -->
+                    <div id="selected-meters-container"></div>
+                    <!-- Direct button with onclick attribute - no external JS needed -->
+                    <button type="button" class="btn btn-success" onclick="printSelectedMeters()">
+                        Print Selected Data
+                    </button>
                 </form>
 
-                <!-- Add a hidden iframe to target the form submission -->
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
                 <iframe name="print-frame" style="display:none;"></iframe>
+
 
             </div>
         </div>
     </div>
 </div>
-</div>
-
-// Add this script directly in the _HDSMeterSelectionModal.cshtml file
-
-<script>
-    // When a checkbox is checked/unchecked, update the corresponding hidden input
-    document.addEventListener('DOMContentLoaded', function() {
-        const checkboxes = document.querySelectorAll('.meter-checkbox');
-
-        // Set initial states based on checkboxes
-        checkboxes.forEach(function(checkbox) {
-            const index = checkbox.id.split('_')[1];
-            if (!index) return;
-
-            const selectedInput = document.querySelector(`.meter-data-container[data-index="${index}"] .meter-selected-input`);
-            if (selectedInput) {
-                selectedInput.value = checkbox.checked ? "true" : "false";
-            }
-        });
-
-        // Add change listeners to checkboxes
-        checkboxes.forEach(function(checkbox) {
-            checkbox.addEventListener('change', function() {
-                const index = this.id.split('_')[1];
-                if (!index) return;
-
-                const selectedInput = document.querySelector(`.meter-data-container[data-index="${index}"] .meter-selected-input`);
-                if (selectedInput) {
-                    selectedInput.value = this.checked ? "true" : "false";
-                }
-            });
-        });
-
-        // Add click handler for the print button
-        document.getElementById('print-button').addEventListener('click', function() {
-            // Update all selected inputs based on current checkbox states
-            checkboxes.forEach(function(checkbox) {
-                const index = checkbox.id.split('_')[1];
-                if (!index) return;
-
-                const selectedInput = document.querySelector(`.meter-data-container[data-index="${index}"] .meter-selected-input`);
-                if (selectedInput) {
-                    selectedInput.value = checkbox.checked ? "true" : "false";
-                }
-            });
-
-            // Show feedback that data is being sent
-            alert('Printing selected meters data to terminal...');
-        });
-    });
-</script>

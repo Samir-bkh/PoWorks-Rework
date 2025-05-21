@@ -1,0 +1,605 @@
+﻿@model PoWorks_Rework.Models.ImportExportViewModel
+@{
+    ViewData["Title"] = "Import/Export";
+}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4>Import/Export</h4>
+    </div>
+    <div class="card-body">
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-4" id="importExportTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="import-tab" data-bs-toggle="tab" data-bs-target="#import-tab-pane" type="button" role="tab" aria-controls="import-tab-pane" aria-selected="true">Import</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="export-tab" data-bs-toggle="tab" data-bs-target="#export-tab-pane" type="button" role="tab" aria-controls="export-tab-pane" aria-selected="false">Export</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="importExportTabContent">
+            <!-- Import Tab -->
+            <div class="tab-pane fade show active" id="import-tab-pane" role="tabpanel" aria-labelledby="import-tab" tabindex="0">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title mb-3">Import from PCVue HDS</h5>
+
+                                <!-- Table Selection -->
+                                <div class="mb-3">
+                                    <label for="hdsTable" class="form-label">Select HDS Table</label>
+                                    <select class="form-select" id="hdsTable">
+                                        <option value="">Select a table...</option>
+                                    </select>
+                                </div>
+
+                                <!-- Date Range -->
+                                <div class="mb-3">
+                                    <label class="form-label">Date Range</label>
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <input type="date" class="form-control" id="startDate" placeholder="Start Date">
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="date" class="form-control" id="endDate" placeholder="End Date">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Limit -->
+                                <div class="mb-3">
+                                    <label for="limit" class="form-label">Limit Results</label>
+                                    <input type="number" class="form-control" id="limit" value="1000" min="1">
+                                    <div class="form-text">Maximum number of meters to retrieve</div>
+                                </div>
+
+                                <!-- Load Meters Button -->
+                                <div class="d-grid">
+                                    <button type="button" class="btn btn-primary" id="loadMetersBtn">
+                                        <i class="bi bi-cloud-download"></i> Load Meters
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title mb-3">Import from CSV</h5>
+
+                                <!-- CSV File Selection -->
+                                <div class="mb-3">
+                                    <label for="csvFile" class="form-label">Select CSV File</label>
+                                    <input class="form-control" type="file" id="csvFile" accept=".csv">
+                                </div>
+
+                                <!-- CSV Options -->
+                                <div class="mb-3">
+                                    <label class="form-label">CSV Options</label>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="hasHeaders" checked>
+                                        <label class="form-check-label" for="hasHeaders">
+                                            File has headers
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="skipExistingCsv" checked>
+                                        <label class="form-check-label" for="skipExistingCsv">
+                                            Skip existing meters
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Parse CSV Button -->
+                                <div class="d-grid">
+                                    <button type="button" class="btn btn-primary" id="parseCsvBtn">
+                                        <i class="bi bi-filetype-csv"></i> Parse CSV
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Meter Selection Table (initially hidden) -->
+                <div id="meterSelectionSection" class="d-none">
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Meter Selection</h5>
+                                <div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-2" id="selectAllMetersBtn">
+                                        <i class="bi bi-check-all"></i> Select All
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllMetersBtn">
+                                        <i class="bi bi-x-lg"></i> Deselect All
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- Filter -->
+                            <div class="input-group mb-3">
+                                <span class="input-group-text">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input type="text" class="form-control" id="meterFilterInput" placeholder="Filter meters by name...">
+                                <span class="input-group-text" id="meterFilterStatus">
+                                    Loading meters...
+                                </span>
+                            </div>
+
+                            <!-- Meters Table -->
+                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-bordered table-hover" id="metersTable">
+                                    <thead class="sticky-top bg-light">
+                                        <tr>
+                                            <th style="width: 50px;" class="text-center">Import</th>
+                                            <th>Meter Name</th>
+                                            <th>Unit</th>
+                                            <th>Parent Meter</th>
+                                            <th style="width: 80px;">Type</th>
+                                            <th style="width: 80px;">Active</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="metersTableBody">
+                                        <!-- Will be populated by JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-success" id="printSelectedBtn">
+                                    <i class="bi bi-printer"></i> Print Selected
+                                </button>
+                                <button type="button" class="btn btn-primary" id="importSelectedBtn">
+                                    <i class="bi bi-cloud-upload"></i> Import Selected
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Import Progress -->
+                    <div id="importProgressContainer" class="d-none">
+                        <div class="card mb-4">
+                            <div class="card-header bg-light">
+                                <h5 class="mb-0">Import Progress</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="progress mb-3">
+                                    <div id="importProgressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                                </div>
+                                <div id="importStatus" class="text-center">Ready to import...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export Tab -->
+            <div class="tab-pane fade" id="export-tab-pane" role="tabpanel" aria-labelledby="export-tab" tabindex="0">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Export Meters</h5>
+
+                        <!-- Export Options -->
+                        <div class="mb-3">
+                            <label class="form-label">Export Format</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
+                                <label class="form-check-label" for="exportFormatCsv">
+                                    CSV
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatExcel" value="excel">
+                                <label class="form-check-label" for="exportFormatExcel">
+                                    Excel
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
+                                <label class="form-check-label" for="exportFormatJson">
+                                    JSON
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Export Filters -->
+                        <div class="mb-3">
+                            <label class="form-label">Export Filters</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="exportAllMeters" checked>
+                                <label class="form-check-label" for="exportAllMeters">
+                                    Export all meters
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="exportActiveOnly">
+                                <label class="form-check-label" for="exportActiveOnly">
+                                    Export active meters only
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeReadings">
+                                <label class="form-check-label" for="includeReadings">
+                                    Include historical readings
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Export Button -->
+                        <div class="d-grid">
+                            <button type="button" class="btn btn-primary" id="exportBtn">
+                                <i class="bi bi-download"></i> Export Meters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load HDS tables
+            loadHdsTables();
+
+            // Set default dates (last 30 days)
+            const today = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+
+            document.getElementById('startDate').valueAsDate = thirtyDaysAgo;
+            document.getElementById('endDate').valueAsDate = today;
+
+            // Attach event listeners
+            document.getElementById('loadMetersBtn').addEventListener('click', loadMetersFromHds);
+            document.getElementById('selectAllMetersBtn').addEventListener('click', selectAllMeters);
+            document.getElementById('deselectAllMetersBtn').addEventListener('click', deselectAllMeters);
+            document.getElementById('meterFilterInput').addEventListener('input', filterMeters);
+            document.getElementById('printSelectedBtn').addEventListener('click', printSelectedMeters);
+            document.getElementById('importSelectedBtn').addEventListener('click', importSelectedMeters);
+            document.getElementById('parseCsvBtn').addEventListener('click', parseCsvFile);
+            document.getElementById('exportBtn').addEventListener('click', exportMeters);
+        });
+
+        // Load HDS tables from the server
+        function loadHdsTables() {
+            fetch('/Import/GetHdsTables')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('hdsTable');
+                    select.innerHTML = '<option value="">Select a table...</option>';
+
+                    if (data.success && data.tables && data.tables.length > 0) {
+                        data.tables.forEach(table => {
+                            const option = document.createElement('option');
+                            option.value = table;
+                            option.textContent = table;
+                            select.appendChild(option);
+                        });
+                    } else {
+                        console.error('Error loading HDS tables:', data.error || 'No tables returned');
+                        select.innerHTML += '<option value="" disabled>No tables available</option>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching HDS tables:', error);
+                    const select = document.getElementById('hdsTable');
+                    select.innerHTML = '<option value="">Error loading tables</option>';
+                });
+        }
+
+        // Load meters from HDS
+        function loadMetersFromHds() {
+            const tableName = document.getElementById('hdsTable').value;
+            if (!tableName) {
+                alert('Please select an HDS table first');
+                return;
+            }
+
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const limit = document.getElementById('limit').value;
+
+            // Show meter selection section and set loading state
+            document.getElementById('meterSelectionSection').classList.remove('d-none');
+            document.getElementById('metersTableBody').innerHTML = '<tr><td colspan="6" class="text-center">Loading meters...</td></tr>';
+
+            // Build query parameters
+            const params = new URLSearchParams({
+                tableName: tableName,
+                limit: limit
+            });
+
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+
+            // Fetch meters from the server
+            fetch(`/Import/GetMetersFromTable?${params}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.meters) {
+                        // Store parent options for later use
+                        window.parentOptions = data.parentOptions || [];
+
+                        // Populate table with meters
+                        renderMetersTable(data.meters);
+
+                        // Update filter status
+                        document.getElementById('meterFilterStatus').textContent =
+                            `Showing ${data.meters.length} of ${data.meters.length} meters`;
+                    } else {
+                        console.error('Error loading meters:', data.error || 'No meters returned');
+                        document.getElementById('metersTableBody').innerHTML =
+                            '<tr><td colspan="6" class="text-center">Error loading meters</td></tr>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching meters:', error);
+                    document.getElementById('metersTableBody').innerHTML =
+                        '<tr><td colspan="6" class="text-center">Error loading meters</td></tr>';
+                });
+        }
+
+        // Render meters table with fetched data
+        function renderMetersTable(meters) {
+            const tbody = document.getElementById('metersTableBody');
+            tbody.innerHTML = '';
+
+            if (!meters || meters.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No meters found</td></tr>';
+                return;
+            }
+
+            meters.forEach((meter, index) => {
+                const row = document.createElement('tr');
+
+                // Import checkbox cell
+                const checkboxCell = document.createElement('td');
+                checkboxCell.className = 'text-center';
+                checkboxCell.innerHTML = `
+                    <div class="form-check d-flex justify-content-center">
+                        <input class="form-check-input meter-checkbox" type="checkbox"
+                               id="meter_${index}" checked>
+                    </div>
+                `;
+
+                // Meter name cell
+                const nameCell = document.createElement('td');
+                nameCell.textContent = meter.hdsMeterName;
+
+                // Unit cell
+                const unitCell = document.createElement('td');
+                unitCell.innerHTML = `
+                    <input type="text" class="form-control form-control-sm meter-unit"
+                           value="${meter.unit || ''}">
+                `;
+
+                // Parent meter cell
+                const parentCell = document.createElement('td');
+                let parentOptionsHtml = '<option value="">None</option>';
+
+                if (window.parentOptions && window.parentOptions.length > 0) {
+                    window.parentOptions.forEach(option => {
+                        const selected = option.value === meter.parentMeterId ? 'selected' : '';
+                        parentOptionsHtml += `<option value="${option.value}" ${selected}>${option.text}</option>`;
+                    });
+                }
+
+                parentCell.innerHTML = `
+                    <select class="form-select form-select-sm meter-parent">
+                        ${parentOptionsHtml}
+                    </select>
+                `;
+
+                // Type cell
+                const typeCell = document.createElement('td');
+                const isSubType = (meter.type || '').toLowerCase() === 'sub';
+                typeCell.innerHTML = `
+                    <select class="form-select form-select-sm meter-type">
+                        <option value="main" ${!isSubType ? 'selected' : ''}>Main</option>
+                        <option value="sub" ${isSubType ? 'selected' : ''}>Sub</option>
+                    </select>
+                `;
+
+                // Active cell
+                const activeCell = document.createElement('td');
+                activeCell.className = 'text-center';
+                activeCell.innerHTML = `
+                    <div class="form-check d-flex justify-content-center">
+                        <input class="form-check-input meter-active" type="checkbox"
+                               id="active_${index}" ${meter.active ? 'checked' : ''}>
+                    </div>
+                `;
+
+                // Append cells to row
+                row.appendChild(checkboxCell);
+                row.appendChild(nameCell);
+                row.appendChild(unitCell);
+                row.appendChild(parentCell);
+                row.appendChild(typeCell);
+                row.appendChild(activeCell);
+
+                // Append row to table
+                tbody.appendChild(row);
+            });
+
+            // Update meter count
+            updateMeterCount();
+        }
+
+        // Update meter selection count
+        function updateMeterCount() {
+            const total = document.querySelectorAll('.meter-checkbox').length;
+            const selected = document.querySelectorAll('.meter-checkbox:checked').length;
+
+            document.getElementById('meterFilterStatus').textContent =
+                `Selected ${selected} of ${total} meters`;
+
+            // Update import button text
+            const importBtn = document.getElementById('importSelectedBtn');
+            if (importBtn) {
+                importBtn.textContent = selected > 0 ?
+                    `Import Selected (${selected})` : 'Import Selected';
+            }
+
+            // Update print button text
+            const printBtn = document.getElementById('printSelectedBtn');
+            if (printBtn) {
+                printBtn.textContent = selected > 0 ?
+                    `Print Selected (${selected})` : 'Print Selected';
+            }
+        }
+
+        // Select all meters
+        function selectAllMeters() {
+            const checkboxes = document.querySelectorAll('.meter-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+            updateMeterCount();
+        }
+
+        // Deselect all meters
+        function deselectAllMeters() {
+            const checkboxes = document.querySelectorAll('.meter-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateMeterCount();
+        }
+
+        // Filter meters by name
+        function filterMeters() {
+            const filter = document.getElementById('meterFilterInput').value.toLowerCase();
+            const rows = document.querySelectorAll('#metersTableBody tr');
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const meterName = row.cells[1].textContent.toLowerCase();
+
+                if (meterName.includes(filter)) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // Update filter status
+            const total = rows.length;
+            document.getElementById('meterFilterStatus').textContent =
+                `Showing ${visibleCount} of ${total} meters`;
+        }
+
+               // Print selected meters
+        function printSelectedMeters() {
+            const selectedMeters = getSelectedMeters();
+
+            if (selectedMeters.length === 0) {
+                alert('Please select at least one meter to print');
+                return;
+            }
+
+            // Extract data from selected meters
+            const tableName = document.getElementById('hdsTable').value;
+            const selectedMeterNames = [];
+            const selectedMeterTypes = [];
+            const selectedMeterUnits = [];
+
+            // Separate the data into arrays
+            selectedMeters.forEach(meter => {
+                selectedMeterNames.push(meter.name);
+                selectedMeterTypes.push(meter.type);
+                selectedMeterUnits.push(meter.unit);
+            });
+
+            console.log('Printing meters with data:', {
+                tableName,
+                selectedMeterNames,
+                selectedMeterTypes,
+                selectedMeterUnits
+            });
+
+            // Send data to server
+            fetch('/Import/PrintSelectedMeters', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    tableName,
+                    selectedMeterNames,
+                    selectedMeterTypes,
+                    selectedMeterUnits
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Successfully printed ${selectedMeters.length} meters (check terminal)`);
+                } else {
+                    console.error('Error printing meters:', data.error);
+                    alert('Error printing meters');
+                }
+            })
+            .catch(error => {
+                console.error('Error printing meters:', error);
+                alert('Error printing meters');
+            });
+        }
+
+        // Get selected meters data
+               function getSelectedMeters() {
+            const selectedMeters = [];
+            const checkboxes = document.querySelectorAll('.meter-checkbox:checked');
+
+            console.log('Found checked checkboxes:', checkboxes.length);
+
+            checkboxes.forEach(checkbox => {
+                const row = checkbox.closest('tr');
+
+                const meterData = {
+                    name: row.cells[1].textContent.trim(),
+                    unit: row.querySelector('.meter-unit').value,
+                    parentId: row.querySelector('.meter-parent').value,
+                    type: row.querySelector('.meter-type').value,
+                    active: row.querySelector('.meter-active').checked
+                };
+
+                console.log('Adding meter:', meterData);
+                selectedMeters.push(meterData);
+            });
+
+            console.log('Total selected meters:', selectedMeters.length);
+            return selectedMeters;
+        }
+
+        // Import selected meters
+        function importSelectedMeters() {
+            // Implementation will go here
+            alert('Import functionality will be implemented soon');
+        }
+
+        // Parse CSV file
+        function parseCsvFile() {
+            // Implementation will go here
+            alert('CSV parsing functionality will be implemented soon');
+        }
+
+        // Export meters
+        function exportMeters() {
+            // Implementation will go here
+            alert('Export functionality will be implemented soon');
+        }
+    </script>
+}

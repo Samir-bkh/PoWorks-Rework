@@ -43,6 +43,11 @@
                 <i class="bi bi-credit-card"></i> Payments
             </a>
         </li>
+        <li class="@(controller == "Import" ? "active" : "")">
+            <a asp-controller="Import" asp-action="Index">
+                <i class="bi bi-arrow-down-up"></i> Import/Export
+            </a>
+        </li>
         <li class="@(controller == "Settings" ? "active" : "")">
             <a asp-controller="Settings" asp-action="General">
                 <i class="bi bi-sliders"></i> General Settings

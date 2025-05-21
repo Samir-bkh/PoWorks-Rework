@@ -410,3 +410,69 @@ window.HDSMeterSelection = {
 };
 
 console.log('HDS Meter Selection JS initialization complete');
+
+
+
+// —————————————————————————————————————————————————————
+// Before the printForm actually submits, build our hidden inputs
+// —————————————————————————————————————————————————————
+// at the bottom of hdsMeterSelection.js
+
+// —————————————————————————————————————————————————————
+// Print Selected Data button
+// —————————————————————————————————————————————————————
+document.body.addEventListener('click', function (e) {
+    if (e.target.id !== 'directPrintBtn') return;
+    console.log('🖨️ directPrintBtn handler running');
+
+    // Get the form and container elements
+    const form = document.getElementById('printForm');
+    const container = document.getElementById('selected-meters-container');
+
+    // Clear any existing hidden inputs
+    container.innerHTML = '';
+
+    // Get the table name
+    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name');
+
+    // Get all selected checkboxes
+    const selectedCheckboxes = document.querySelectorAll('#hdsMeterSelectionModal .meter-checkbox:checked');
+
+    // If no meters selected, show alert and exit
+    if (selectedCheckboxes.length === 0) {
+        console.warn('No meters selected, aborting print.');
+        return alert('Please select at least one meter.');
+    }
+
+    // Update selected count
+    document.getElementById('selectedCount').value = selectedCheckboxes.length;
+
+    // Create hidden inputs for each selected meter
+    selectedCheckboxes.forEach(function (checkbox, index) {
+        const row = checkbox.closest('tr');
+
+        // Get meter details from the row
+        const meterName = row.querySelector('td:nth-child(2)').textContent.trim();
+        const meterUnit = row.querySelector('input[name$=".Unit"]').value;
+        const meterType = row.querySelector('select[name$=".Type"]').value;
+
+        // Create hidden inputs for this meter's data
+        function createHiddenInput(name, value) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            container.appendChild(input);
+        }
+
+        // Add hidden inputs to the form
+        createHiddenInput(`selectedMeterNames[${index}]`, meterName);
+        createHiddenInput(`selectedMeterTypes[${index}]`, meterType);
+        createHiddenInput(`selectedMeterUnits[${index}]`, meterUnit);
+    });
+
+    // Submit the form
+    form.submit();
+
+    console.log(`🖨️ Form submitted with ${selectedCheckboxes.length} meters`);
+});

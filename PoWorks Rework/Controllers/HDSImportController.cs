@@ -35,7 +35,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         [HttpPost]
-        public IActionResult PrintSelectedMeters(string tableName, int selectedCount, List<string> selectedMeterNames, List<string> selectedMeterTypes, List<string> selectedMeterUnits)
+        public IActionResult PrintSelectedMeters(string tableName, int selectedCount, List<string> selectedMeterNames)
         {
             Console.WriteLine("\n=====================================================");
             Console.WriteLine("PRINT SELECTED METERS DATA");
@@ -46,15 +46,9 @@ namespace PoWorks_Rework.Controllers
             if (selectedMeterNames != null && selectedMeterNames.Count > 0)
             {
                 Console.WriteLine("\nSelected meters:");
-                for (int i = 0; i < selectedMeterNames.Count; i++)
+                foreach (var name in selectedMeterNames)
                 {
-                    string meterName = selectedMeterNames[i];
-                    string meterType = (selectedMeterTypes != null && i < selectedMeterTypes.Count) ? selectedMeterTypes[i] : "Unknown";
-                    string meterUnit = (selectedMeterUnits != null && i < selectedMeterUnits.Count) ? selectedMeterUnits[i] : "";
-
-                    Console.WriteLine($"  Meter {i + 1}: {meterName}");
-                    Console.WriteLine($"    Type: {meterType}");
-                    Console.WriteLine($"    Unit: {meterUnit}");
+                    Console.WriteLine($"  {name}");
                 }
             }
             else
@@ -64,9 +58,10 @@ namespace PoWorks_Rework.Controllers
 
             Console.WriteLine("=====================================================\n");
 
-            // Return a simple result that won't redirect or close the modal
-            return Content("Selected meters data printed to terminal");
+            return Content("Printed meter data to console");
         }
+
+
         [HttpGet]
         public async Task<IActionResult> GetTables()
         {
