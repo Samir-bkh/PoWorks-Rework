@@ -552,60 +552,166 @@ function handleImport() {
         return;
     }
 
-    // Get the form and clear previous hidden inputs
-    const importForm = document.getElementById('hdsImportForm');
-    if (!importForm) {
-        alert('Import form not found.');
-        return;
+    // Show progress container
+    const progressContainer = document.getElementById('meterImportProgressContainer');
+    if (progressContainer) {
+        progressContainer.classList.remove('d-none');
     }
 
-    // Remove any previous dynamic hidden inputs
-    document.querySelectorAll('.dynamic-hidden-input').forEach(el => el.remove());
+    // Reset progress bar
+    const progressBar = document.getElementById('meterImportProgressBar');
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.setAttribute('aria-valuenow', '0');
+        progressBar.textContent = '0%';
+    }
 
-    // Add selected meters as hidden inputs
-    let meterIndex = 0;
-    selectedCheckboxes.forEach((checkbox, index) => {
-        const meterId = checkbox.id.split('_')[1];
-        if (!meterId) return;
+    // Update status text
+    const statusText = document.getElementById('meterImportStatus');
+    if (statusText) {
+        statusText.textContent = 'Preparing to import meters...';
+    }
 
-        // Get meter data from form fields
-        const hdsMeterName = document.querySelector(`input[name="SelectedMeters[${meterId}].HdsMeterName"]`).value;
-        const unit = document.querySelector(`input[name="SelectedMeters[${meterId}].Unit"]`).value || '';
-        const parentMeterId = document.querySelector(`select[name="SelectedMeters[${meterId}].ParentMeterId"]`).value;
-        const type = document.querySelector(`select[name="SelectedMeters[${meterId}].Type"]`).value;
-        const active = document.getElementById(`active_${meterId}`).checked;
+    // Gather import data
+    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name');
+    const skipExisting = document.getElementById('skipExisting').checked;
+    const updateExisting = document.getElementById('updateExisting').checked;
+    const createMissingParents = document.getElementById('createMissingParents').checked;
 
-        // Create hidden inputs for this meter's data
-        const createHiddenInput = (name, value) => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = name;
-            input.value = value;
-            input.className = 'dynamic-hidden-input';
-            importForm.appendChild(input);
-        };
+    // Gather meter data
+    const meters = [];
+    selectedCheckboxes.forEach((checkbox) => {
+        const row = checkbox.closest('tr');
+        const meterName = row.querySelector('td:nth-child(2)').textContent.trim();
+        const meterUnit = row.querySelector('input[name$=".Unit"]').value;
+        const parentMeterId = row.querySelector('select[name$=".ParentMeterId"]').value;
+        const type = row.querySelector('select[name$=".Type"]').value;
+        const active = row.querySelector('input[type="checkbox"][name$=".Active"]').checked;
+        const lastReading = row.querySelector('input[name$=".LastReading"]') ?
+            row.querySelector('input[name$=".LastReading"]').value : '0';
 
-        createHiddenInput(`Meters[${meterIndex}].HdsMeterName`, hdsMeterName);
-        createHiddenInput(`Meters[${meterIndex}].Unit`, unit);
-        createHiddenInput(`Meters[${meterIndex}].ParentMeterId`, parentMeterId);
-        createHiddenInput(`Meters[${meterIndex}].Type`, type);
-        createHiddenInput(`Meters[${meterIndex}].Active`, active);
-        meterIndex++;
+        meters.push({
+            hdsMeterName: meterName,
+            unit: meterUnit,
+            parentMeterId: parentMeterId,
+            type: type,
+            active: active,
+            lastReading: lastReading
+        });
     });
 
-    // Add import options
-    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name');
-    document.getElementById('hiddenTableName').value = tableName;
-    document.getElementById('hiddenSkipExisting').value = document.getElementById('skipExisting').checked;
-    document.getElementById('hiddenUpdateExisting').value = document.getElementById('updateExisting').checked;
-    document.getElementById('hiddenCreateMissingParents').value = document.getElementById('createMissingParents').checked;
+    // Update status
+    if (statusText) {
+        statusText.textContent = `Importing ${meters.length} meters...`;
+    }
 
-    // Show loading progress
-    document.getElementById('meterImportProgressContainer').classList.remove('d-none');
-    document.getElementById('meterImportStatus').textContent = 'Submitting import request...';
+    // Send import request
+    fetch('/HdsImport/ImportMeters', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            tableName: tableName,
+            meters: meters,
+            skipExisting: skipExisting,
+            updateExisting: updateExisting,
+            createMissingParents: createMissingParents
+        })
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update progress to 100%
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.setAttribute('aria-valuenow', '100');
+                progressBar.textContent = '100%';
+            }
 
-    // Submit the form
-    importForm.submit();
+            // Update status text
+            if (statusText) {
+                if (data.success) {
+                    statusText.textContent = `Import completed: ${data.importedCount} imported, ${data.updatedCount} updated, ${data.skippedCount} skipped.`;
+                } else {
+                    statusText.textContent = `Import completed with ${data.errorCount} errors.`;
+                }
+            }
+
+            // Show detailed results message
+            showDetailedMessage(data);
+
+            // If successful with no errors, close the modal after a delay
+            if (data.success && data.errorCount === 0) {
+                setTimeout(() => {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('hdsMeterSelectionModal'));
+                    if (modal) {
+                        modal.hide();
+                    }
+
+                    // Reload the page to show the imported meters
+                    window.location.reload();
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            console.error('Error importing meters:', error);
+
+            // Update status text
+            if (statusText) {
+                statusText.textContent = `Error importing meters: ${error.message}`;
+            }
+
+            // Show error message
+            alert(`Error importing meters: ${error.message}`);
+        });
+}
+
+// Helper function to show detailed import results
+function showDetailedMessage(data) {
+    // Format a detailed message
+    let message = '';
+
+    if (data.success) {
+        message = `Successfully imported ${data.importedCount} meters, updated ${data.updatedCount}, skipped ${data.skippedCount}.`;
+    } else {
+        message = `Import completed with ${data.errorCount} errors:\n\n`;
+
+        // Add detailed error messages if available
+        if (data.detailedErrors && Object.keys(data.detailedErrors).length > 0) {
+            for (const [meterName, errorMsg] of Object.entries(data.detailedErrors)) {
+                message += `• ${meterName}: ${errorMsg}\n\n`;
+            }
+        } else if (data.errorMeters && data.errorMeters.length > 0) {
+            message += `Errors occurred on: ${data.errorMeters.join(', ')}\n\n`;
+        }
+
+        if (data.errorMessage) {
+            message += `Error message: ${data.errorMessage}`;
+        }
+    }
+
+    // Display the message in a modal or alert
+    const resultModal = document.getElementById('importResultModal');
+    if (resultModal) {
+        const resultContent = document.getElementById('importResultContent');
+        if (resultContent) {
+            // Format the message for HTML display (convert newlines to <br>)
+            resultContent.innerHTML = message.replace(/\n/g, '<br>');
+            const modal = new bootstrap.Modal(resultModal);
+            modal.show();
+        } else {
+            // Fallback to alert if modal content element not found
+            alert(message);
+        }
+    } else {
+        // Fallback to regular alert if no modal exists
+        alert(message);
+    }
 }
 
 // Make key functions available in the global scope

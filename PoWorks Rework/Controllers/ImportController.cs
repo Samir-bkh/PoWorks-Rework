@@ -6,6 +6,7 @@ using PoWorks_Rework.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using static PoWorks_Rework.Controllers.HdsImportController;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -84,6 +85,225 @@ namespace PoWorks_Rework.Controllers
             {
                 _logger.LogError(ex, $"Error getting meters from HDS table {tableName}");
                 return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ImportMeters([FromBody] ImportMetersRequest request)
+        {
+            try
+            {
+                _logger.LogInformation($"Received import request for {request?.Meters?.Count ?? 0} meters");
+
+                if (request?.Meters == null || request.Meters.Count == 0)
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = "No meters selected for import"
+                    });
+                }
+
+                // Check if database is initialized
+                if (!_databaseService.IsInitialized)
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = "PostgreSQL database not configured"
+                    });
+                }
+
+                // Statistics for import result
+                int importedCount = 0;
+                int skippedCount = 0;
+                int updatedCount = 0;
+                int errorCount = 0;
+                var errorMeters = new List<string>();
+                var detailedErrors = new Dictionary<string, string>();
+
+                using (var connection = _databaseService.GetConnection())
+                {
+                    await connection.OpenAsync();
+
+                    // Create a transaction to ensure all operations succeed or fail together
+                    using var transaction = await connection.BeginTransactionAsync();
+
+                    try
+                    {
+                        foreach (var meter in request.Meters)
+                        {
+                            try
+                            {
+                                // Skip empty meter names
+                                if (string.IsNullOrWhiteSpace(meter.HdsMeterName))
+                                {
+                                    _logger.LogWarning("Skipping meter with empty name");
+                                    skippedCount++;
+                                    continue;
+                                }
+
+                                // Check if meter already exists
+                                bool meterExists = false;
+                                int existingMeterId = 0;
+
+                                using (var checkCommand = new Npgsql.NpgsqlCommand(
+                                    @"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", connection, transaction))
+                                {
+                                    checkCommand.Parameters.AddWithValue("@Name", meter.HdsMeterName);
+                                    var result = await checkCommand.ExecuteScalarAsync();
+                                    meterExists = result != null;
+                                    if (meterExists)
+                                        existingMeterId = Convert.ToInt32(result);
+                                }
+
+                                // Skip existing meter if requested
+                                if (meterExists && request.SkipExisting && !request.UpdateExisting)
+                                {
+                                    _logger.LogInformation($"Skipping existing meter: {meter.HdsMeterName}");
+                                    skippedCount++;
+                                    continue;
+                                }
+
+                                // Ensure parent meter exists if specified
+                                int? parentId = null;
+
+                                if (!string.IsNullOrEmpty(meter.ParentMeterId))
+                                {
+                                    if (int.TryParse(meter.ParentMeterId, out int parsedParentId))
+                                    {
+                                        // Check if parent exists
+                                        using (var parentCheckCommand = new Npgsql.NpgsqlCommand(
+                                            @"SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @MeterId", connection, transaction))
+                                        {
+                                            parentCheckCommand.Parameters.AddWithValue("@MeterId", parsedParentId);
+                                            int parentCount = Convert.ToInt32(await parentCheckCommand.ExecuteScalarAsync());
+
+                                            if (parentCount > 0)
+                                            {
+                                                parentId = parsedParentId;
+                                            }
+                                            else if (request.CreateMissingParents)
+                                            {
+                                                // Create a missing parent if requested
+                                                // This would be implemented in a real app, for now just log
+                                                _logger.LogWarning($"Parent meter with ID {parsedParentId} not found for {meter.HdsMeterName}");
+                                                parentId = null;
+                                            }
+                                            else
+                                            {
+                                                _logger.LogWarning($"Parent meter with ID {parsedParentId} not found for {meter.HdsMeterName}, setting parent to null");
+                                                parentId = null;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Parse last reading if provided
+                                int lastReading = 0;
+                                if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int parsedReading))
+                                {
+                                    lastReading = parsedReading;
+                                }
+
+                                // Ensure type is valid
+                                string type = "main";
+                                if (!string.IsNullOrWhiteSpace(meter.Type) &&
+                                    (meter.Type.ToLower() == "main" || meter.Type.ToLower() == "sub"))
+                                {
+                                    type = meter.Type.ToLower();
+                                }
+
+                                // Insert or update the meter
+                                if (meterExists && request.UpdateExisting)
+                                {
+                                    // Update existing meter
+                                    using (var updateCommand = new Npgsql.NpgsqlCommand(
+                                        @"UPDATE ""Meters"" SET 
+                                  ""Unit"" = @Unit,
+                                  ""ParentId"" = @ParentId,
+                                  ""LastReading"" = @LastReading,
+                                  ""Type"" = @Type,
+                                  ""Active"" = @Active
+                                  WHERE ""MeterId"" = @MeterId", connection, transaction))
+                                    {
+                                        updateCommand.Parameters.AddWithValue("@MeterId", existingMeterId);
+                                        updateCommand.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
+                                        updateCommand.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
+                                        updateCommand.Parameters.AddWithValue("@LastReading", lastReading);
+                                        updateCommand.Parameters.AddWithValue("@Type", type);
+                                        updateCommand.Parameters.AddWithValue("@Active", meter.Active);
+
+                                        await updateCommand.ExecuteNonQueryAsync();
+                                        updatedCount++;
+                                        _logger.LogInformation($"Updated meter: {meter.HdsMeterName}");
+                                    }
+                                }
+                                else if (!meterExists)
+                                {
+                                    // Insert new meter
+                                    using (var insertCommand = new Npgsql.NpgsqlCommand(
+                                        @"INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"")
+                                  VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active)
+                                  RETURNING ""MeterId""", connection, transaction))
+                                    {
+                                        insertCommand.Parameters.AddWithValue("@Name", meter.HdsMeterName);
+                                        insertCommand.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
+                                        insertCommand.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
+                                        insertCommand.Parameters.AddWithValue("@LastReading", lastReading);
+                                        insertCommand.Parameters.AddWithValue("@Type", type);
+                                        insertCommand.Parameters.AddWithValue("@Active", meter.Active);
+
+                                        var newMeterId = await insertCommand.ExecuteScalarAsync();
+                                        importedCount++;
+                                        _logger.LogInformation($"Imported new meter: {meter.HdsMeterName}, ID: {newMeterId}");
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Track error for this meter but continue with others
+                                _logger.LogError(ex, $"Error importing meter {meter.HdsMeterName}");
+                                errorCount++;
+                                errorMeters.Add(meter.HdsMeterName);
+                                detailedErrors[meter.HdsMeterName] = ex.Message;
+                            }
+                        }
+
+                        // Commit the transaction
+                        await transaction.CommitAsync();
+
+                        _logger.LogInformation($"Import completed: {importedCount} imported, {updatedCount} updated, {skippedCount} skipped, {errorCount} errors");
+
+                        return Json(new
+                        {
+                            success = errorCount == 0,
+                            importedCount,
+                            updatedCount,
+                            skippedCount,
+                            errorCount,
+                            errorMeters,
+                            detailedErrors,
+                            message = $"Successfully imported {importedCount} meters, updated {updatedCount}, skipped {skippedCount}, with {errorCount} errors."
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        // Rollback the transaction if any error occurs
+                        await transaction.RollbackAsync();
+                        throw new Exception($"Failed to import meters: {ex.Message}", ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing meters");
+                return Json(new
+                {
+                    success = false,
+                    error = ex.Message,
+                    errorMessage = "An unexpected error occurred during the import process."
+                });
             }
         }
 
