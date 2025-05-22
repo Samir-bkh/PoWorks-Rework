@@ -156,6 +156,12 @@
                                 <button type="button" class="btn btn-success" id="printSelectedBtn">
                                     <i class="bi bi-printer"></i> Print Selected
                                 </button>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="importReadings">
+                                    <label class="form-check-label" for="importReadings">
+                                        Import historical readings
+                                    </label>
+                                </div>
                                 <button type="button" class="btn btn-primary" id="importSelectedBtn">
                                     <i class="bi bi-cloud-upload"></i> Import Selected
                                 </button>
@@ -587,6 +593,7 @@
         }
 
                     // Improved importSelectedMeters function
+                               // Updated importSelectedMeters function with readings import support
                 function importSelectedMeters() {
                     const selectedMeters = getSelectedMeters();
 
@@ -597,6 +604,16 @@
 
                     // Get import options
                     const tableName = document.getElementById('hdsTable').value;
+
+                    // Check if readings import is enabled
+                    const importReadingsCheckbox = document.getElementById('importReadings');
+                    const importReadings = importReadingsCheckbox ? importReadingsCheckbox.checked : false;
+
+                    console.log('=== IMPORT DEBUG INFO ===');
+                    console.log('importReadings checkbox found:', !!importReadingsCheckbox);
+                    console.log('importReadings checked:', importReadings);
+                    console.log('selectedMeters count:', selectedMeters.length);
+                    console.log('tableName:', tableName);
 
                     // Show progress indicator
                     const importBtn = document.getElementById('importSelectedBtn');
@@ -611,9 +628,9 @@
                             hdsMeterName: meter.name,
                             unit: meter.unit || "",
                             parentMeterId: meter.parentId || "",
-                            type: meter.type.toLowerCase(), // Make sure type is lowercase as expected by server
-                            active: !!meter.active, // Ensure boolean
-                            lastReading: "0" // Default value if not available
+                            type: meter.type.toLowerCase(),
+                            active: !!meter.active,
+                            lastReading: "0"
                         };
                     });
 
@@ -640,29 +657,63 @@
                         return response.json();
                     })
                     .then(data => {
+                        console.log('=== IMPORT METERS RESPONSE ===');
+                        console.log('data.success:', data.success);
+                        console.log('data.importedCount:', data.importedCount);
+                        console.log('data.updatedCount:', data.updatedCount);
+                        console.log('data.skippedCount:', data.skippedCount);
+
                         // Reset button
                         importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected';
                         importBtn.disabled = false;
 
-                        console.log('Import response:', data);
+                        // Show result message for meter import
+                        let message = `Import completed:\n`;
+                        message += `- ${data.importedCount} meters imported\n`;
+                        message += `- ${data.updatedCount || 0} meters updated\n`;
+                        message += `- ${data.skippedCount || 0} meters skipped`;
 
-                        // Show result message
-                        if (data.success) {
-                            // Format success message
-                            let message = `Import completed:\n`;
-                            message += `- ${data.importedCount} meters imported\n`;
-                            message += `- ${data.updatedCount || 0} meters updated\n`;
-                            message += `- ${data.skippedCount || 0} meters skipped`;
+                        if (data.importedCount === 0 && data.updatedCount === 0 && data.skippedCount === 0) {
+                            message += `\n\nWarning: No meters were processed. Check server logs.`;
+                        }
 
-                            if (data.importedCount === 0 && data.updatedCount === 0 && data.skippedCount === 0) {
-                                message += `\n\nWarning: No meters were processed. Check server logs.`;
-                            }
+                        // Check if we should import readings
+                        console.log('=== CHECKING READINGS IMPORT CONDITIONS ===');
+                        console.log('data.success:', data.success);
+                        console.log('importReadings:', importReadings);
+                        console.log('Should import readings:', data.success && importReadings);
 
-                            alert(message);
+                        if (data.success && importReadings) {
+                            console.log('*** CALLING IMPORT READINGS ***');
+
+                            // Get meter names for readings import
+                            const meterNames = selectedMeters.map(meter => meter.name);
+
+                            // Call the readings import function
+                            importMeterReadings(meterNames, tableName)
+                                .then(readingsResult => {
+                                    // Update the message with readings import results
+                                    if (readingsResult.success) {
+                                        message += `\n\nReadings Import:\n`;
+                                        message += `- ${readingsResult.totalReadingsImported || 0} readings imported\n`;
+                                        message += `- ${readingsResult.totalMetersProcessed || 0} meters processed`;
+                                    } else {
+                                        message += `\n\nReadings Import Failed:\n`;
+                                        message += `- Error: ${readingsResult.error || 'Unknown error'}`;
+                                    }
+
+                                    alert(message);
+                                })
+                                .catch(error => {
+                                    console.error('Error importing readings:', error);
+                                    message += `\n\nReadings Import Failed:\n`;
+                                    message += `- Error: ${error.message}`;
+                                    alert(message);
+                                });
                         } else {
-                            // Format error message
-                            let errorMsg = `Import failed: ${data.error || data.errorMessage || 'Unknown error'}`;
-                            alert(errorMsg);
+                            console.log('*** NOT IMPORTING READINGS ***');
+                            console.log('Reason: success=' + data.success + ', importReadings=' + importReadings);
+                            alert(message);
                         }
                     })
                     .catch(error => {
@@ -673,6 +724,39 @@
                         importBtn.disabled = false;
 
                         alert(`Error importing meters: ${error.message}`);
+                    });
+                }
+
+                // New function to handle readings import
+                function importMeterReadings(meterNames, tableName) {
+                    console.log('=== IMPORT METER READINGS FUNCTION ===');
+                    console.log('meterNames:', meterNames);
+                    console.log('tableName:', tableName);
+
+                    const requestBody = {
+                        tableName: tableName,
+                        meterNames: meterNames
+                    };
+
+                    console.log('Sending readings import request:', requestBody);
+
+                    return fetch('/Import/ImportMeterReadings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestBody)
+                    })
+                    .then(response => {
+                        console.log('Readings response status:', response.status);
+                        if (!response.ok) {
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Readings response data:', data);
+                        return data;
                     });
                 }
 

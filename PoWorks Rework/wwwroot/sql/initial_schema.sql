@@ -74,6 +74,10 @@ CREATE TABLE "MeterReadings" (
 CREATE INDEX idx_meterreadings_meterid ON "MeterReadings"("MeterId");
 CREATE INDEX idx_meterreadings_timestamp ON "MeterReadings"("Timestamp");
 
+ALTER TABLE "MeterReadings" 
+ADD CONSTRAINT unique_meter_timestamp 
+UNIQUE ("MeterId", "Timestamp");
+
 -- Create Daily meter readings aggregate table
 CREATE TABLE IF NOT EXISTS "MeterReadingsDaily" (
     "DailyReadingId" SERIAL PRIMARY KEY,

@@ -93,315 +93,197 @@ namespace PoWorks_Rework.Controllers
         public async Task<IActionResult> ImportMeterReadings([FromBody] ImportReadingsRequest request)
         {
             _logger.LogInformation("================================================");
-            _logger.LogInformation("IMPORT METER READINGS - DEBUGGING");
+            _logger.LogInformation("IMPORT METER READINGS - REAL IMPORT");
             _logger.LogInformation("================================================");
 
             try
             {
-                // 1. Log the request data
-                _logger.LogInformation($"Table name: {request?.TableName ?? "NULL"}");
-                _logger.LogInformation($"Meter names count: {request?.MeterNames?.Count.ToString() ?? "NULL"}");
-
-                if (request?.MeterNames != null)
-                {
-                    foreach (var name in request.MeterNames)
-                    {
-                        _logger.LogInformation($"Meter name: {name}");
-                    }
-                }
-
-                // 2. Basic validation
+                // Basic validation
                 if (request == null || string.IsNullOrEmpty(request.TableName))
                 {
-                    _logger.LogError("Invalid request: Missing table name");
                     return Json(new { success = false, error = "Missing table name" });
                 }
 
                 if (request.MeterNames == null || request.MeterNames.Count == 0)
                 {
-                    _logger.LogError("Invalid request: No meter names provided");
                     return Json(new { success = false, error = "No meter names provided" });
                 }
 
-                // 3. Check database connections
-                if (!_databaseService.IsInitialized)
+                _logger.LogInformation($"Importing readings for {request.MeterNames.Count} meters from table {request.TableName}");
+
+                // Check database connections
+                if (!_databaseService.IsInitialized || !_sqlServerService.IsInitialized)
                 {
-                    _logger.LogError("PostgreSQL database is not initialized");
-                    return Json(new { success = false, error = "PostgreSQL database is not initialized" });
+                    return Json(new { success = false, error = "Database connections not initialized" });
                 }
 
-                if (!_sqlServerService.IsInitialized)
+                // Statistics
+                int totalReadingsImported = 0;
+                int totalMetersProcessed = 0;
+                var errorMeters = new List<string>();
+                var detailedErrors = new Dictionary<string, string>();
+
+                // Process each meter
+                foreach (var meterName in request.MeterNames)
                 {
-                    _logger.LogError("SQL Server is not initialized");
-                    return Json(new { success = false, error = "SQL Server is not initialized" });
-                }
-
-                // 4. Test SQL Server connection
-                try
-                {
-                    using (var connection = _sqlServerService.GetConnection())
-                    {
-                        await connection.OpenAsync();
-                        _logger.LogInformation("SQL Server connection test: SUCCESS");
-
-                        // Test a simple query to check if the table exists
-                        string testSql = $"SELECT TOP 1 * FROM {request.TableName}";
-                        try
-                        {
-                            using var cmd = new Microsoft.Data.SqlClient.SqlCommand(testSql, connection);
-                            using var reader = await cmd.ExecuteReaderAsync();
-
-                            // Log column names
-                            var columns = new List<string>();
-                            for (int i = 0; i < reader.FieldCount; i++)
-                            {
-                                columns.Add($"{reader.GetName(i)} ({reader.GetFieldType(i).Name})");
-                            }
-
-                            _logger.LogInformation($"Table columns: {string.Join(", ", columns)}");
-
-                            if (await reader.ReadAsync())
-                            {
-                                _logger.LogInformation("First row values:");
-                                for (int i = 0; i < reader.FieldCount; i++)
-                                {
-                                    _logger.LogInformation($"  {reader.GetName(i)}: {(reader.IsDBNull(i) ? "NULL" : reader.GetValue(i).ToString())}");
-                                }
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Table exists but has no data");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, $"Error testing table {request.TableName}");
-                            return Json(new { success = false, error = $"Error accessing table: {ex.Message}" });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "SQL Server connection test failed");
-                    return Json(new { success = false, error = $"SQL Server connection error: {ex.Message}" });
-                }
-
-                // 5. Test PostgreSQL connection and MeterReadings table
-                try
-                {
-                    using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                    {
-                        await connection.OpenAsync();
-                        _logger.LogInformation("PostgreSQL connection test: SUCCESS");
-
-                        // Check if MeterReadings table exists
-                        try
-                        {
-                            using var cmd = new NpgsqlCommand(
-                                @"SELECT EXISTS (
-                            SELECT FROM information_schema.tables 
-                            WHERE table_name = 'MeterReadings'
-                          )", connection);
-
-                            bool tableExists = (bool)await cmd.ExecuteScalarAsync();
-                            _logger.LogInformation($"MeterReadings table exists: {tableExists}");
-
-                            if (!tableExists)
-                            {
-                                _logger.LogError("MeterReadings table does not exist in PostgreSQL");
-                                return Json(new { success = false, error = "MeterReadings table does not exist" });
-                            }
-
-                            // Check table structure
-                            using var structureCmd = new NpgsqlCommand(
-                                @"SELECT column_name, data_type 
-                          FROM information_schema.columns 
-                          WHERE table_name = 'MeterReadings'", connection);
-
-                            using var reader = await structureCmd.ExecuteReaderAsync();
-                            _logger.LogInformation("MeterReadings table structure:");
-
-                            while (await reader.ReadAsync())
-                            {
-                                _logger.LogInformation($"  {reader.GetString(0)}: {reader.GetString(1)}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error checking MeterReadings table");
-                            return Json(new { success = false, error = $"Error checking MeterReadings table: {ex.Message}" });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "PostgreSQL connection test failed");
-                    return Json(new { success = false, error = $"PostgreSQL connection error: {ex.Message}" });
-                }
-
-                // 6. Now try to handle a single meter as a test
-                if (request.MeterNames.Count > 0)
-                {
-                    string testMeterName = request.MeterNames[0];
-                    _logger.LogInformation($"Testing import for meter: {testMeterName}");
-
-                    // Find meter ID
-                    int? meterId = null;
-
                     try
                     {
-                        using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                        _logger.LogInformation($"Processing readings for meter: {meterName}");
+
+                        // 1. Find meter ID in PostgreSQL
+                        int? meterId = null;
+                        using (var pgConnection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                         {
-                            await connection.OpenAsync();
-
-                            using var cmd = new NpgsqlCommand(
-                                @"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", connection);
-                            cmd.Parameters.AddWithValue("@Name", testMeterName);
-
+                            await pgConnection.OpenAsync();
+                            using var cmd = new NpgsqlCommand(@"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", pgConnection);
+                            cmd.Parameters.AddWithValue("@Name", meterName);
                             var result = await cmd.ExecuteScalarAsync();
                             if (result != null)
                             {
                                 meterId = Convert.ToInt32(result);
-                                _logger.LogInformation($"Found meter {testMeterName} with ID: {meterId}");
-                            }
-                            else
-                            {
-                                _logger.LogWarning($"Meter {testMeterName} not found in PostgreSQL");
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Error finding meter ID for {testMeterName}");
-                        return Json(new { success = false, error = $"Error finding meter ID: {ex.Message}" });
-                    }
 
-                    if (!meterId.HasValue)
-                    {
-                        _logger.LogError($"Cannot proceed with readings import - meter {testMeterName} not found");
-                        return Json(new { success = false, error = $"Meter {testMeterName} not found in database" });
-                    }
-
-                    // Get a sample of readings from SQL Server
-                    try
-                    {
-                        using (var connection = _sqlServerService.GetConnection())
+                        if (!meterId.HasValue)
                         {
-                            await connection.OpenAsync();
+                            _logger.LogWarning($"Meter {meterName} not found in PostgreSQL, skipping");
+                            errorMeters.Add(meterName);
+                            detailedErrors[meterName] = "Meter not found in database";
+                            continue;
+                        }
 
-                            string sql = $"SELECT TOP 10 Chrono, Value, Quality FROM {request.TableName} WHERE NAME = @Name";
-                            _logger.LogInformation($"Sample query: {sql}");
+                        _logger.LogInformation($"Found meter {meterName} with ID: {meterId}");
 
-                            using var cmd = new Microsoft.Data.SqlClient.SqlCommand(sql, connection);
-                            cmd.Parameters.AddWithValue("@Name", testMeterName);
+                        // 2. Get readings from SQL Server
+                        var readings = new List<(DateTime timestamp, double value, int quality)>();
+
+                        using (var sqlConnection = _sqlServerService.GetConnection())
+                        {
+                            await sqlConnection.OpenAsync();
+
+                            // Build query with optional date filters
+                            string sql = $"SELECT Chrono, Value, Quality FROM {request.TableName} WHERE NAME = @Name";
+
+                            if (request.StartDate.HasValue)
+                            {
+                                // Convert DateTime to Windows filetime for comparison
+                                long startFiletime = request.StartDate.Value.ToFileTimeUtc();
+                                sql += " AND Chrono >= @StartDate";
+                            }
+
+                            if (request.EndDate.HasValue)
+                            {
+                                long endFiletime = request.EndDate.Value.ToFileTimeUtc();
+                                sql += " AND Chrono <= @EndDate";
+                            }
+
+                            sql += " ORDER BY Chrono";
+
+                            if (request.Limit.HasValue)
+                            {
+                                sql = $"SELECT TOP {request.Limit} * FROM ({sql}) AS ordered_readings";
+                            }
+
+                            using var cmd = new SqlCommand(sql, sqlConnection);
+                            cmd.Parameters.AddWithValue("@Name", meterName);
+
+                            if (request.StartDate.HasValue)
+                            {
+                                cmd.Parameters.AddWithValue("@StartDate", request.StartDate.Value.ToFileTimeUtc());
+                            }
+                            if (request.EndDate.HasValue)
+                            {
+                                cmd.Parameters.AddWithValue("@EndDate", request.EndDate.Value.ToFileTimeUtc());
+                            }
 
                             using var reader = await cmd.ExecuteReaderAsync();
-                            _logger.LogInformation($"Sample readings for {testMeterName}:");
-
-                            int count = 0;
                             while (await reader.ReadAsync())
                             {
-                                count++;
-
                                 try
                                 {
-                                    // Get column values with detailed type info for debugging
-                                    string chronoType = reader.GetFieldType(0).Name;
-                                    string valueType = reader.GetFieldType(1).Name;
-                                    string qualityType = reader.GetFieldType(2).Name;
+                                    long chrono = reader.GetInt64(0);
+                                    double value = reader.GetDouble(1);
+                                    int quality = reader.GetInt16(2);
 
-                                    object chronoValue = reader.IsDBNull(0) ? "NULL" : reader.GetValue(0);
-                                    object valueValue = reader.IsDBNull(1) ? "NULL" : reader.GetValue(1);
-                                    object qualityValue = reader.IsDBNull(2) ? "NULL" : reader.GetValue(2);
+                                    // Convert Windows filetime to DateTime
+                                    DateTime timestamp = DateTime.FromFileTimeUtc(chrono);
 
-                                    _logger.LogInformation($"Reading {count}:");
-                                    _logger.LogInformation($"  Chrono: {chronoValue} (Type: {chronoType})");
-                                    _logger.LogInformation($"  Value: {valueValue} (Type: {valueType})");
-                                    _logger.LogInformation($"  Quality: {qualityValue} (Type: {qualityType})");
-
-                                    // Try parsing the timestamp
-                                    if (chronoValue != "NULL")
-                                    {
-                                        try
-                                        {
-                                            // Get raw value
-                                            long chrono;
-                                            if (chronoValue is long longValue)
-                                            {
-                                                chrono = longValue;
-                                            }
-                                            else
-                                            {
-                                                chrono = Convert.ToInt64(chronoValue);
-                                            }
-
-                                            // Try to convert from Windows filetime
-                                            DateTime timestamp = DateTime.FromFileTimeUtc(chrono);
-                                            _logger.LogInformation($"  Converted timestamp: {timestamp}");
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            _logger.LogError(ex, "Error converting timestamp");
-                                        }
-                                    }
+                                    readings.Add((timestamp, value, quality));
                                 }
                                 catch (Exception ex)
                                 {
-                                    _logger.LogError(ex, $"Error examining reading {count}");
+                                    _logger.LogWarning($"Error parsing reading for {meterName}: {ex.Message}");
                                 }
                             }
+                        }
 
-                            _logger.LogInformation($"Found {count} sample readings");
+                        _logger.LogInformation($"Retrieved {readings.Count} readings for meter {meterName}");
+
+                        // 3. Insert readings into PostgreSQL
+                        if (readings.Count > 0)
+                        {
+                            using (var pgConnection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                            {
+                                await pgConnection.OpenAsync();
+                                using var transaction = await pgConnection.BeginTransactionAsync();
+
+                                try
+                                {
+                                    foreach (var reading in readings)
+                                    {
+                                        using var insertCmd = new NpgsqlCommand(
+                                            @"INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"") 
+                                      VALUES (@MeterId, @Timestamp, @Value, @Quality) 
+                                      ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING",
+                                            pgConnection, transaction);
+
+                                        insertCmd.Parameters.AddWithValue("@MeterId", meterId.Value);
+                                        insertCmd.Parameters.AddWithValue("@Timestamp", reading.timestamp);
+                                        insertCmd.Parameters.AddWithValue("@Value", reading.value);
+                                        insertCmd.Parameters.AddWithValue("@Quality", reading.quality);
+
+                                        await insertCmd.ExecuteNonQueryAsync();
+                                    }
+
+                                    await transaction.CommitAsync();
+                                    totalReadingsImported += readings.Count;
+                                    totalMetersProcessed++;
+
+                                    _logger.LogInformation($"Successfully imported {readings.Count} readings for meter {meterName}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    await transaction.RollbackAsync();
+                                    _logger.LogError(ex, $"Error inserting readings for meter {meterName}");
+                                    errorMeters.Add(meterName);
+                                    detailedErrors[meterName] = ex.Message;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation($"No readings found for meter {meterName}");
+                            totalMetersProcessed++;
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error getting sample readings from SQL Server");
-                        return Json(new { success = false, error = $"Error retrieving sample readings: {ex.Message}" });
-                    }
-
-                    // Try to insert a single sample reading
-                    try
-                    {
-                        using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                        {
-                            await connection.OpenAsync();
-
-                            // Use hard-coded test values for a direct test
-                            DateTime now = DateTime.UtcNow;
-
-                            using var cmd = new NpgsqlCommand(
-                                @"INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"")
-                          VALUES (@MeterId, @Timestamp, @Value, @Quality)", connection);
-
-                            cmd.Parameters.AddWithValue("@MeterId", meterId.Value);
-                            cmd.Parameters.AddWithValue("@Timestamp", now);
-                            cmd.Parameters.AddWithValue("@Value", 42.0);
-                            cmd.Parameters.AddWithValue("@Quality", 100);
-
-                            int rowsAffected = await cmd.ExecuteNonQueryAsync();
-                            _logger.LogInformation($"Test insert result: {rowsAffected} rows affected");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error inserting test reading to PostgreSQL");
-                        return Json(new
-                        {
-                            success = false,
-                            error = $"Error inserting test reading: {ex.Message}",
-                            details = $"Stack trace: {ex.StackTrace}"
-                        });
+                        _logger.LogError(ex, $"Error processing meter {meterName}");
+                        errorMeters.Add(meterName);
+                        detailedErrors[meterName] = ex.Message;
                     }
                 }
 
-                // Return information about what we found, not a real import yet
+                _logger.LogInformation($"Import completed: {totalReadingsImported} readings imported from {totalMetersProcessed} meters");
+
                 return Json(new
                 {
-                    success = true,
-                    message = "Debugging complete - check server logs for details",
-                    meterCount = request.MeterNames.Count,
-                    tableName = request.TableName
+                    success = errorMeters.Count == 0,
+                    totalReadingsImported = totalReadingsImported,
+                    totalMetersProcessed = totalMetersProcessed,
+                    errorMeters = errorMeters,
+                    detailedErrors = detailedErrors,
+                    message = $"Successfully imported {totalReadingsImported} readings from {totalMetersProcessed} meters."
                 });
             }
             catch (Exception ex)
