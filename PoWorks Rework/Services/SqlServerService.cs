@@ -109,7 +109,8 @@ namespace PoWorks_Rework.Services
             return tables;
         }
 
-        public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName)
+        // Services/SqlServerService.cs - Fixed GetDistinctMeterNames method with corrected SQL syntax
+        public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName, int? limit = null)
         {
             if (!IsInitialized)
                 throw new InvalidOperationException("SQL Server connection is not initialized.");
@@ -128,37 +129,70 @@ namespace PoWorks_Rework.Services
                 {
                     await connection.OpenAsync();
 
-                    // In PCVue HDS, meters are typically stored with a NAME column
-                    // Adjust this query based on your actual HDS table structure
-                    string sql = $@"
+                    // Build the SQL query with proper syntax for SQL Server
+                    string sql;
+                    if (limit.HasValue && limit.Value > 0)
+                    {
+                        // Use subquery approach for TOP with DISTINCT
+                        sql = $@"
+                    SELECT TOP ({limit.Value}) NAME 
+                    FROM (
                         SELECT DISTINCT NAME 
-                        FROM {tableName}
+                        FROM [{tableName}]
                         WHERE NAME IS NOT NULL
-                        ORDER BY NAME";
+                    ) AS DistinctNames
+                    ORDER BY NAME";
+                    }
+                    else
+                    {
+                        sql = $@"
+                    SELECT DISTINCT NAME 
+                    FROM [{tableName}]
+                    WHERE NAME IS NOT NULL
+                    ORDER BY NAME";
+                    }
+
+                    _logger.LogInformation($"Executing SQL query with limit {limit}: {sql}");
 
                     using (var command = new SqlCommand(sql, connection))
                     {
+                        // Set command timeout to handle large datasets
+                        command.CommandTimeout = 60; // 60 seconds
+
                         using (var reader = await command.ExecuteReaderAsync())
                         {
                             while (await reader.ReadAsync())
                             {
-                                meters.Add(new HDSMeterItem
+                                var meterName = reader.GetString(0);
+
+                                // Skip empty or whitespace-only meter names
+                                if (!string.IsNullOrWhiteSpace(meterName))
                                 {
-                                    HdsMeterName = reader.GetString(0),
-                                    Type = "Main", // Default to Main
-                                    Active = true,
-                                    IsSelected = true
-                                });
+                                    meters.Add(new HDSMeterItem
+                                    {
+                                        HdsMeterName = meterName.Trim(),
+                                        Type = "Main", // Default to Main
+                                        Active = true,
+                                        IsSelected = true
+                                    });
+                                }
                             }
                         }
                     }
                 }
 
-                _logger.LogInformation($"Found {meters.Count} distinct meter names in table {tableName}");
+                _logger.LogInformation($"Found {meters.Count} distinct meter names in table {tableName} (limit: {limit})");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting distinct meter names from table {tableName}");
+                _logger.LogError(ex, $"Error getting distinct meter names from table {tableName} with limit {limit}");
+
+                // Log the specific SQL error for debugging
+                if (ex.Message.Contains("Incorrect syntax"))
+                {
+                    _logger.LogError($"SQL Syntax Error - Table name: {tableName}, Limit: {limit}");
+                }
+
                 throw;
             }
 
@@ -167,7 +201,10 @@ namespace PoWorks_Rework.Services
             {
                 _logger.LogWarning($"No meters found in table {tableName}, creating sample meters for development");
 
-                for (int i = 1; i <= 15; i++)
+                // Apply limit to sample data as well
+                int sampleCount = limit.HasValue && limit.Value > 0 ? Math.Min(limit.Value, 15) : 15;
+
+                for (int i = 1; i <= sampleCount; i++)
                 {
                     var prefix = i % 3 == 0 ? "FLOW_" : (i % 3 == 1 ? "PRESSURE_" : "TEMP_");
                     meters.Add(new HDSMeterItem
@@ -185,12 +222,61 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
+        // Enhanced table name validation
         private bool IsValidTableName(string tableName)
         {
-            // Simple validation to prevent SQL injection
-            // Only allow alphanumeric characters, underscores, and optional square brackets
+            if (string.IsNullOrWhiteSpace(tableName))
+                return false;
+
+            // Remove brackets if present for validation
+            var cleanTableName = tableName.Trim('[', ']');
+
+            // Allow alphanumeric characters, underscores, and dots (for schema.table format)
+            // Also allow spaces if the table name will be bracketed
             return System.Text.RegularExpressions.Regex.IsMatch(
-                tableName, @"^(\[?[a-zA-Z0-9_]+\]?)|(\[?[a-zA-Z0-9_]+\]?\.\[?[a-zA-Z0-9_]+\]?)$");
+                cleanTableName, @"^[a-zA-Z0-9_\s\.]+$");
+        }
+
+        // Alternative method to get table schema and validate table exists
+        public async Task<bool> ValidateTableExists(string tableName)
+        {
+            if (!IsInitialized)
+                return false;
+
+            try
+            {
+                using (var connection = new SqlConnection(_currentSettings.ToConnectionString()))
+                {
+                    await connection.OpenAsync();
+
+                    // Check if table exists in the database
+                    string sql = @"
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_NAME = @TableName 
+                AND TABLE_TYPE = 'BASE TABLE'";
+
+                    using (var command = new SqlCommand(sql, connection))
+                    {
+                        // Extract just the table name without schema or brackets
+                        var cleanTableName = tableName.Trim('[', ']');
+                        if (cleanTableName.Contains("."))
+                        {
+                            cleanTableName = cleanTableName.Split('.').Last();
+                        }
+
+                        command.Parameters.AddWithValue("@TableName", cleanTableName);
+
+                        var result = await command.ExecuteScalarAsync();
+                        return Convert.ToInt32(result) > 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error validating table existence for {tableName}");
+                return false;
+            }
         }
     }
 }

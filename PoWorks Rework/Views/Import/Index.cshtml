@@ -306,167 +306,321 @@
                 });
         }
 
-        // Load meters from HDS
-        function loadMetersFromHds() {
-            const tableName = document.getElementById('hdsTable').value;
-            if (!tableName) {
-                alert('Please select an HDS table first');
-                return;
-            }
-
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            const limit = document.getElementById('limit').value;
-
-            // Show meter selection section and set loading state
-            document.getElementById('meterSelectionSection').classList.remove('d-none');
-            document.getElementById('metersTableBody').innerHTML = '<tr><td colspan="6" class="text-center">Loading meters...</td></tr>';
-
-            // Build query parameters
-            const params = new URLSearchParams({
-                tableName: tableName,
-                limit: limit
-            });
-
-            if (startDate) params.append('startDate', startDate);
-            if (endDate) params.append('endDate', endDate);
-
-            // Fetch meters from the server
-            fetch(`/Import/GetMetersFromTable?${params}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.meters) {
-                        // Store parent options for later use
-                        window.parentOptions = data.parentOptions || [];
-
-                        // Populate table with meters
-                        renderMetersTable(data.meters);
-
-                        // Update filter status
-                        document.getElementById('meterFilterStatus').textContent =
-                            `Showing ${data.meters.length} of ${data.meters.length} meters`;
-                    } else {
-                        console.error('Error loading meters:', data.error || 'No meters returned');
-                        document.getElementById('metersTableBody').innerHTML =
-                            '<tr><td colspan="6" class="text-center">Error loading meters</td></tr>';
+                             function loadMetersFromHds() {
+                    const tableName = document.getElementById('hdsTable').value;
+                    if (!tableName) {
+                        alert('Please select an HDS table first');
+                        return;
                     }
-                })
-                .catch(error => {
-                    console.error('Error fetching meters:', error);
-                    document.getElementById('metersTableBody').innerHTML =
-                        '<tr><td colspan="6" class="text-center">Error loading meters</td></tr>';
-                });
-        }
 
-        // Render meters table with fetched data
-        function renderMetersTable(meters) {
-            const tbody = document.getElementById('metersTableBody');
-            tbody.innerHTML = '';
+                    const startDate = document.getElementById('startDate').value;
+                    const endDate = document.getElementById('endDate').value;
+                    let limit = parseInt(document.getElementById('limit').value) || 1000;
 
-            if (!meters || meters.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No meters found</td></tr>';
-                return;
-            }
+                    // Validate and sanitize limit
+                    if (limit <= 0) {
+                        limit = 1000;
+                        document.getElementById('limit').value = limit;
+                        alert('Limit must be greater than 0. Setting to default value of 1000.');
+                    }
 
-            meters.forEach((meter, index) => {
-                const row = document.createElement('tr');
+                    if (limit > 10000) {
+                        limit = 10000;
+                        document.getElementById('limit').value = limit;
+                        alert('Limit reduced to maximum allowed value of 10,000 for performance reasons.');
+                    }
 
-                // Import checkbox cell
-                const checkboxCell = document.createElement('td');
-                checkboxCell.className = 'text-center';
-                checkboxCell.innerHTML = `
-                    <div class="form-check d-flex justify-content-center">
-                        <input class="form-check-input meter-checkbox" type="checkbox"
-                               id="meter_${index}" checked>
-                    </div>
-                `;
+                    console.log(`Loading meters with limit: ${limit} from table: ${tableName}`);
 
-                // Meter name cell
-                const nameCell = document.createElement('td');
-                nameCell.textContent = meter.hdsMeterName;
+                    // Show meter selection section and set loading state
+                    document.getElementById('meterSelectionSection').classList.remove('d-none');
+                    document.getElementById('metersTableBody').innerHTML = `
+                        <tr>
+                            <td colspan="6" class="text-center">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                Loading meters from '${tableName}' (limit: ${limit})...
+                            </td>
+                        </tr>`;
 
-                // Unit cell
-                const unitCell = document.createElement('td');
-                unitCell.innerHTML = `
-                    <input type="text" class="form-control form-control-sm meter-unit"
-                           value="${meter.unit || ''}">
-                `;
-
-                // Parent meter cell
-                const parentCell = document.createElement('td');
-                let parentOptionsHtml = '<option value="">None</option>';
-
-                if (window.parentOptions && window.parentOptions.length > 0) {
-                    window.parentOptions.forEach(option => {
-                        const selected = option.value === meter.parentMeterId ? 'selected' : '';
-                        parentOptionsHtml += `<option value="${option.value}" ${selected}>${option.text}</option>`;
+                    // Build query parameters
+                    const params = new URLSearchParams({
+                        tableName: tableName,
+                        limit: limit.toString()
                     });
+
+                    if (startDate) params.append('startDate', startDate);
+                    if (endDate) params.append('endDate', endDate);
+
+                    // Update the button to show loading state
+                    const loadBtn = document.getElementById('loadMetersBtn');
+                    const originalText = loadBtn.innerHTML;
+                    loadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+                    loadBtn.disabled = true;
+
+                    // Fetch meters from the server
+                    fetch(`/Import/GetMetersFromTable?${params}`)
+                        .then(response => {
+                            console.log(`Response status: ${response.status}`);
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('Server response:', data);
+
+                            // Reset button
+                            loadBtn.innerHTML = originalText;
+                            loadBtn.disabled = false;
+
+                            if (data.success && data.meters) {
+                                // Store parent options for later use
+                                window.parentOptions = data.parentOptions || [];
+
+                                // Show information about the results
+                                console.log(`Retrieved ${data.actualCount} meters (requested limit: ${data.requestedLimit})`);
+
+                                // Populate table with meters
+                                renderMetersTable(data.meters);
+
+                                // Update status with comprehensive information
+                                let statusMsg = `Loaded ${data.actualCount} meters`;
+                                if (data.actualCount === data.requestedLimit) {
+                                    statusMsg += ` (limit reached - more may be available)`;
+
+                                    // Show info alert if limit was reached
+                                    setTimeout(() => {
+                                        if (confirm(`Loaded ${data.actualCount} meters (limit reached). There may be more meters available. Would you like to increase the limit and reload?`)) {
+                                            // Suggest doubling the limit
+                                            const newLimit = Math.min(data.requestedLimit * 2, 10000);
+                                            document.getElementById('limit').value = newLimit;
+                                            // Don't auto-reload, let user decide
+                                        }
+                                    }, 1000);
+                                } else if (data.actualCount < data.requestedLimit) {
+                                    statusMsg += ` (all available meters loaded)`;
+                                }
+
+                                document.getElementById('meterFilterStatus').textContent = statusMsg;
+
+                            } else {
+                                // Handle server-side errors
+                                console.error('Server returned error:', data);
+
+                                let errorMsg = 'Error loading meters';
+                                if (data.error) {
+                                    errorMsg += `: ${data.error}`;
+                                }
+
+                                // Show detailed error information
+                                let errorDetails = '';
+                                if (data.sqlErrorNumber) {
+                                    errorDetails = `SQL Error ${data.sqlErrorNumber}`;
+                                }
+                                if (data.details) {
+                                    console.error('Error details:', data.details);
+                                }
+
+                                document.getElementById('metersTableBody').innerHTML = `
+                                    <tr>
+                                        <td colspan="6" class="text-center text-danger">
+                                            <div class="alert alert-danger mb-0">
+                                                <strong>Error:</strong> ${errorMsg}
+                                                ${errorDetails ? `<br><small>${errorDetails}</small>` : ''}
+                                                <br><small>Check the console for more details or try a different table.</small>
+                                            </div>
+                                        </td>
+                                    </tr>`;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Network or parsing error:', error);
+
+                            // Reset button
+                            loadBtn.innerHTML = originalText;
+                            loadBtn.disabled = false;
+
+                            // Show user-friendly error message
+                            let errorMsg = 'Failed to load meters';
+                            if (error.message.includes('HTTP 500')) {
+                                errorMsg = 'Server error - please check the table name and try again';
+                            } else if (error.message.includes('HTTP 404')) {
+                                errorMsg = 'Service not found - please check your connection';
+                            } else if (error.message.includes('NetworkError') || error.message.includes('fetch')) {
+                                errorMsg = 'Network error - please check your connection';
+                            } else {
+                                errorMsg += `: ${error.message}`;
+                            }
+
+                            document.getElementById('metersTableBody').innerHTML = `
+                                <tr>
+                                    <td colspan="6" class="text-center text-danger">
+                                        <div class="alert alert-danger mb-0">
+                                            <strong>Connection Error:</strong> ${errorMsg}
+                                            <br><small>Please check your network connection and try again.</small>
+                                        </div>
+                                    </td>
+                                </tr>`;
+                        });
                 }
 
-                parentCell.innerHTML = `
-                    <select class="form-select form-select-sm meter-parent">
-                        ${parentOptionsHtml}
-                    </select>
-                `;
+                       function renderMetersTable(meters) {
+                    const tbody = document.getElementById('metersTableBody');
+                    tbody.innerHTML = '';
 
-                // Type cell
-                const typeCell = document.createElement('td');
-                const isSubType = (meter.type || '').toLowerCase() === 'sub';
-                typeCell.innerHTML = `
-                    <select class="form-select form-select-sm meter-type">
-                        <option value="main" ${!isSubType ? 'selected' : ''}>Main</option>
-                        <option value="sub" ${isSubType ? 'selected' : ''}>Sub</option>
-                    </select>
-                `;
+                    if (!meters || meters.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No meters found</td></tr>';
+                        return;
+                    }
 
-                // Active cell
-                const activeCell = document.createElement('td');
-                activeCell.className = 'text-center';
-                activeCell.innerHTML = `
-                    <div class="form-check d-flex justify-content-center">
-                        <input class="form-check-input meter-active" type="checkbox"
-                               id="active_${index}" ${meter.active ? 'checked' : ''}>
-                    </div>
-                `;
+                    // Add a header row with limit information if we have the maximum number of meters
+                    const limit = parseInt(document.getElementById('limit').value) || 1000;
+                    if (meters.length === limit) {
+                        const headerRow = document.createElement('tr');
+                        headerRow.className = 'table-warning';
+                        headerRow.innerHTML = `
+                            <td colspan="6" class="text-center">
+                                <small><strong>Note:</strong> Showing ${meters.length} meters (limit reached).
+                                There may be more meters available. Increase the limit to see more.</small>
+                            </td>
+                        `;
+                        tbody.appendChild(headerRow);
+                    }
 
-                // Append cells to row
-                row.appendChild(checkboxCell);
-                row.appendChild(nameCell);
-                row.appendChild(unitCell);
-                row.appendChild(parentCell);
-                row.appendChild(typeCell);
-                row.appendChild(activeCell);
+                    meters.forEach((meter, index) => {
+                        const row = document.createElement('tr');
 
-                // Append row to table
-                tbody.appendChild(row);
-            });
+                        // Import checkbox cell
+                        const checkboxCell = document.createElement('td');
+                        checkboxCell.className = 'text-center';
+                        checkboxCell.innerHTML = `
+                            <div class="form-check d-flex justify-content-center">
+                                <input class="form-check-input meter-checkbox" type="checkbox"
+                                       id="meter_${index}" checked>
+                            </div>
+                        `;
 
-            // Update meter count
-            updateMeterCount();
-        }
+                        // Meter name cell
+                        const nameCell = document.createElement('td');
+                        nameCell.textContent = meter.hdsMeterName;
+                        nameCell.title = `Meter ${index + 1} of ${meters.length}`;
+
+                        // Unit cell
+                        const unitCell = document.createElement('td');
+                        unitCell.innerHTML = `
+                            <input type="text" class="form-control form-control-sm meter-unit"
+                                   value="${meter.unit || ''}" placeholder="Unit">
+                        `;
+
+                        // Parent meter cell
+                        const parentCell = document.createElement('td');
+                        let parentOptionsHtml = '<option value="">None</option>';
+
+                        if (window.parentOptions && window.parentOptions.length > 0) {
+                            window.parentOptions.forEach(option => {
+                                const selected = option.value === meter.parentMeterId ? 'selected' : '';
+                                parentOptionsHtml += `<option value="${option.value}" ${selected}>${option.text}</option>`;
+                            });
+                        }
+
+                        parentCell.innerHTML = `
+                            <select class="form-select form-select-sm meter-parent">
+                                ${parentOptionsHtml}
+                            </select>
+                        `;
+
+                        // Type cell
+                        const typeCell = document.createElement('td');
+                        const isSubType = (meter.type || '').toLowerCase() === 'sub';
+                        typeCell.innerHTML = `
+                            <select class="form-select form-select-sm meter-type">
+                                <option value="main" ${!isSubType ? 'selected' : ''}>Main</option>
+                                <option value="sub" ${isSubType ? 'selected' : ''}>Sub</option>
+                            </select>
+                        `;
+
+                        // Active cell
+                        const activeCell = document.createElement('td');
+                        activeCell.className = 'text-center';
+                        activeCell.innerHTML = `
+                            <div class="form-check d-flex justify-content-center">
+                                <input class="form-check-input meter-active" type="checkbox"
+                                       id="active_${index}" ${meter.active ? 'checked' : ''}>
+                            </div>
+                        `;
+
+                        // Append cells to row
+                        row.appendChild(checkboxCell);
+                        row.appendChild(nameCell);
+                        row.appendChild(unitCell);
+                        row.appendChild(parentCell);
+                        row.appendChild(typeCell);
+                        row.appendChild(activeCell);
+
+                        // Append row to table
+                        tbody.appendChild(row);
+                    });
+
+                    // Update meter count
+                    updateMeterCount();
+                }
 
         // Update meter selection count
-        function updateMeterCount() {
-            const total = document.querySelectorAll('.meter-checkbox').length;
-            const selected = document.querySelectorAll('.meter-checkbox:checked').length;
+                      // Enhanced updateMeterCount function for Views/Import/Index.cshtml
+                function updateMeterCount() {
+                    const total = document.querySelectorAll('.meter-checkbox').length;
+                    const selected = document.querySelectorAll('.meter-checkbox:checked').length;
+                    const limit = parseInt(document.getElementById('limit').value) || 1000;
 
-            document.getElementById('meterFilterStatus').textContent =
-                `Selected ${selected} of ${total} meters`;
+                    // Create a comprehensive status message
+                    let statusMessage = `Selected ${selected} of ${total} meters`;
 
-            // Update import button text
-            const importBtn = document.getElementById('importSelectedBtn');
-            if (importBtn) {
-                importBtn.textContent = selected > 0 ?
-                    `Import Selected (${selected})` : 'Import Selected';
-            }
+                    if (total === limit) {
+                        statusMessage += ` (limit reached - may be more available)`;
+                    } else if (total < limit) {
+                        statusMessage += ` (${limit - total} under limit)`;
+                    }
 
-            // Update print button text
-            const printBtn = document.getElementById('printSelectedBtn');
-            if (printBtn) {
-                printBtn.textContent = selected > 0 ?
-                    `Print Selected (${selected})` : 'Print Selected';
-            }
-        }
+                    // Update the status display
+                    const statusElement = document.getElementById('meterFilterStatus');
+                    if (statusElement) {
+                        statusElement.textContent = statusMessage;
+
+                        // Add visual indicator if limit was reached
+                        if (total === limit) {
+                            statusElement.className = 'input-group-text text-warning';
+                            statusElement.title = 'Limit reached. Increase limit to see more meters.';
+                        } else {
+                            statusElement.className = 'input-group-text';
+                            statusElement.title = '';
+                        }
+                    }
+
+                    // Update import button text with selection info
+                    const importBtn = document.getElementById('importSelectedBtn');
+                    if (importBtn) {
+                        if (selected > 0) {
+                            importBtn.innerHTML = `<i class="bi bi-cloud-upload"></i> Import Selected (${selected})`;
+                        } else {
+                            importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected';
+                        }
+                    }
+
+                    // Update print button text with selection info
+                    const printBtn = document.getElementById('printSelectedBtn');
+                    if (printBtn) {
+                        if (selected > 0) {
+                            printBtn.innerHTML = `<i class="bi bi-printer"></i> Print Selected (${selected})`;
+                        } else {
+                            printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Selected';
+                        }
+                    }
+
+                    // Log the current state for debugging
+                    console.log(`Meter count updated: ${selected}/${total} selected, limit: ${limit}`);
+                }
 
         // Select all meters
         function selectAllMeters() {

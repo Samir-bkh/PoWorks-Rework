@@ -1,0 +1,277 @@
+﻿@model PoWorks_Rework.Models.MeterReadingsViewModel
+
+<!-- Readings Table -->
+<div class="card">
+    <div class="card-header bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+                @Model.ViewTypeDisplayName
+                @if (Model.SelectedMeterId.HasValue)
+                {
+                    <span class="text-muted">- @Model.SelectedMeterName</span>
+                }
+            </h6>
+            <div class="d-flex align-items-center">
+                <span class="me-3" id="loadingIndicator" style="display: none;">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </span>
+                <span class="text-muted">
+                    Showing @Model.StartItemNumber-@Model.EndItemNumber of @Model.TotalItems readings
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        @if (Model.Readings.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="readingsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Meter</th>
+                            <th>Timestamp</th>
+                            <th class="text-end">Value</th>
+                            @if (Model.ViewType == "raw")
+                            {
+                                <th class="text-center">Quality</th>
+                            }
+                            else
+                            {
+                                <th class="text-end">Min</th>
+                                <th class="text-end">Max</th>
+                                <th class="text-end">Count</th>
+                                @if (Model.ViewType != "yearly")
+                                {
+                                    <th class="text-end">Sum</th>
+                                }
+                            }
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var reading in Model.Readings)
+                        {
+                            <tr data-reading-id="@reading.ReadingId" data-meter-id="@reading.MeterId">
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <span class="fw-medium">@reading.MeterName</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="font-monospace">@reading.GetDateDisplay(Model.ViewType)</span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="fw-bold">@reading.FormattedValue</span>
+                                </td>
+                                @if (Model.ViewType == "raw")
+                                {
+                                    <td class="text-center">
+                                        @if (reading.Quality.HasValue)
+                                        {
+                                            <span class="@reading.QualityBadgeClass">@reading.QualityDescription</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Unknown</span>
+                                        }
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td class="text-end">
+                                        @if (reading.MinValue.HasValue)
+                                        {
+                                            <span class="text-muted">@reading.MinValue.Value.ToString("N2")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (reading.MaxValue.HasValue)
+                                        {
+                                            <span class="text-muted">@reading.MaxValue.Value.ToString("N2")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (reading.ReadingCount.HasValue)
+                                        {
+                                            <span class="badge bg-info">@reading.ReadingCount</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    @if (Model.ViewType != "yearly")
+                                    {
+                                        <td class="text-end">
+                                            @if (reading.SumValue.HasValue)
+                                            {
+                                                <span class="text-muted">@reading.SumValue.Value.ToString("N2")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                    }
+                                }
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-primary btn-sm"
+                                                title="View Details" onclick="viewReadingDetails(@reading.ReadingId)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        @if (Model.ViewType != "raw")
+                                        {
+                                            <button type="button" class="btn btn-outline-info btn-sm"
+                                                    title="View Raw Data" onclick="viewRawReadings(@reading.MeterId, '@reading.Timestamp.ToString("yyyy-MM-dd")')">
+                                                <i class="bi bi-list-ul"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center p-5">
+                <div class="mb-3">
+                    <i class="bi bi-graph-up-arrow display-1 text-muted"></i>
+                </div>
+                <h5 class="text-muted">No readings found</h5>
+                <p class="text-muted">
+                    @if (Model.SelectedMeterId.HasValue)
+                    {
+                        <span>No readings available for the selected meter and date range.</span>
+                    }
+                    else
+                    {
+                        <span>Try selecting a specific meter or adjusting the date range.</span>
+                    }
+                </p>
+                <button type="button" class="btn btn-primary" onclick="MeterReadings.clearFilters()">
+                    <i class="bi bi-funnel"></i> Clear Filters
+                </button>
+            </div>
+        }
+    </div>
+
+    <!-- Pagination Footer -->
+    @if (Model.TotalPages > 1)
+    {
+        <div class="card-footer">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <nav aria-label="Readings pagination">
+                        <ul class="pagination mb-0">
+                            <!-- First Page -->
+                            <li class="page-item @(Model.CurrentPage == 1 ? "disabled" : "")">
+                                <button class="page-link" onclick="MeterReadings.goToPage(1)"
+                                @(Model.CurrentPage == 1 ? "disabled" : "") aria-label="First">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </button>
+                            </li>
+
+                            <!-- Previous Page -->
+                            <li class="page-item @(Model.HasPreviousPage ? "" : "disabled")">
+                                <button class="page-link" onclick="MeterReadings.goToPage(@(Model.CurrentPage - 1))"
+                                @(Model.HasPreviousPage ? "" : "disabled") aria-label="Previous">
+                                    <span aria-hidden="true">&lsaquo;</span>
+                                </button>
+                            </li>
+
+                            @{
+                                int startPage = Math.Max(1, Model.CurrentPage - 2);
+                                int endPage = Math.Min(Model.TotalPages, startPage + 4);
+                                startPage = Math.Max(1, endPage - 4);
+                            }
+
+                            <!-- Page Numbers -->
+                            @for (int i = startPage; i <= endPage; i++)
+                            {
+                                <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
+                                    <button class="page-link" onclick="MeterReadings.goToPage(@i)">@i</button>
+                                </li>
+                            }
+
+                            <!-- Next Page -->
+                            <li class="page-item @(Model.HasNextPage ? "" : "disabled")">
+                                <button class="page-link" onclick="MeterReadings.goToPage(@(Model.CurrentPage + 1))"
+                                @(Model.HasNextPage ? "" : "disabled") aria-label="Next">
+                                    <span aria-hidden="true">&rsaquo;</span>
+                                </button>
+                            </li>
+
+                            <!-- Last Page -->
+                            <li class="page-item @(Model.CurrentPage == Model.TotalPages ? "disabled" : "")">
+                                <button class="page-link" onclick="MeterReadings.goToPage(@Model.TotalPages)"
+                                @(Model.CurrentPage == Model.TotalPages ? "disabled" : "") aria-label="Last">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+
+                <!-- Page Info and Quick Jump -->
+                <div class="d-flex align-items-center">
+                    <span class="me-3 text-muted">
+                        Page @Model.CurrentPage of @Model.TotalPages
+                    </span>
+                    <div class="input-group" style="width: 120px;">
+                        <input type="number" class="form-control form-control-sm"
+                               id="quickJumpPage" placeholder="Page" min="1" max="@Model.TotalPages">
+                        <button class="btn btn-outline-secondary btn-sm" type="button"
+                                onclick="MeterReadings.quickJumpToPage()">
+                            Go
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else if (Model.Readings.Any())
+    {
+        <div class="card-footer">
+            <div class="text-center text-muted">
+                <small>Showing all @Model.TotalItems readings</small>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Reading Details Modal -->
+<div class="modal fade" id="readingDetailsModal" tabindex="-1" aria-labelledby="readingDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="readingDetailsModalLabel">Reading Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="readingDetailsContent">
+                <!-- Content will be loaded dynamically -->
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

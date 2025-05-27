@@ -1,191 +1,264 @@
-﻿// Views/Meter/Readings.cshtml
-@model PoWorks_Rework.Models.MeterReadingsViewModel
+﻿@model PoWorks_Rework.Models.MeterReadingsViewModel
 @{
     ViewData["Title"] = "Meter Readings";
 }
 
+<!-- Status Messages -->
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @TempData["ErrorMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h4>Meters</h4>
+        <h4>Meter Readings - @Model.ViewTypeDisplayName</h4>
         <div>
-            <button type="button" class="btn btn-primary">Import / Export</button>
+            <button type="button" class="btn btn-outline-primary me-2" id="refreshBtn">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button type="button" class="btn btn-primary" id="exportBtn">
+                <i class="bi bi-download"></i> Export
+            </button>
         </div>
     </div>
     <div class="card-body">
-        <!-- Tabs -->
-        <ul class="nav nav-tabs mb-4">
-            <li class="nav-item">
-                <a class="nav-link active" asp-controller="Meter" asp-action="Readings">Meter Readings</a>
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs mb-4" id="readingsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(Model.ViewType == "raw" ? "active" : "")"
+                        id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw-tab-pane"
+                        type="button" role="tab" aria-controls="raw-tab-pane"
+                        aria-selected="@(Model.ViewType == "raw" ? "true" : "false")"
+                        data-view-type="raw">
+                    <i class="bi bi-list-ul"></i> Raw Readings
+                </button>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" asp-controller="Meter" asp-action="Management">Meter Management</a>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(Model.ViewType == "daily" ? "active" : "")"
+                        id="daily-tab" data-bs-toggle="tab" data-bs-target="#daily-tab-pane"
+                        type="button" role="tab" aria-controls="daily-tab-pane"
+                        aria-selected="@(Model.ViewType == "daily" ? "true" : "false")"
+                        data-view-type="daily">
+                    <i class="bi bi-calendar-day"></i> Daily
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(Model.ViewType == "monthly" ? "active" : "")"
+                        id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly-tab-pane"
+                        type="button" role="tab" aria-controls="monthly-tab-pane"
+                        aria-selected="@(Model.ViewType == "monthly" ? "true" : "false")"
+                        data-view-type="monthly">
+                    <i class="bi bi-calendar-month"></i> Monthly
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(Model.ViewType == "yearly" ? "active" : "")"
+                        id="yearly-tab" data-bs-toggle="tab" data-bs-target="#yearly-tab-pane"
+                        type="button" role="tab" aria-controls="yearly-tab-pane"
+                        aria-selected="@(Model.ViewType == "yearly" ? "true" : "false")"
+                        data-view-type="yearly">
+                    <i class="bi bi-calendar-year"></i> Yearly
+                </button>
             </li>
         </ul>
 
-        <!-- Meter Readings Table -->
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Parent</th>
-                        <th>Type</th>
-                        <th>Unit</th>
-                        <th>Last Reading</th>
-                        <th>Tenant</th>
-                        <th>Active</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Meter1000</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td>66666</td>
-                        <td>579652</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0001</td>
-                        <td>Meter1000</td>
-                        <td>Main</td>
-                        <td>1155</td>
-                        <td>576967</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0002</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>579705</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0003</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>584253</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0004</td>
-                        <td>Meter1000</td>
-                        <td>Main</td>
-                        <td>8888</td>
-                        <td>580946</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0005</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>585210</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0006</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>581283</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0007</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>588900</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0008</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>583696</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0009</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>578641</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0010</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>587118</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                    <tr>
-                        <td>Meter0011</td>
-                        <td></td>
-                        <td>Main</td>
-                        <td></td>
-                        <td>572079</td>
-                        <td></td>
-                        <td class="text-center"><i class="bi bi-check"></i></td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Filters Section -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h6 class="mb-0">Filters</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="meterSelect" class="form-label">Select Meter</label>
+                        <select class="form-select" id="meterSelect">
+                            <option value="">All Meters</option>
+                            @foreach (var meter in Model.AvailableMeters)
+                            {
+                                <option value="@meter.MeterId"
+                                        selected="@(Model.SelectedMeterId == meter.MeterId)">
+                                    @meter.FullDisplayName
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="startDate" class="form-label">Start Date</label>
+                        <input type="datetime-local" class="form-control" id="startDate"
+                               value="@(Model.StartDate?.ToString("yyyy-MM-ddTHH:mm"))">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="endDate" class="form-label">End Date</label>
+                        <input type="datetime-local" class="form-control" id="endDate"
+                               value="@(Model.EndDate?.ToString("yyyy-MM-ddTHH:mm"))">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="pageSize" class="form-label">Page Size</label>
+                        <select class="form-select" id="pageSize">
+                            <option value="25" selected="@(Model.PageSize == 25)">25</option>
+                            <option value="50" selected="@(Model.PageSize == 50)">50</option>
+                            <option value="100" selected="@(Model.PageSize == 100)">100</option>
+                            <option value="200" selected="@(Model.PageSize == 200)">200</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12 text-end">
+                        <button type="button" class="btn btn-outline-secondary me-2" id="clearFiltersBtn">
+                            <i class="bi bi-x-circle"></i> Clear Filters
+                        </button>
+                        <button type="button" class="btn btn-primary" id="applyFiltersBtn">
+                            <i class="bi bi-funnel"></i> Apply Filters
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Pagination -->
-        <div class="d-flex justify-content-between align-items-center mt-3">
-            <nav aria-label="Page navigation">
-                <ul class="pagination">
-                    <li class="page-item">
-                        <a class="page-link" href="#" aria-label="First">
-                            <span aria-hidden="true">&laquo;</span>
-                        </a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="#" aria-label="Previous">
-                            <span aria-hidden="true">&lsaquo;</span>
-                        </a>
-                    </li>
-                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                    <li class="page-item"><a class="page-link" href="#">2</a></li>
-                    <li class="page-item"><a class="page-link" href="#">3</a></li>
-                    <li class="page-item"><a class="page-link" href="#">4</a></li>
-                    <li class="page-item"><a class="page-link" href="#">5</a></li>
-                    <li class="page-item"><a class="page-link" href="#">6</a></li>
-                    <li class="page-item"><a class="page-link" href="#">7</a></li>
-                    <li class="page-item"><a class="page-link" href="#">8</a></li>
-                    <li class="page-item">
-                        <a class="page-link" href="#" aria-label="Next">
-                            <span aria-hidden="true">&rsaquo;</span>
-                        </a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="#" aria-label="Last">
-                            <span aria-hidden="true">&raquo;</span>
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-            <div>
-                <span class="text-muted">1 of 85 pages (1011 items)</span>
+        <!-- Statistics Panel (shown when meter is selected) -->
+        <div id="statsPanel" class="card mb-4" style="@(Model.SelectedMeterId.HasValue ? "" : "display: none;")">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-graph-up"></i> Statistics for @Model.SelectedMeterName
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="fs-4 fw-bold text-primary" id="statReadingCount">@Model.MeterStats.ReadingCount</div>
+                            <small class="text-muted">Total Readings</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="fs-4 fw-bold text-success" id="statMinValue">@Model.MeterStats.FormattedMinValue</div>
+                            <small class="text-muted">Minimum</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="fs-4 fw-bold text-warning" id="statAvgValue">@Model.MeterStats.FormattedAvgValue</div>
+                            <small class="text-muted">Average</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="fs-4 fw-bold text-danger" id="statMaxValue">@Model.MeterStats.FormattedMaxValue</div>
+                            <small class="text-muted">Maximum</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="fs-6 fw-bold" id="statFirstReading">@Model.MeterStats.FormattedFirstReading</div>
+                            <small class="text-muted">First Reading</small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="fs-6 fw-bold @Model.MeterStats.DataStatusClass" id="statLastReading">@Model.MeterStats.FormattedLastReading</div>
+                            <small class="text-muted">Last Reading</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="readingsTabContent">
+            <!-- All tab panes use the same structure, just different data -->
+            <div class="tab-pane fade @(Model.ViewType == "raw" ? "show active" : "")"
+                 id="raw-tab-pane" role="tabpanel" aria-labelledby="raw-tab" tabindex="0">
+                <div id="readingsContent">
+                    @await Html.PartialAsync("_ReadingsTable", Model)
+                </div>
+            </div>
+
+            <div class="tab-pane fade @(Model.ViewType == "daily" ? "show active" : "")"
+                 id="daily-tab-pane" role="tabpanel" aria-labelledby="daily-tab" tabindex="0">
+                <div id="readingsContent">
+                    @if (Model.ViewType == "daily")
+                    {
+                        @await Html.PartialAsync("_ReadingsTable", Model)
+                    }
+                    else
+                    {
+                        <div class="text-center p-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading daily readings...</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="tab-pane fade @(Model.ViewType == "monthly" ? "show active" : "")"
+                 id="monthly-tab-pane" role="tabpanel" aria-labelledby="monthly-tab" tabindex="0">
+                <div id="readingsContent">
+                    @if (Model.ViewType == "monthly")
+                    {
+                        @await Html.PartialAsync("_ReadingsTable", Model)
+                    }
+                    else
+                    {
+                        <div class="text-center p-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading monthly readings...</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="tab-pane fade @(Model.ViewType == "yearly" ? "show active" : "")"
+                 id="yearly-tab-pane" role="tabpanel" aria-labelledby="yearly-tab" tabindex="0">
+                <div id="readingsContent">
+                    @if (Model.ViewType == "yearly")
+                    {
+                        @await Html.PartialAsync("_ReadingsTable", Model)
+                    }
+                    else
+                    {
+                        <div class="text-center p-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading yearly readings...</p>
+                        </div>
+                    }
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Remove the duplicate partial render at the bottom -->
+@section Scripts {
+    <script src="~/js/meter-readings.js" asp-append-version="true"></script>
+    <script>
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            MeterReadings.init({
+                currentViewType: '@Model.ViewType',
+                selectedMeterId: @(Model.SelectedMeterId?.ToString() ?? "null"),
+                currentPage: @Model.CurrentPage,
+                pageSize: @Model.PageSize,
+                startDate: '@(Model.StartDate?.ToString("yyyy-MM-ddTHH:mm"))',
+                endDate: '@(Model.EndDate?.ToString("yyyy-MM-ddTHH:mm"))'
+            });
+        });
+    </script>
+}

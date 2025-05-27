@@ -58,34 +58,117 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        // Controllers/ImportController.cs - Updated GetMetersFromTable method
         [HttpGet]
         public async Task<IActionResult> GetMetersFromTable(string tableName, string startDate = null, string endDate = null, int limit = 1000)
         {
             try
             {
+                _logger.LogInformation($"GetMetersFromTable called: tableName='{tableName}', limit={limit}");
+
                 if (!_sqlServerService.IsInitialized)
                 {
+                    _logger.LogError("SQL Server service not initialized");
                     return Json(new { success = false, error = "SQL Server connection not configured" });
                 }
 
-                // Adjust this call to match the method signature in your SqlServerService
-                // If your service doesn't accept all these parameters, modify accordingly
-                var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName);
+                if (string.IsNullOrWhiteSpace(tableName))
+                {
+                    _logger.LogError("Table name is null or empty");
+                    return Json(new { success = false, error = "Table name is required" });
+                }
+
+                // Validate limit parameter
+                if (limit <= 0)
+                {
+                    limit = 1000; // Default limit
+                    _logger.LogWarning($"Invalid limit provided, using default: {limit}");
+                }
+
+                // Maximum limit to prevent performance issues
+                if (limit > 10000)
+                {
+                    limit = 10000;
+                    _logger.LogWarning($"Limit reduced to maximum allowed value: {limit}");
+                }
+
+                _logger.LogInformation($"Processing request for table '{tableName}' with limit {limit}");
+
+                // Validate that the table exists before trying to query it
+                var tableExists = await _sqlServerService.ValidateTableExists(tableName);
+                if (!tableExists)
+                {
+                    _logger.LogWarning($"Table '{tableName}' does not exist or is not accessible");
+                    return Json(new
+                    {
+                        success = false,
+                        error = $"Table '{tableName}' does not exist or is not accessible. Please verify the table name and permissions."
+                    });
+                }
+
+                // Get the HDS meters with the specified limit
+                var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName, limit);
 
                 // Get parent meter options from PostgreSQL database
                 var parentOptions = await GetParentMeterOptions();
+
+                _logger.LogInformation($"Successfully retrieved {hdsMeters.Count} meters from table '{tableName}'");
 
                 return Json(new
                 {
                     success = true,
                     meters = hdsMeters,
-                    parentOptions = parentOptions
+                    parentOptions = parentOptions,
+                    actualCount = hdsMeters.Count,
+                    requestedLimit = limit,
+                    tableName = tableName,
+                    message = $"Retrieved {hdsMeters.Count} meters from table '{tableName}' (limit: {limit})"
+                });
+            }
+            catch (Microsoft.Data.SqlClient.SqlException sqlEx)
+            {
+                // Handle specific SQL Server errors
+                _logger.LogError(sqlEx, $"SQL Server error getting meters from table '{tableName}' with limit {limit}");
+
+                string errorMessage = "Database error occurred";
+
+                // Provide more specific error messages based on SQL error
+                switch (sqlEx.Number)
+                {
+                    case 208: // Invalid object name
+                        errorMessage = $"Table '{tableName}' does not exist or is not accessible";
+                        break;
+                    case 102: // Incorrect syntax
+                        errorMessage = $"SQL syntax error - please check table name '{tableName}'";
+                        break;
+                    case 2: // Timeout
+                        errorMessage = "Database query timeout - try reducing the limit or check table size";
+                        break;
+                    case 18456: // Login failed
+                        errorMessage = "Database authentication failed - check connection settings";
+                        break;
+                    default:
+                        errorMessage = $"Database error: {sqlEx.Message}";
+                        break;
+                }
+
+                return Json(new
+                {
+                    success = false,
+                    error = errorMessage,
+                    sqlErrorNumber = sqlEx.Number,
+                    details = $"SQL Error {sqlEx.Number}: {sqlEx.Message}"
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting meters from HDS table {tableName}");
-                return Json(new { success = false, error = ex.Message });
+                _logger.LogError(ex, $"Unexpected error getting meters from table '{tableName}' with limit {limit}");
+                return Json(new
+                {
+                    success = false,
+                    error = $"Unexpected error: {ex.Message}",
+                    details = ex.ToString()
+                });
             }
         }
 
@@ -586,24 +669,31 @@ namespace PoWorks_Rework.Controllers
             public List<string> SelectedMeterUnits { get; set; }
         }
 
+        // Enhanced method to get parent meter options with better error handling
         private async Task<List<SelectListItem>> GetParentMeterOptions()
         {
             var options = new List<SelectListItem>
-            {
-                new SelectListItem { Value = "", Text = "None" }
-            };
+    {
+        new SelectListItem { Value = "", Text = "None" }
+    };
 
             try
             {
+                if (!_databaseService.IsInitialized)
+                {
+                    _logger.LogWarning("PostgreSQL database not initialized - returning empty parent options");
+                    return options;
+                }
+
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
 
                     string sql = @"
-                        SELECT ""MeterId"", ""Name"" 
-                        FROM ""Meters"" 
-                        WHERE ""Type"" = 'main' AND ""Active"" = true
-                        ORDER BY ""Name""";
+                SELECT ""MeterId"", ""Name"" 
+                FROM ""Meters"" 
+                WHERE ""Type"" = 'main' AND ""Active"" = true
+                ORDER BY ""Name""";
 
                     using (var command = new NpgsqlCommand(sql, connection))
                     {
@@ -620,11 +710,13 @@ namespace PoWorks_Rework.Controllers
                         }
                     }
                 }
+
+                _logger.LogInformation($"Retrieved {options.Count - 1} parent meter options");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting parent meter options");
-                // Don't throw here, just return what we have
+                _logger.LogError(ex, "Error getting parent meter options from PostgreSQL");
+                // Don't throw here, just return the basic options
             }
 
             return options;
