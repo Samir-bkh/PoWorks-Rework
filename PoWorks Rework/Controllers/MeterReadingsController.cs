@@ -1,4 +1,4 @@
-﻿// Controllers/MeterReadingsController.cs - FIXED VERSION
+﻿// Controllers/MeterReadingsController.cs - FIXED Quality Column Issue
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -190,16 +190,28 @@ namespace PoWorks_Rework.Controllers
                         break;
                 }
 
+                _logger.LogInformation($"Executing SQL for {viewType} readings: {sql}");
+
                 using (var command = new NpgsqlCommand(sql, connection))
                 {
                     AddParametersToCommand(command, meterId, startDate, endDate, offset, pageSize);
 
                     using (var reader = await command.ExecuteReaderAsync())
                     {
+                        int recordCount = 0;
                         while (await reader.ReadAsync())
                         {
-                            readings.Add(MapReaderToMeterReading(reader, viewType));
+                            var reading = MapReaderToMeterReading(reader, viewType);
+                            readings.Add(reading);
+                            recordCount++;
+
+                            // Log quality values for debugging (first 5 records only)
+                            if (recordCount <= 5 && viewType == "raw")
+                            {
+                                _logger.LogInformation($"Record {recordCount}: Quality = {reading.Quality}, Quality Description = {reading.QualityDescription}");
+                            }
                         }
+                        _logger.LogInformation($"Loaded {recordCount} {viewType} readings");
                     }
                 }
             }
@@ -208,7 +220,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// Build SQL query for raw readings
+        /// Build SQL query for raw readings - FIXED to ensure Quality is selected correctly
         /// </summary>
         private string BuildRawReadingsQuery(int? meterId, DateTime? startDate, DateTime? endDate, int offset, int pageSize)
         {
@@ -217,9 +229,11 @@ namespace PoWorks_Rework.Controllers
             if (startDate.HasValue) whereClause += " AND mr.\"Timestamp\" >= @StartDate";
             if (endDate.HasValue) whereClause += " AND mr.\"Timestamp\" <= @EndDate";
 
+            // FIXED: Explicitly cast Quality to ensure proper data type handling
             return $@"
         SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
-               mr.""Timestamp"", mr.""Value"", mr.""Quality""
+               mr.""Timestamp"", mr.""Value"", 
+               COALESCE(mr.""Quality"", -1)::INTEGER as ""Quality""
         FROM ""MeterReadings"" mr
         JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
         {whereClause}
@@ -365,7 +379,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// Map database reader to MeterReading object
+        /// Map database reader to MeterReading object - FIXED Quality handling
         /// </summary>
         private MeterReading MapReaderToMeterReading(NpgsqlDataReader reader, string viewType)
         {
@@ -407,9 +421,38 @@ namespace PoWorks_Rework.Controllers
             }
             else
             {
-                // Raw readings have quality
-                if (!reader.IsDBNull(reader.GetOrdinal("Quality")))
-                    reading.Quality = reader.GetInt32("Quality");
+                // FIXED: Raw readings have quality - handle different quality value scenarios
+                if (reader.HasColumn("Quality"))
+                {
+                    var qualityOrdinal = reader.GetOrdinal("Quality");
+                    if (!reader.IsDBNull(qualityOrdinal))
+                    {
+                        var qualityValue = reader.GetInt32(qualityOrdinal);
+
+                        // Handle the special case where we used -1 for null values in SQL
+                        if (qualityValue == -1)
+                        {
+                            reading.Quality = null;
+                        }
+                        else
+                        {
+                            reading.Quality = qualityValue;
+                        }
+
+                        // Log for debugging
+                        _logger.LogDebug($"Quality value read from DB: {qualityValue}, Assigned to reading: {reading.Quality}");
+                    }
+                    else
+                    {
+                        reading.Quality = null;
+                        _logger.LogDebug("Quality value is DBNull");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Quality column not found in result set");
+                    reading.Quality = null;
+                }
             }
 
             return reading;
@@ -503,5 +546,21 @@ namespace PoWorks_Rework.Controllers
         }
 
         #endregion
+    }
+}
+
+// Extension method to check if a column exists in the reader
+public static class NpgsqlDataReaderExtensions
+{
+    public static bool HasColumn(this NpgsqlDataReader reader, string columnName)
+    {
+        try
+        {
+            return reader.GetOrdinal(columnName) >= 0;
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return false;
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿// Models/MeterReadingsModels.cs - FIXED VERSION
+﻿// Models/MeterReadingsModels.cs - FIXED VERSION with simplified quality
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -22,7 +22,7 @@ namespace PoWorks_Rework.Models
 
             // Set default date range to last 30 days
             EndDate = DateTime.Now.Date;
-            StartDate = EndDate.Value.AddDays(-30); // Fixed: Added System.Linq for extension methods
+            StartDate = EndDate.Value.AddDays(-30);
         }
 
         // View Configuration
@@ -108,21 +108,20 @@ namespace PoWorks_Rework.Models
 
         public string FormattedValue => Value.ToString("N2");
 
-        public string QualityDescription => Quality switch
+        // SIMPLIFIED: Just show the quality number
+        public string QualityDescription
         {
-            0 => "Good",
-            1 => "Uncertain",
-            2 => "Bad",
-            _ => "Unknown"
-        };
+            get
+            {
+                if (!Quality.HasValue)
+                    return "No Quality";
 
-        public string QualityBadgeClass => Quality switch
-        {
-            0 => "badge bg-success",
-            1 => "badge bg-warning",
-            2 => "badge bg-danger",
-            _ => "badge bg-secondary"
-        };
+                return Quality.Value.ToString();
+            }
+        }
+
+        // Simple styling - just use a neutral badge
+        public string QualityBadgeClass => "badge bg-info";
 
         // Date display helpers for different view types
         public string GetDateDisplay(string viewType)
