@@ -1,7 +1,8 @@
-﻿// Models/MeterReadingsModels.cs
+﻿// Models/MeterReadingsModels.cs - FIXED VERSION
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 
 namespace PoWorks_Rework.Models
 {
@@ -21,7 +22,7 @@ namespace PoWorks_Rework.Models
 
             // Set default date range to last 30 days
             EndDate = DateTime.Now.Date;
-            StartDate = EndDate.AddDays(-30);
+            StartDate = EndDate.Value.AddDays(-30); // Fixed: Added System.Linq for extension methods
         }
 
         // View Configuration

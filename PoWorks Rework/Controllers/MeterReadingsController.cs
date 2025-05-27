@@ -1,4 +1,4 @@
-﻿// Controllers/MeterReadingsController.cs - Fixed version
+﻿// Controllers/MeterReadingsController.cs - FIXED VERSION
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -7,7 +7,7 @@ using PoWorks_Rework.Services;
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq; // Added this for LINQ methods
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Controllers
@@ -36,8 +36,8 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Use fully qualified name to avoid ambiguity
-                var viewModel = new PoWorks_Rework.Models.MeterReadingsViewModel
+                // Create view model - use fully qualified name to avoid ambiguity
+                var viewModel = new MeterReadingsViewModel
                 {
                     ViewType = viewType,
                     CurrentPage = page,
@@ -57,7 +57,7 @@ namespace PoWorks_Rework.Controllers
             {
                 _logger.LogError(ex, "Error loading meter readings page");
                 TempData["ErrorMessage"] = $"Error loading meter readings: {ex.Message}";
-                return View(new PoWorks_Rework.Models.MeterReadingsViewModel());
+                return View(new MeterReadingsViewModel());
             }
         }
 
@@ -126,7 +126,7 @@ namespace PoWorks_Rework.Controllers
         /// <summary>
         /// Load readings data based on view model settings
         /// </summary>
-        private async Task LoadReadingsData(PoWorks_Rework.Models.MeterReadingsViewModel viewModel)
+        private async Task LoadReadingsData(MeterReadingsViewModel viewModel)
         {
             viewModel.Readings = await GetReadingsByType(
                 viewModel.SelectedMeterId,
@@ -218,13 +218,13 @@ namespace PoWorks_Rework.Controllers
             if (endDate.HasValue) whereClause += " AND mr.\"Timestamp\" <= @EndDate";
 
             return $@"
-                SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
-                       mr.""Timestamp"", mr.""Value"", mr.""Quality""
-                FROM ""MeterReadings"" mr
-                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY mr.""Timestamp"" DESC
-                LIMIT @PageSize OFFSET @Offset";
+        SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
+               mr.""Timestamp"", mr.""Value"", mr.""Quality""
+        FROM ""MeterReadings"" mr
+        JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+        {whereClause}
+        ORDER BY mr.""Timestamp"" DESC
+        LIMIT @PageSize OFFSET @Offset";
         }
 
         /// <summary>

@@ -427,9 +427,18 @@ namespace PoWorks_Rework.Controllers
                 var meters = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
                 var totalCount = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
 
+                // FIX: Create the correct view model that the view expects
                 var viewModel = new MeterReadingsViewModel
                 {
-                    Meters = meters,
+                    // Map the meter data to readings format
+                    Readings = new List<MeterReading>(), // Empty for now
+                    AvailableMeters = meters.Select(m => new MeterOption
+                    {
+                        MeterId = m.Id,
+                        Name = m.Name,
+                        Unit = m.Unit,
+                        Type = m.Type
+                    }).ToList(),
                     TotalItems = totalCount,
                     CurrentPage = page,
                     TotalPages = (totalCount + pageSize - 1) / pageSize
@@ -443,10 +452,10 @@ namespace PoWorks_Rework.Controllers
                 return View(new MeterReadingsViewModel());
             }
         }
-    
 
-    // Add this method to the MeterController class
-private List<SelectListItem> GetTenantOptions()
+
+        // Add this method to the MeterController class
+        private List<SelectListItem> GetTenantOptions()
         {
             var options = new List<SelectListItem>
     {

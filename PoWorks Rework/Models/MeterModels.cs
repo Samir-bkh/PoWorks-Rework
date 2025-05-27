@@ -37,15 +37,3 @@ namespace PoWorks_Rework.Models
         public bool Active { get; set; } = true;
     }
 }
-
-// Add to Models/MeterModels.cs
-namespace PoWorks_Rework.Models
-{
-    public class MeterReadingsViewModel
-    {
-        public List<Meter> Meters { get; set; } = new List<Meter>();
-        public int TotalPages { get; set; } = 85;
-        public int CurrentPage { get; set; } = 1;
-        public int TotalItems { get; set; } = 1011;
-    }
-}
