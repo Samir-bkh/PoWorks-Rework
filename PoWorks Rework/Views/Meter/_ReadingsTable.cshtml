@@ -68,8 +68,14 @@
                                 @if (Model.ViewType == "raw")
                                 {
                                     <td class="text-center">
-                                        @* FIXED: Simplified quality display - just use the QualityDescription which now returns the raw number *@
-                                        <span class="@reading.QualityBadgeClass">@reading.QualityDescription</span>
+                                        @if (reading.Quality.HasValue)
+                                        {
+                                            <span class="badge bg-info">@reading.Quality.Value</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">N/A</span>
+                                        }
                                     </td>
                                 }
                                 else

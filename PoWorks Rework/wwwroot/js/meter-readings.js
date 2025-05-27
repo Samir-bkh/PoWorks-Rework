@@ -746,14 +746,11 @@ const MeterReadings = {
     },
 
     formatQuality: function (quality) {
-        const qualityMap = {
-            0: { text: 'Good', class: 'badge bg-success' },
-            1: { text: 'Uncertain', class: 'badge bg-warning' },
-            2: { text: 'Bad', class: 'badge bg-danger' }
-        };
-
-        const q = qualityMap[quality] || { text: 'Unknown', class: 'badge bg-secondary' };
-        return `<span class="${q.class}">${q.text}</span>`;
+        // Simply display the quality number as-is
+        if (quality === null || quality === undefined) {
+            return '<span class="badge bg-secondary">N/A</span>';
+        }
+        return `<span class="badge bg-info">${quality}</span>`;
     },
 
     updatePaginationInfo: function (pagination) {
