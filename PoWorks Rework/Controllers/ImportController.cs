@@ -16,15 +16,18 @@ namespace PoWorks_Rework.Controllers
         private readonly ILogger<ImportController> _logger;
         private readonly SqlServerService _sqlServerService;
         private readonly DatabaseService _databaseService;
+        private readonly VarexpParserService _varexpParserService;
 
         public ImportController(
             ILogger<ImportController> logger,
             SqlServerService sqlServerService,
-            DatabaseService databaseService)
+            DatabaseService databaseService,
+            VarexpParserService varexpParserService)
         {
             _logger = logger;
             _sqlServerService = sqlServerService;
             _databaseService = databaseService;
+            _varexpParserService = varexpParserService;
         }
 
         public IActionResult Index()
@@ -37,6 +40,36 @@ namespace PoWorks_Rework.Controllers
 
             return View(viewModel);
         }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> ParseVarexp(IFormFile VarexpFile)
+        {
+            // 1) Basic file check
+            if (VarexpFile == null || VarexpFile.Length == 0)
+                return BadRequest("No VAREXP.DAT file was uploaded.");
+
+            try
+            {
+                // 2) Attempt parse
+                var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
+                return Json(new { success = true, records });
+            }
+            catch (VarexpParseException vex)
+            {
+                _logger.LogError(vex, "VAREXP parse error at line {LineNumber}", vex.LineNumber);
+                // return 400 with the exact parse-error message
+                return BadRequest($"Parsing error at line {vex.LineNumber}: {vex.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error parsing VAREXP.DAT");
+                return BadRequest($"Unexpected error: {ex.Message}");
+            }
+        }
+
+
 
         [HttpGet]
         public async Task<IActionResult> GetHdsTables()

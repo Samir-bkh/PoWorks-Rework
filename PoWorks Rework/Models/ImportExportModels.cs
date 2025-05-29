@@ -11,5 +11,7 @@ namespace PoWorks_Rework.Models
         public string StartDate { get; set; }
         public string EndDate { get; set; }
         public int Limit { get; set; } = 1000;
+        public IFormFile VarexpFile { get; set; }
+        public List<string[]> VarexpRecords { get; set; } = new List<string[]>();
     }
 }
