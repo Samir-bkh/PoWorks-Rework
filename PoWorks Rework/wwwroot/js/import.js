@@ -1,4 +1,4 @@
-﻿// wwwroot/js/import.js - DEBUG VERSION
+﻿// wwwroot/js/import.js - With VAREXP Print Functionality
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function () {
@@ -80,7 +80,113 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
         console.log('🔍 DEBUG: VAREXP elements not found!');
     }
+
+    // Setup print button handler using event delegation
+    document.body.addEventListener('click', function (event) {
+        if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
+            console.log('🔍 DEBUG: Print Selected button clicked');
+            handleVarexpPrint();
+        }
+    });
 });
+
+// Handle VAREXP print functionality
+function handleVarexpPrint() {
+    console.log('🔍 DEBUG: Starting VAREXP print process');
+
+    // Get all selected checkboxes
+    const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one meter to print.');
+        return;
+    }
+
+    console.log(`🔍 DEBUG: Found ${selectedCheckboxes.length} selected meters`);
+
+    // Gather selected meter data
+    const selectedMeterNames = [];
+    const selectedMeterTypes = [];
+    const selectedMeterUnits = [];
+
+    selectedCheckboxes.forEach((checkbox, index) => {
+        const row = checkbox.closest('tr');
+        if (!row) return;
+
+        // Get meter name from the name cell (skip the info header row)
+        const nameCell = row.cells[1];
+        if (!nameCell) return;
+
+        // Extract meter name (skip badge, get the span text)
+        const nameSpan = nameCell.querySelector('span:not(.badge)');
+        const meterName = nameSpan ? nameSpan.textContent.trim() : '';
+
+        if (!meterName) return;
+
+        // Get unit from input field
+        const unitInput = row.querySelector('.meter-unit');
+        const unit = unitInput ? unitInput.value.trim() : '';
+
+        // Get type from select
+        const typeSelect = row.querySelector('.meter-type');
+        const type = typeSelect ? typeSelect.value : 'main';
+
+        console.log(`🔍 DEBUG: Meter ${index + 1}: Name="${meterName}", Type="${type}", Unit="${unit}"`);
+
+        selectedMeterNames.push(meterName);
+        selectedMeterTypes.push(type);
+        selectedMeterUnits.push(unit);
+    });
+
+    if (selectedMeterNames.length === 0) {
+        alert('No valid meters found in selection.');
+        return;
+    }
+
+    console.log('🔍 DEBUG: Collected meter data:', {
+        names: selectedMeterNames,
+        types: selectedMeterTypes,
+        units: selectedMeterUnits
+    });
+
+    // Prepare request data
+    const requestData = {
+        tableName: 'VAREXP.DAT',
+        selectedMeterNames: selectedMeterNames,
+        selectedMeterTypes: selectedMeterTypes,
+        selectedMeterUnits: selectedMeterUnits
+    };
+
+    console.log('🔍 DEBUG: Sending print request:', requestData);
+
+    // Send to server
+    fetch('/Import/PrintSelectedMeters', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('🔍 DEBUG: Print response:', data);
+
+            if (data.success) {
+                alert(`Successfully printed ${data.count} meters to console. Check the server console for details.`);
+            } else {
+                alert('Print failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('🔍 DEBUG: Print request failed:', error);
+            alert('Print request failed: ' + error.message);
+        });
+}
 
 // DEBUG: Convert VAREXP records to meter selection format
 function debugConvertVarexpToMeterSelection(records) {
