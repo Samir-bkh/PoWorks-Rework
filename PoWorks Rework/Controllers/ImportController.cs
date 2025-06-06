@@ -54,12 +54,27 @@ namespace PoWorks_Rework.Controllers
             {
                 // 2) Attempt parse
                 var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
-                return Json(new { success = true, records });
+
+                // 3) Get parent meter options from PostgreSQL database
+                _logger.LogInformation("🔍 DEBUG: About to call GetParentMeterOptions()"); // ✅ ADD THIS
+                var parentOptions = await GetParentMeterOptions();
+                _logger.LogInformation("🔍 DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0); // ✅ ADD THIS
+
+                var response = new
+                {
+                    success = true,
+                    records = records,
+                    parentOptions = parentOptions
+                };
+
+                _logger.LogInformation("🔍 DEBUG: Returning response with {RecordCount} records and {ParentCount} parent options",
+                    records?.Count ?? 0, parentOptions?.Count ?? 0); // ✅ ADD THIS
+
+                return Json(response);
             }
             catch (VarexpParseException vex)
             {
                 _logger.LogError(vex, "VAREXP parse error at line {LineNumber}", vex.LineNumber);
-                // return 400 with the exact parse-error message
                 return BadRequest($"Parsing error at line {vex.LineNumber}: {vex.Message}");
             }
             catch (Exception ex)

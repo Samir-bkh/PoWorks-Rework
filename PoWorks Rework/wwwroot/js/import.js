@@ -60,10 +60,27 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 .then(data => {
                     console.log('🔍 DEBUG: Server response received:', data);
+                    console.log('🔍 DEBUG: Full response structure:', JSON.stringify(data, null, 2)); // ✅ ADD THIS LINE
 
                     if (data.records) {
                         console.log('🔍 DEBUG: Records found:', data.records.length);
                         console.log('🔍 DEBUG: First 3 records:', data.records.slice(0, 3));
+
+                        // ✅ ADD MORE DETAILED LOGGING
+                        console.log('🔍 DEBUG: data.parentOptions exists?', !!data.parentOptions);
+                        console.log('🔍 DEBUG: data.parentOptions type:', typeof data.parentOptions);
+                        console.log('🔍 DEBUG: data.parentOptions content:', data.parentOptions);
+
+                        if (data.parentOptions) {
+                            console.log('🔍 DEBUG: Parent options received:', data.parentOptions.length);
+                            window.parentOptions = data.parentOptions;
+                        } else {
+                            console.log('🔍 DEBUG: No parent options in response, using default');
+                            window.parentOptions = [{ value: '', text: 'None' }];
+                        }
+
+                        // ✅ VERIFY WHAT'S STORED
+                        console.log('🔍 DEBUG: window.parentOptions after setting:', window.parentOptions);
 
                         // Convert VAREXP records to meter format
                         debugConvertVarexpToMeterSelection(data.records);
@@ -72,10 +89,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         alert(data.error || 'No records returned');
                     }
                 })
-                .catch(err => {
-                    console.error('🔍 DEBUG: VAREXP import failed:', err);
-                    alert(`VAREXP import failed:\n${err.message}`);
-                });
         });
     } else {
         console.log('🔍 DEBUG: VAREXP elements not found!');
@@ -275,9 +288,9 @@ function debugConvertVarexpToMeterSelection(records) {
     debugShowMeterSelectionForVarexp(meters);
 }
 
-// DEBUG: Show meter selection section specifically for VAREXP data
 function debugShowMeterSelectionForVarexp(meters) {
     console.log('🔍 DEBUG: Showing meter selection for VAREXP data');
+    console.log('🔍 DEBUG: Available parent options:', window.parentOptions?.length || 0);
 
     // Hide the VAREXP records container
     const recordsContainer = document.getElementById('varexpRecordsContainer');
@@ -313,10 +326,7 @@ function debugShowMeterSelectionForVarexp(meters) {
         }
     }
 
-    // Store parent options (empty for VAREXP since we don't have parent relationships)
-    window.parentOptions = [];
-
-    // Populate the meter table
+    // Render the table with parent options already available
     debugRenderVarexpMetersTable(meters);
 
     // Update status
@@ -389,14 +399,37 @@ function debugRenderVarexpMetersTable(meters) {
                    value="" placeholder="Enter unit (e.g., kWh, bar, °C)">
         `;
 
-        // Parent meter cell (disabled for VAREXP)
+        // Parent meter cell - NOW ENABLED with options from database
         const parentCell = document.createElement('td');
-        parentCell.innerHTML = `
-            <select class="form-select form-select-sm meter-parent" disabled>
-                <option value="">None (VAREXP)</option>
-            </select>
-            <small class="text-muted">Not available for VAREXP</small>
-        `;
+
+        // ✅ ADD DETAILED LOGGING
+        console.log(`🔍 DEBUG: Creating parent cell for meter ${index}`);
+        console.log('🔍 DEBUG: window.parentOptions available?', !!window.parentOptions);
+        console.log('🔍 DEBUG: window.parentOptions length:', window.parentOptions?.length || 0);
+
+        // Check if we have parent options available
+        if (window.parentOptions && window.parentOptions.length > 0) {
+            let parentSelectHtml = `<select class="form-select form-select-sm meter-parent">`;
+
+            // Add options from the stored parent options
+            window.parentOptions.forEach(option => {
+                parentSelectHtml += `<option value="${option.value || option.Value}">${option.text || option.Text}</option>`;
+            });
+
+            parentSelectHtml += `</select>`;
+            parentCell.innerHTML = parentSelectHtml;
+
+            console.log(`🔍 DEBUG: Created parent dropdown with ${window.parentOptions.length} options for meter ${index}`);
+        } else {
+            // ✅ BETTER FALLBACK MESSAGE
+            console.log(`🔍 DEBUG: No parent options available for meter ${index}, using fallback`);
+            parentCell.innerHTML = `
+        <select class="form-select form-select-sm meter-parent">
+            <option value="">No parent meters found</option>
+        </select>
+        <small class="text-muted">No existing meters in database</small>
+    `;
+        }
 
         // Type cell - allow user selection
         const typeCell = document.createElement('td');
