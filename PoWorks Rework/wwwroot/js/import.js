@@ -15,6 +15,34 @@ document.addEventListener('DOMContentLoaded', function () {
         recordsContainer: !!recordsContainer
     });
 
+    // ✅ ADD: Setup Select All/Deselect All event delegation for VAREXP
+    document.body.addEventListener('click', function (event) {
+        // Handle VAREXP Select All button click
+        if (event.target.id === 'selectAllMetersBtn' || event.target.closest('#selectAllMetersBtn')) {
+            console.log('🔍 DEBUG: VAREXP Select All button clicked');
+            handleVarexpSelectAll();
+        }
+
+        // Handle VAREXP Deselect All button click
+        if (event.target.id === 'deselectAllMetersBtn' || event.target.closest('#deselectAllMetersBtn')) {
+            console.log('🔍 DEBUG: VAREXP Deselect All button clicked');
+            handleVarexpDeselectAll();
+        }
+
+        // Handle Print Selected button (you already have this)
+        if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
+            console.log('🔍 DEBUG: Print Selected button clicked');
+            handleVarexpPrint();
+        }
+    });
+
+    // ✅ ADD: Setup checkbox change events for VAREXP
+    document.body.addEventListener('change', function (event) {
+        if (event.target.classList.contains('meter-checkbox')) {
+            handleVarexpCheckboxChange(event.target);
+        }
+    });
+
     if (parseVarexpBtn && varexpFileInput && recordsContainer) {
         parseVarexpBtn.addEventListener('click', () => {
             console.log('🔍 DEBUG: Parse VAREXP button clicked');
@@ -199,6 +227,96 @@ function handleVarexpPrint() {
             console.error('🔍 DEBUG: Print request failed:', error);
             alert('Print request failed: ' + error.message);
         });
+}
+
+/**
+ * Handle VAREXP Select All button click
+ */
+function handleVarexpSelectAll() {
+    const checkboxes = document.querySelectorAll('.meter-checkbox');
+    console.log(`🔍 DEBUG: Selecting all ${checkboxes.length} VAREXP checkboxes`);
+
+    checkboxes.forEach(function (checkbox) {
+        checkbox.checked = true;
+
+        // Update any related hidden inputs if they exist
+        const hiddenInput = checkbox.nextElementSibling;
+        if (hiddenInput && hiddenInput.type === 'hidden') {
+            hiddenInput.disabled = true;
+        }
+    });
+
+    updateVarexpCounter();
+}
+
+/**
+ * Handle VAREXP Deselect All button click
+ */
+function handleVarexpDeselectAll() {
+    const checkboxes = document.querySelectorAll('.meter-checkbox');
+    console.log(`🔍 DEBUG: Deselecting all ${checkboxes.length} VAREXP checkboxes`);
+
+    checkboxes.forEach(function (checkbox) {
+        checkbox.checked = false;
+
+        // Update any related hidden inputs if they exist
+        const hiddenInput = checkbox.nextElementSibling;
+        if (hiddenInput && hiddenInput.type === 'hidden') {
+            hiddenInput.disabled = false;
+        }
+    });
+
+    updateVarexpCounter();
+}
+
+/**
+ * Handle individual VAREXP checkbox changes
+ */
+function handleVarexpCheckboxChange(checkbox) {
+    console.log(`🔍 DEBUG: VAREXP checkbox changed: ${checkbox.id}, Checked: ${checkbox.checked}`);
+
+    // Find corresponding hidden input and update its disabled state
+    const hiddenInput = checkbox.nextElementSibling;
+    if (hiddenInput && hiddenInput.type === 'hidden') {
+        hiddenInput.disabled = checkbox.checked;
+        console.log(`🔍 DEBUG: Updated hidden input disabled: ${hiddenInput.disabled}`);
+    }
+
+    // Update selection counter
+    updateVarexpCounter();
+}
+
+/**
+ * Update the VAREXP selection counter display
+ */
+function updateVarexpCounter() {
+    const checkboxes = document.querySelectorAll('.meter-checkbox');
+    const checkedBoxes = document.querySelectorAll('.meter-checkbox:checked');
+    console.log(`🔍 DEBUG: VAREXP selection count: ${checkedBoxes.length} of ${checkboxes.length}`);
+
+    // Update filter status to show selection count
+    const statusElement = document.getElementById('meterFilterStatus');
+    if (statusElement) {
+        const totalMeters = checkboxes.length;
+        const selectedMeters = checkedBoxes.length;
+        statusElement.textContent = `Selected ${selectedMeters} of ${totalMeters} meters`;
+    }
+
+    // Update import button text if it exists
+    const importBtn = document.getElementById('importSelectedBtn');
+    if (importBtn) {
+        importBtn.textContent = checkedBoxes.length > 0 ?
+            `Import Selected (${checkedBoxes.length})` :
+            'Import Selected';
+    }
+
+    // Update print button text
+    const printBtn = document.getElementById('printSelectedBtn');
+    if (printBtn) {
+        printBtn.textContent = checkedBoxes.length > 0 ?
+            `Print Selected (${checkedBoxes.length})` :
+            'Print Selected';
+    }
 }
 
 // DEBUG: Convert VAREXP records to meter selection format
