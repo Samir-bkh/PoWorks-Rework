@@ -34,6 +34,11 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log('🔍 DEBUG: Print Selected button clicked');
             handleVarexpPrint();
         }
+
+        if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
+            console.log('🔍 DEBUG: VAREXP Import Selected button clicked');
+            handleVarexpImport();
+        }
     });
 
     // ✅ ADD: Setup checkbox change events for VAREXP
@@ -585,4 +590,170 @@ function debugRenderVarexpMetersTable(meters) {
     });
 
     console.log(`🔍 DEBUG: ✅ Table rendered with ${meters.length} meters`);
+}
+
+/**
+* Handle VAREXP import functionality
+*/
+function handleVarexpImport() {
+    console.log('🔍 DEBUG: VAREXP Import button clicked');
+
+    const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one meter to import.');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmMessage = `Are you sure you want to import ${selectedCheckboxes.length} meters from VAREXP into the database?`;
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+
+    // Disable the import button and show loading state
+    const importBtn = document.getElementById('importSelectedBtn');
+    const originalBtnText = importBtn.textContent;
+    importBtn.disabled = true;
+    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
+
+    // Gather import options
+    const skipExisting = document.getElementById('skipExisting')?.checked || true;
+    const updateExisting = document.getElementById('updateExisting')?.checked || false;
+    const createMissingParents = document.getElementById('createMissingParents')?.checked || false;
+
+    // Gather selected meter data (CORRECTED meter name extraction)
+    const meters = [];
+    selectedCheckboxes.forEach((checkbox, index) => {
+        const row = checkbox.closest('tr');
+
+        // Skip the info header row
+        if (row.classList.contains('table-info')) {
+            return;
+        }
+
+        // Extract meter name from the span, NOT the entire cell text
+        const nameCell = row.querySelector('td:nth-child(2)');
+        const meterNameSpan = nameCell.querySelector('span:not(.badge)'); // Get span that's NOT the badge
+        const meterName = meterNameSpan ? meterNameSpan.textContent.trim() : '';
+
+        if (!meterName) {
+            console.warn(`🔍 DEBUG: No meter name found for row ${index}`);
+            return;
+        }
+
+        const meterUnit = row.querySelector('.meter-unit')?.value || '';
+        const meterType = row.querySelector('.meter-type')?.value || 'Main';
+        const meterParent = row.querySelector('.meter-parent')?.value || '';
+        const meterActive = row.querySelector('.meter-active')?.checked || true;
+
+        meters.push({
+            meterName: meterName,
+            unit: meterUnit,
+            type: meterType,
+            parentMeterId: meterParent,
+            active: meterActive
+        });
+
+        console.log(`🔍 DEBUG: Prepared meter ${index + 1}: "${meterName}", Type: ${meterType}, Unit: "${meterUnit}"`);
+    });
+
+    if (meters.length === 0) {
+        alert('No valid meters found to import.');
+        importBtn.disabled = false;
+        importBtn.textContent = originalBtnText;
+        return;
+    }
+
+    console.log(`🔍 DEBUG: Prepared ${meters.length} meters for import`);
+
+    // Send import request
+    fetch('/Import/ImportVarexpMeters', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            meters: meters,
+            skipExisting: skipExisting,
+            updateExisting: updateExisting,
+            createMissingParents: createMissingParents
+        })
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('🔍 DEBUG: Import response:', data);
+
+            // Reset button
+            importBtn.disabled = false;
+            importBtn.textContent = originalBtnText;
+
+            // Show detailed results
+            showVarexpImportResults(data);
+
+            // If successful, offer to reload page to see imported meters
+            if (data.success && (data.importedCount > 0 || data.updatedCount > 0)) {
+                setTimeout(() => {
+                    if (confirm('Import completed successfully! Would you like to reload the page to see the imported meters in the meter management section?')) {
+                        window.location.href = '/Meter/Management';
+                    }
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            console.error('🔍 DEBUG: Import error:', error);
+
+            // Reset button
+            importBtn.disabled = false;
+            importBtn.textContent = originalBtnText;
+
+            // Show error message
+            alert(`Error importing meters: ${error.message}`);
+        });
+}
+
+/**
+ * Show detailed import results
+ */
+function showVarexpImportResults(data) {
+    let message = '';
+
+    if (data.success) {
+        message = `✅ VAREXP Import Successful!\n\n`;
+        message += `📊 Summary:\n`;
+        message += `• ${data.importedCount} meters imported\n`;
+        message += `• ${data.updatedCount} meters updated\n`;
+        if (data.skippedCount > 0) {
+            message += `• ${data.skippedCount} meters skipped\n`;
+        }
+        message += `• Total processed: ${data.totalProcessed}\n\n`;
+
+        if (data.importedCount > 0) {
+            message += `New meters have been added to your database and can be viewed in the Meter Management section.`;
+        }
+    } else {
+        message = `❌ VAREXP Import Completed with Errors\n\n`;
+        message += `📊 Summary:\n`;
+        message += `• ${data.importedCount || 0} meters imported\n`;
+        message += `• ${data.updatedCount || 0} meters updated\n`;
+        if (data.skippedCount > 0) {
+            message += `• ${data.skippedCount} meters skipped\n`;
+        }
+        message += `• ${data.errorCount} errors encountered\n\n`;
+
+        // Add detailed error messages if available
+        if (data.detailedErrors && Object.keys(data.detailedErrors).length > 0) {
+            message += `🔍 Detailed Errors:\n`;
+            for (const [meterName, errorMsg] of Object.entries(data.detailedErrors)) {
+                message += `• ${meterName}: ${errorMsg}\n`;
+            }
+        }
+    }
+
+    // Show the message in an alert (you could create a nicer modal for this)
+    alert(message);
 }
