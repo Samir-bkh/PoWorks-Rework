@@ -32,7 +32,8 @@ CREATE INDEX IF NOT EXISTS idx_tenantdetails_tenantid ON "TenantDetails"("Tenant
 -- Create Meters table if it doesn't exist
 CREATE TABLE IF NOT EXISTS "Meters" (
     "MeterId" SERIAL PRIMARY KEY,
-    "Name" VARCHAR(100) NOT NULL,
+    "Name" VARCHAR(100) NOT NULL
+    "Label" VARCHAR(150),
     "Unit" VARCHAR(20) NOT NULL DEFAULT '',
     "ParentId" INTEGER REFERENCES "Meters"("MeterId"),
     "LastReading" INTEGER DEFAULT 0,
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS "Meters" (
 -- Create index for faster meter queries
 CREATE INDEX IF NOT EXISTS idx_meters_tenantid ON "Meters"("TenantID");
 CREATE INDEX IF NOT EXISTS idx_meters_parentid ON "Meters"("ParentId");
+CREATE INDEX IF NOT EXISTS idx_meters_label ON "Meters"("Label");
 
 CREATE TABLE "CompanyInfo" (
     "CompanyInfoId" SERIAL PRIMARY KEY,

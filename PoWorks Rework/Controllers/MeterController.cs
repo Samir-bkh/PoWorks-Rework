@@ -316,100 +316,181 @@ namespace PoWorks_Rework.Controllers
             return View("Management", viewModel);
         }
 
+        // Add this method to debug form submissions
+        [HttpPost]
+        public async Task<IActionResult> Debug()
+        {
+            Console.WriteLine("=== DEBUG: ANY POST REQUEST RECEIVED ===");
+            foreach (var key in Request.Form.Keys)
+            {
+                Console.WriteLine($"Form Field: {key} = {Request.Form[key]}");
+            }
+            Console.WriteLine("=======================================");
+
+            return RedirectToAction("Management");
+        }
+
         [HttpPost]
         public async Task<IActionResult> Update(Meter meter)
         {
+            Console.WriteLine("=== UPDATE METHOD CALLED ===");
+            Console.WriteLine($"Method reached at: {DateTime.Now}");
+
+            // Log all form data received
+            Console.WriteLine("=== FORM DATA RECEIVED ===");
+            foreach (var key in Request.Form.Keys)
+            {
+                Console.WriteLine($"Form Field: {key} = {Request.Form[key]}");
+            }
+            Console.WriteLine("=========================");
+
             // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
+                Console.WriteLine("Database not initialized");
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
                 return RedirectToAction("General", "Settings");
             }
 
-            if (ModelState.IsValid)
+            // DEBUG: Log all received model data
+            Console.WriteLine($"=== METER OBJECT DATA ===");
+            Console.WriteLine($"Meter ID: {meter.Id}");
+            Console.WriteLine($"Meter Name: '{meter.Name}'");
+            Console.WriteLine($"Meter Label: '{meter.Label}'");
+            Console.WriteLine($"Meter Unit: '{meter.Unit}'");
+            Console.WriteLine($"Meter Type: '{meter.Type}'");
+            Console.WriteLine($"Meter ParentMeterId: '{meter.ParentMeterId}'");
+            Console.WriteLine($"Meter LastReading: '{meter.LastReading}'");
+            Console.WriteLine($"Meter TenantId: '{meter.TenantId}'");
+            Console.WriteLine($"Meter Active: {meter.Active}");
+            Console.WriteLine($"=========================");
+
+            // DEBUG: Check ModelState validity and show errors
+            Console.WriteLine($"ModelState.IsValid: {ModelState.IsValid}");
+
+            if (!ModelState.IsValid)
             {
-                try
+                Console.WriteLine("=== VALIDATION ERRORS ===");
+                foreach (var modelError in ModelState)
                 {
-                    // Create a brand new connection for this operation
-                    using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                    var key = modelError.Key;
+                    var errors = modelError.Value.Errors;
+                    if (errors.Count > 0)
                     {
-                        await connection.OpenAsync();
-
-                        // Begin a transaction
-                        using var transaction = await connection.BeginTransactionAsync();
-
-                        try
+                        Console.WriteLine($"Field: {key}");
+                        foreach (var error in errors)
                         {
-                            string sql = @"
-                        UPDATE ""Meters""
-                        SET ""Name"" = @Name,
-                            ""Unit"" = @Unit,
-                            ""ParentId"" = @ParentId,
-                            ""LastReading"" = @LastReading,
-                            ""Type"" = @Type,
-                            ""Active"" = @Active,
-                            ""TenantID"" = @TenantId
-                        WHERE ""MeterId"" = @MeterId";
-
-                            using var cmd = new NpgsqlCommand(sql, connection, transaction);
-
-                            cmd.Parameters.AddWithValue("@MeterId", meter.Id);
-                            cmd.Parameters.AddWithValue("@Name", meter.Name);
-                            cmd.Parameters.AddWithValue("@Unit", string.IsNullOrEmpty(meter.Unit) ? "" : meter.Unit);
-
-                            // Parse parent meter ID if provided
-                            int? parentId = null;
-                            if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
+                            Console.WriteLine($"  Error: {error.ErrorMessage}");
+                            if (error.Exception != null)
                             {
-                                parentId = pid;
+                                Console.WriteLine($"  Exception: {error.Exception.Message}");
                             }
-                            cmd.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-
-                            // Parse last reading if provided
-                            int lastReading = 0;
-                            if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int reading))
-                            {
-                                lastReading = reading;
-                            }
-                            cmd.Parameters.AddWithValue("@LastReading", lastReading);
-
-                            cmd.Parameters.AddWithValue("@Type", meter.Type.ToLower());
-                            cmd.Parameters.AddWithValue("@Active", meter.Active);
-
-                            // Parse tenant ID if provided
-                            int? tenantId = null;
-                            if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
-                            {
-                                tenantId = tid;
-                            }
-                            cmd.Parameters.AddWithValue("@TenantId", tenantId.HasValue ? tenantId.Value : DBNull.Value);
-
-                            await cmd.ExecuteNonQueryAsync();
-                            await transaction.CommitAsync();
-
-                            TempData["SuccessMessage"] = "Meter updated successfully.";
-                        }
-                        catch (Exception ex)
-                        {
-                            await transaction.RollbackAsync();
-                            throw new Exception($"Failed to update meter: {ex.Message}", ex);
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    TempData["ErrorMessage"] = $"Error updating meter: {ex.Message}";
-                }
-            }
-            else
-            {
-                TempData["ErrorMessage"] = "Invalid meter data";
+                Console.WriteLine("========================");
+
+                // Show detailed error message to user
+                var errorMessages = ModelState
+                    .Where(x => x.Value.Errors.Count > 0)
+                    .Select(x => $"{x.Key}: {string.Join(", ", x.Value.Errors.Select(e => e.ErrorMessage))}")
+                    .ToList();
+
+                TempData["ErrorMessage"] = $"Invalid meter data. Errors: {string.Join("; ", errorMessages)}";
+                return RedirectToAction("Management", new { id = meter.Id });
             }
 
+            Console.WriteLine("ModelState is valid, proceeding with update...");
+
+            try
+            {
+                // Create a brand new connection for this operation
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    await connection.OpenAsync();
+                    Console.WriteLine("Database connection opened for update");
+
+                    // Begin a transaction
+                    using var transaction = await connection.BeginTransactionAsync();
+                    Console.WriteLine("Transaction started");
+
+                    try
+                    {
+                        string sql = @"
+                    UPDATE ""Meters""
+                    SET ""Name"" = @Name,
+                        ""Label"" = @Label,
+                        ""Unit"" = @Unit,
+                        ""ParentId"" = @ParentId,
+                        ""LastReading"" = @LastReading,
+                        ""Type"" = @Type,
+                        ""Active"" = @Active,
+                        ""TenantID"" = @TenantId
+                    WHERE ""MeterId"" = @MeterId";
+
+                        using var cmd = new NpgsqlCommand(sql, connection, transaction);
+
+                        cmd.Parameters.AddWithValue("@MeterId", meter.Id);
+                        cmd.Parameters.AddWithValue("@Name", meter.Name ?? "");
+                        cmd.Parameters.AddWithValue("@Label", meter.Label ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Unit", string.IsNullOrEmpty(meter.Unit) ? "" : meter.Unit);
+
+                        // Parse parent meter ID if provided
+                        int? parentId = null;
+                        if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
+                        {
+                            parentId = pid;
+                        }
+                        cmd.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
+
+                        // Parse last reading if provided
+                        int lastReading = 0;
+                        if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int reading))
+                        {
+                            lastReading = reading;
+                        }
+                        cmd.Parameters.AddWithValue("@LastReading", lastReading);
+
+                        cmd.Parameters.AddWithValue("@Type", meter.Type.ToLower());
+                        cmd.Parameters.AddWithValue("@Active", meter.Active);
+
+                        // Parse tenant ID if provided
+                        int? tenantId = null;
+                        if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
+                        {
+                            tenantId = tid;
+                        }
+                        cmd.Parameters.AddWithValue("@TenantId", tenantId.HasValue ? tenantId.Value : DBNull.Value);
+
+                        Console.WriteLine($"Executing SQL update for meter ID: {meter.Id}");
+                        var rowsAffected = await cmd.ExecuteNonQueryAsync();
+                        Console.WriteLine($"Rows affected: {rowsAffected}");
+
+                        await transaction.CommitAsync();
+                        Console.WriteLine("Transaction committed successfully");
+
+                        TempData["SuccessMessage"] = "Meter updated successfully.";
+                    }
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        Console.WriteLine($"Database error, transaction rolled back: {ex.Message}");
+                        Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                        throw new Exception($"Failed to update meter: {ex.Message}", ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Update error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                TempData["ErrorMessage"] = $"Error updating meter: {ex.Message}";
+            }
+
+            Console.WriteLine("Redirecting back to Management page");
             // Redirect back to the management page with the meter ID
             return RedirectToAction("Management", new { id = meter.Id });
         }
-
 
 
         public async Task<IActionResult> Readings(int page = 1, int pageSize = 10)

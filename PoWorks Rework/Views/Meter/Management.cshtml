@@ -177,6 +177,7 @@
                             </div>
                             <div class="col-md-4">
                                 <input type="text" class="form-control" id="Name" name="Name" value="@Model.SelectedMeter.Name">
+                                <small class="form-text text-muted">Technical name used internally</small>
                             </div>
                             <div class="col-md-2">
                                 <label for="ParentMeterId" class="form-label">Parent</label>
@@ -205,6 +206,26 @@
                                 </select>
                             </div>
                         </div>
+
+                        <!-- NEW: Label field row -->
+                        <div class="row mb-3">
+                            <div class="col-md-2">
+                                <label for="Label" class="form-label">Label</label>
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" id="Label" name="Label" value="@Model.SelectedMeter.Label" placeholder="Display name for this meter">
+                                <small class="form-text text-muted">Friendly name displayed in the interface</small>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="TenantId" class="form-label">Tenant</label>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions">
+                                </select>
+                                <small class="form-text text-muted">Link this meter to a tenant from the database</small>
+                            </div>
+                        </div>
+
                         <div class="row mb-3">
                             <div class="col-md-2">
                                 <label for="Unit" class="form-label">Unit</label>
@@ -219,15 +240,8 @@
                                 <input type="text" class="form-control" id="LastReading" name="LastReading" value="@Model.SelectedMeter.LastReading">
                             </div>
                         </div>
+
                         <div class="row mb-3">
-                            <div class="col-md-2">
-                                <label for="TenantId" class="form-label">Tenant</label>
-                            </div>
-                            <div class="col-md-4">
-                                <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions">
-                                </select>
-                                <small class="form-text text-muted">Link this meter to a tenant from the database</small>
-                            </div>
                             <div class="col-md-2">
                                 <label for="Type" class="form-label">Type</label>
                             </div>
@@ -244,25 +258,15 @@
                                         asp-items="typeOptions">
                                 </select>
                             </div>
-                        </div>
-                        <div class="row mb-4">
                             <div class="col-md-2">
                                 <label for="Active" class="form-label">Active</label>
                             </div>
                             <div class="col-md-4">
                                 <div class="form-check mt-2">
-                                    @{
-                                        // Pre-determine checked state
-                                        var isChecked = Model.SelectedMeter.Active;
-                                    }
-                                    @if (isChecked)
-                                    {
-                                        <input class="form-check-input" type="checkbox" id="Active" name="Active" checked>
-                                    }
-                                    else
-                                    {
-                                        <input class="form-check-input" type="checkbox" id="Active" name="Active">
-                                    }
+                                    @Html.CheckBox("Active", Model.SelectedMeter.Active, new { @class = "form-check-input" })
+                                    <label class="form-check-label" for="Active">
+                                        Active
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -329,6 +333,7 @@
 </div>
 
 <!-- New Meter Modal -->
+<!-- New Meter Modal (UPDATED) -->
 <div class="modal fade" id="newMeterModal" tabindex="-1" aria-labelledby="newMeterModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -344,6 +349,17 @@
                         </div>
                         <div class="col-md-9">
                             <input type="text" class="form-control" id="Name" name="Name" required>
+                            <small class="form-text text-muted">Technical name used internally</small>
+                        </div>
+                    </div>
+                    <!-- NEW: Label field -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="Label" class="form-label">Label</label>
+                        </div>
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" id="Label" name="Label" placeholder="Display name for this meter">
+                            <small class="form-text text-muted">Friendly name displayed in the interface</small>
                         </div>
                     </div>
                     <div class="row mb-3">
@@ -360,6 +376,7 @@
                             </select>
                         </div>
                     </div>
+                    <!-- Rest of the modal fields remain the same... -->
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="Unit" class="form-label">Unit</label>
@@ -402,7 +419,10 @@
                         </div>
                         <div class="col-md-9">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="Active" name="Active" checked>
+                                @Html.CheckBox("Active", true, new { @class = "form-check-input" })
+                                <label class="form-check-label" for="Active">
+                                    Active
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -415,7 +435,6 @@
         </div>
     </div>
 </div>
-
 <!-- New Sub Meter Modal -->
 @if (Model.SelectedMeter != null)
 {
@@ -487,7 +506,10 @@
                             </div>
                             <div class="col-md-9">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="SubMeterActive" name="Active" checked>
+                                    @Html.CheckBox("Active", true, new { @class = "form-check-input", id = "SubMeterActive" })
+                                    <label class="form-check-label" for="SubMeterActive">
+                                        Active
+                                    </label>
                                 </div>
                             </div>
                         </div>

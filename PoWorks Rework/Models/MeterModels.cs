@@ -27,6 +27,7 @@ namespace PoWorks_Rework.Models
     {
         public int Id { get; set; }
         public string Name { get; set; } = "";
+        public string? Label { get; set; }
         public string Type { get; set; } = "Main";
         public string? ParentMeterId { get; set; }
         public string? ParentMeterName { get; set; }

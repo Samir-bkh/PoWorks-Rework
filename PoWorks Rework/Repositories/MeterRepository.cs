@@ -172,21 +172,17 @@ namespace PoWorks_Rework.Repositories
 
             try
             {
-                // Create a brand new connection for this operation
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
-                    _logger.LogInformation("Database connection opened for GetMeterByIdAsync");
 
                     string sql = @"
-                        SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
-                               m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
-                        FROM ""Meters"" m
-                        LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
-                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                        WHERE m.""MeterId"" = @MeterId";
-
-                    _logger.LogInformation("Executing SQL: {SQL} with MeterId={MeterId}", sql, meterId);
+                SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
+                       m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
+                FROM ""Meters"" m
+                LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
+                LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                WHERE m.""MeterId"" = @MeterId";
 
                     using var cmd = new NpgsqlCommand(sql, connection);
                     cmd.Parameters.AddWithValue("@MeterId", meterId);
@@ -199,6 +195,7 @@ namespace PoWorks_Rework.Repositories
                         {
                             Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
                             Name = reader.GetString(reader.GetOrdinal("Name")),
+                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")), // Add Label
                             Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
                             ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
                             ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
@@ -209,11 +206,9 @@ namespace PoWorks_Rework.Repositories
                             Active = reader.GetBoolean(reader.GetOrdinal("Active"))
                         };
 
-                        _logger.LogInformation("Retrieved meter: {MeterName}", meter.Name);
                         return meter;
                     }
 
-                    _logger.LogWarning("No meter found with ID: {MeterId}", meterId);
                     return null;
                 }
             }
@@ -234,8 +229,14 @@ namespace PoWorks_Rework.Repositories
                 {
                     await connection.OpenAsync();
 
-                    // Simplified query with minimal joins
-                    string sql = @"SELECT * FROM ""Meters"" WHERE ""ParentId"" = @ParentId AND ""Type"" = 'sub'";
+                    // FIX: Use lowercase 'sub' to match database constraint
+                    string sql = @"
+                SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
+                       m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
+                FROM ""Meters"" m
+                LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
+                LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                WHERE m.""ParentId"" = @ParentId AND m.""Type"" = 'sub'";
 
                     using var cmd = new NpgsqlCommand(sql, connection);
                     cmd.Parameters.AddWithValue("@ParentId", parentMeterId);
@@ -248,10 +249,14 @@ namespace PoWorks_Rework.Repositories
                         {
                             Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
                             Name = reader.GetString(reader.GetOrdinal("Name")),
+                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
                             Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
                             ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
+                            ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
                             LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
                             Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
+                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
+                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
                             Active = reader.GetBoolean(reader.GetOrdinal("Active"))
                         });
                     }
@@ -259,10 +264,10 @@ namespace PoWorks_Rework.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error with simplified query: {ex.Message}");
-                throw;
+                _logger.LogError(ex, "Error getting sub meters for parent {ParentMeterId}", parentMeterId);
             }
 
+            _logger.LogInformation("Retrieved {Count} sub meters for parent meter ID {ParentMeterId}", meters.Count, parentMeterId);
             return meters;
         }
     }
