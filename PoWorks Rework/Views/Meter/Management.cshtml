@@ -52,10 +52,10 @@
                         <label for="SearchField" class="form-label">Search Criteria</label>
                     </div>
                     <div class="col-md-4">
-                        <select class="form-select" id="SearchField" asp-for="SearchCriteria.SearchField">
-                            <option value="Name">Name</option>
+                        <select class="form-select" id="SearchField" asp-for="SearchCriteria.SearchField" onchange="updateMeterSearchOptions()">
+                            <option value="Name">Name or Label</option>
                             <option value="Type">Type</option>
-                            <option value="Parent">Parent</option>
+                            <!-- REMOVED: <option value="Parent">Parent</option> -->
                             <option value="Tenant">Tenant</option>
                         </select>
                     </div>
@@ -65,9 +65,32 @@
                         <label for="SearchTerm" class="form-label">Search Term</label>
                     </div>
                     <div class="col-md-4">
-                        <input type="text" class="form-control" id="SearchTerm" asp-for="SearchCriteria.SearchTerm">
+                        <!-- Container for dynamic search inputs -->
+                        <div id="searchTermContainer">
+                            <!-- Text input for Name (default) -->
+                            <input type="text" class="form-control" id="textInput" asp-for="SearchCriteria.SearchTerm"
+                                   style="display: @(Model.SearchCriteria.SearchField == "Name" ? "block" : "none")">
+
+                            <!-- Dropdown for Type -->
+                            <select class="form-select" id="typeSelect" name="SearchCriteria.SearchTerm"
+                                    style="display: @(Model.SearchCriteria.SearchField == "Type" ? "block" : "none")">
+                                <option value="">Select Type</option>
+                                <option value="Main" selected="@(Model.SearchCriteria.SearchTerm == "Main")">Main</option>
+                                <option value="Sub" selected="@(Model.SearchCriteria.SearchTerm == "Sub")">Sub</option>
+                            </select>
+
+                            <!-- Dropdown for Tenant -->
+                            <select class="form-select" id="tenantSelect" name="SearchCriteria.SearchTerm"
+                                    style="display: @(Model.SearchCriteria.SearchField == "Tenant" ? "block" : "none")">
+                                <option value="">Select Tenant</option>
+                                @foreach (var tenant in Model.TenantOptions)
+                                {
+                                    <option value="@tenant.Text" selected="@(Model.SearchCriteria.SearchTerm == tenant.Text)">@tenant.Text</option>
+                                }
+                            </select>
+                        </div>
                     </div>
-                    <div class="col-md-6 text-end">
+                    <div class="col-md-6">
                         <button type="submit" class="btn btn-primary me-2">Search</button>
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newMeterModal">New Meter</button>
                     </div>
@@ -542,6 +565,37 @@
                 }
             }
         });
+        function updateMeterSearchOptions() {
+                   const criteria = document.getElementById('SearchField').value;
+
+                   // Hide all search inputs
+                   document.getElementById('textInput').style.display = 'none';
+                   document.getElementById('typeSelect').style.display = 'none';
+                   document.getElementById('tenantSelect').style.display = 'none';
+
+                   // Clear the name attribute from all inputs
+                   document.getElementById('textInput').name = '';
+                   document.getElementById('typeSelect').name = '';
+                   document.getElementById('tenantSelect').name = '';
+
+                   // Show the appropriate search input and set the correct name
+                   if (criteria === 'Name') {
+                       document.getElementById('textInput').style.display = 'block';
+                       document.getElementById('textInput').name = 'SearchCriteria.SearchTerm';
+                   } else if (criteria === 'Type') {
+                       document.getElementById('typeSelect').style.display = 'block';
+                       document.getElementById('typeSelect').name = 'SearchCriteria.SearchTerm';
+                   } else if (criteria === 'Tenant') {
+                       document.getElementById('tenantSelect').style.display = 'block';
+                       document.getElementById('tenantSelect').name = 'SearchCriteria.SearchTerm';
+                   }
+                   // REMOVED: Parent case handling
+               }
+
+               // Initialize the form on page load
+               document.addEventListener('DOMContentLoaded', function() {
+                   updateMeterSearchOptions();
+               });
     </script>
 }
 

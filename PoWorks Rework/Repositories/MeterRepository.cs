@@ -43,29 +43,27 @@ namespace PoWorks_Rework.Repositories
                         switch (criteria.SearchField)
                         {
                             case "Name":
-                                whereClause = @" WHERE ""Name"" ILIKE @SearchTerm";
+                                whereClause = @" WHERE (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
                                 break;
                             case "Type":
-                                whereClause = @" WHERE ""Type"" ILIKE @SearchTerm";
+                                whereClause = @" WHERE m.""Type"" ILIKE @SearchTerm";
                                 break;
-                            case "Parent":
-                                whereClause = @" WHERE ""ParentId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" ILIKE @SearchTerm)";
-                                break;
+                         
                             case "Tenant":
-                                whereClause = @" WHERE ""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
+                                whereClause = @" WHERE m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
                                 break;
                         }
                     }
 
                     string sql = $@"
-                        SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
-                               m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
-                        FROM ""Meters"" m
-                        LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
-                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                        {whereClause}
-                        ORDER BY m.""Name""
-                        LIMIT @PageSize OFFSET @Offset";
+                                SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
+                                m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
+                                FROM ""Meters"" m
+                                LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
+                                LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                                {whereClause}
+                                ORDER BY m.""Name""
+                                LIMIT @PageSize OFFSET @Offset";
 
                     _logger.LogInformation("Executing SQL: {SQL}", sql);
 
@@ -87,6 +85,7 @@ namespace PoWorks_Rework.Repositories
                         {
                             Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
                             Name = reader.GetString(reader.GetOrdinal("Name")),
+                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
                             Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
                             ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
                             ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
@@ -129,21 +128,19 @@ namespace PoWorks_Rework.Repositories
                         switch (criteria.SearchField)
                         {
                             case "Name":
-                                whereClause = @" WHERE ""Name"" ILIKE @SearchTerm";
+                                whereClause = @" WHERE (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
                                 break;
                             case "Type":
-                                whereClause = @" WHERE ""Type"" ILIKE @SearchTerm";
+                                whereClause = @" WHERE m.""Type"" ILIKE @SearchTerm";
                                 break;
-                            case "Parent":
-                                whereClause = @" WHERE ""ParentId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" ILIKE @SearchTerm)";
-                                break;
+                          
                             case "Tenant":
-                                whereClause = @" WHERE ""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
+                                whereClause = @" WHERE m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
                                 break;
                         }
                     }
 
-                    string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
+                    string sql = $@"SELECT COUNT(*) FROM ""Meters"" m {whereClause}";
                     _logger.LogInformation("Executing SQL: {SQL}", sql);
 
                     using var cmd = new NpgsqlCommand(sql, connection);
