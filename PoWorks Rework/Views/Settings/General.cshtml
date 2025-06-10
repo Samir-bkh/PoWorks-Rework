@@ -13,7 +13,7 @@
                 <button class="nav-link active" id="postgresql-tab" data-bs-toggle="tab" data-bs-target="#postgresql" type="button" role="tab" aria-controls="postgresql" aria-selected="true">PostgreSQL</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="sqlserver-tab" data-bs-toggle="tab" data-bs-target="#sqlserver" type="button" role="tab" aria-controls="sqlserver" aria-selected="false">SQL Server (PCVue HDS)</button>
+                <button class="nav-link" id="sqlserver-tab" data-bs-toggle="tab" data-bs-target="#sqlserver" type="button" role="tab" aria-controls="sqlserver" aria-selected="false">SQL Server Connections</button>
             </li>
         </ul>
 
@@ -89,73 +89,166 @@
             </div>
 
             <!-- SQL Server Tab -->
+            <!-- FIND the SQL Server tab content and REPLACE the entire tab-pane with: -->
             <div class="tab-pane fade" id="sqlserver" role="tabpanel" aria-labelledby="sqlserver-tab">
-                <form id="sqlserverForm">
-                    <div class="accordion" id="sqlserverAccordion">
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingSqlServer">
-                                <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                                        data-bs-target="#collapseSqlServer" aria-expanded="true" aria-controls="collapseSqlServer">
-                                    SQL Server Connection (PCVue HDS)
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5>SQL Server Connections</h5>
+                    <button type="button" class="btn btn-success btn-sm" id="addNewConnection">
+                        <i class="bi bi-plus-circle"></i> Add New Connection
+                    </button>
+                </div>
+
+                <!-- SQL Server Connection Tabs -->
+                <ul class="nav nav-pills mb-3" id="sqlServerConnectionTabs" role="tablist">
+                    @if (Model.SqlServerConnections.Any())
+                    {
+                        @for (int i = 0; i < Model.SqlServerConnections.Count; i++)
+                        {
+                            var connection = Model.SqlServerConnections[i];
+                            var isActive = i == 0 ? "active" : "";
+                            var isSelected = i == 0 ? "true" : "false";
+
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link @isActive position-relative"
+                                        id="sqlconn-@connection.ConnectionId-tab"
+                                        data-bs-toggle="pill"
+                                        data-bs-target="#sqlconn-@connection.ConnectionId"
+                                        type="button"
+                                        role="tab"
+                                        aria-controls="sqlconn-@connection.ConnectionId"
+                                        aria-selected="@isSelected"
+                                        data-connection-id="@connection.ConnectionId">
+                                    @(!string.IsNullOrEmpty(connection.ConnectionName) ? connection.ConnectionName : $"Connection {i + 1}")
+                                    @if (connection.IsDefault)
+                                    {
+                                        <span class="badge bg-primary ms-1">Default</span>
+                                    }
+                                    @if (Model.SqlServerConnections.Count > 1)
+                                    {
+                                        <button type="button" class="btn-close btn-close-sm ms-2" aria-label="Close"
+                                                onclick="removeConnection('@connection.ConnectionId')"
+                                                style="font-size: 0.6em; margin-left: 8px !important;"></button>
+                                    }
                                 </button>
-                            </h2>
-                            <div id="collapseSqlServer" class="accordion-collapse collapse show" aria-labelledby="headingSqlServer">
-                                <div class="accordion-body">
-                                    <div class="mb-3 row">
-                                        <label for="SqlServer_Host" class="col-sm-2 col-form-label">Host</label>
-                                        <div class="col-sm-10">
-                                            <input type="text" class="form-control" id="SqlServer_Host" asp-for="SqlServer.Host" placeholder="localhost">
-                                            <div class="form-text">SQL Server hostname or IP address</div>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3 row">
-                                        <label for="SqlServer_Port" class="col-sm-2 col-form-label">Port</label>
-                                        <div class="col-sm-10">
-                                            <input type="text" class="form-control" id="SqlServer_Port" asp-for="SqlServer.Port" placeholder="1433">
-                                            <div class="form-text">SQL Server default port is 1433</div>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3 row">
-                                        <label for="SqlServer_ProjectName" class="col-sm-2 col-form-label">PCVue Project Name</label>
-                                        <div class="col-sm-10">
-                                            <input type="text" class="form-control" id="SqlServer_ProjectName" asp-for="SqlServer.ProjectName">
-                                            <div class="form-text">The HDS database name will be [ProjectName]_DB</div>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3 row">
-                                        <label for="SqlServer_Database" class="col-sm-2 col-form-label">Database</label>
-                                        <div class="col-sm-10">
-                                            <div class="input-group">
-                                                <input type="text" class="form-control" id="SqlServer_Database" asp-for="SqlServer.Database">
-                                                <button class="btn btn-outline-secondary" type="button" id="generateDbName">Generate</button>
+                            </li>
+                        }
+                    }
+                    else
+                    {
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active"
+                                    id="sqlconn-default-tab"
+                                    data-bs-toggle="pill"
+                                    data-bs-target="#sqlconn-default"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="sqlconn-default"
+                                    aria-selected="true"
+                                    data-connection-id="default">
+                                Connection 1
+                                <span class="badge bg-primary ms-1">Default</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+
+                <!-- SQL Server Connection Content -->
+                <div class="tab-content" id="sqlServerConnectionContent">
+                    @if (Model.SqlServerConnections.Any())
+                    {
+                        @for (int i = 0; i < Model.SqlServerConnections.Count; i++)
+                        {
+                            var connection = Model.SqlServerConnections[i];
+                            var isActive = i == 0 ? "show active" : "";
+
+                            <div class="tab-pane fade @isActive"
+                                 id="sqlconn-@connection.ConnectionId"
+                                 role="tabpanel"
+                                 aria-labelledby="sqlconn-@connection.ConnectionId-tab">
+
+                                <!-- Simple form for now -->
+                                <form class="sql-connection-form" data-connection-id="@connection.ConnectionId">
+                                    <input type="hidden" name="ConnectionId" value="@connection.ConnectionId" />
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Connection Name *</label>
+                                                <input type="text" class="form-control" name="ConnectionName" value="@connection.ConnectionName" required />
                                             </div>
-                                            <div class="form-text">This will be filled automatically if you use the Generate button with the PCVue Project Name</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">PCVue Project Name</label>
+                                                <input type="text" class="form-control" name="ProjectName" value="@connection.ProjectName" />
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="mb-3 row">
-                                        <label for="SqlServer_Username" class="col-sm-2 col-form-label">Username</label>
-                                        <div class="col-sm-10">
-                                            <input type="text" class="form-control" id="SqlServer_Username" asp-for="SqlServer.Username">
+
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <div class="mb-3">
+                                                <label class="form-label">Host *</label>
+                                                <input type="text" class="form-control" name="Host" value="@connection.Host" required />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="mb-3">
+                                                <label class="form-label">Port</label>
+                                                <input type="text" class="form-control" name="Port" value="@connection.Port" />
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="mb-3 row">
-                                        <label for="SqlServer_Password" class="col-sm-2 col-form-label">Password</label>
-                                        <div class="col-sm-10">
-                                            <input type="password" class="form-control" id="SqlServer_Password" asp-for="SqlServer.Password">
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Database *</label>
+                                                <input type="text" class="form-control" name="Database" value="@connection.Database" required />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Username *</label>
+                                                <input type="text" class="form-control" name="Username" value="@connection.Username" required />
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="mb-3 row">
-                                        <div class="col-sm-10 offset-sm-2">
-                                            <button type="button" class="btn btn-outline-primary me-2" id="testSqlServerConnection">Test Connection</button>
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label class="form-label">Password *</label>
+                                                <input type="password" class="form-control" name="Password" value="@connection.Password" required />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6 text-end">
+                                            <button type="button" class="btn btn-outline-primary" onclick="testConnection('@connection.ConnectionId')">
+                                                <i class="bi bi-wifi"></i> Test Connection
+                                            </button>
                                         </div>
                                     </div>
-                                </div>
+
+                                    <div id="connectionResult-@connection.ConnectionId" class="mt-3" style="display: none;"></div>
+                                </form>
                             </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="tab-pane fade show active" id="sqlconn-default" role="tabpanel" aria-labelledby="sqlconn-default-tab">
+                            <p>No SQL Server connections configured. Click "Add New Connection" to create one.</p>
                         </div>
-                    </div>
-                </form>
+                    }
+                </div>
+
+                <!-- Save All Connections Button -->
+                <div class="mt-4 text-end">
+                    <button type="button" class="btn btn-primary" id="saveAllSqlConnections">
+                        <i class="bi bi-save"></i> Save All SQL Server Connections
+                    </button>
+                </div>
             </div>
-        </div>
 
         <div class="text-center mt-4">
             <form asp-action="SaveGeneralSettings" asp-controller="Settings" method="post" id="mainSettingsForm">
@@ -205,6 +298,316 @@
 </div>
 
 <script>
+
+            // Helper function to show messages
+        function showMessage(message, type) {
+            // Remove any existing alerts
+            document.querySelectorAll('.alert-dismissible').forEach(alert => {
+                if (alert.textContent.includes('deleted') || alert.textContent.includes('Error')) {
+                    alert.remove();
+                }
+            });
+
+            // Create new alert
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+
+            // Insert at the top of the SQL Server tab content
+            const sqlServerTab = document.getElementById('sqlserver');
+            if (sqlServerTab) {
+                sqlServerTab.insertBefore(alertDiv, sqlServerTab.firstChild);
+            }
+
+            // Auto-hide success messages after 3 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                    }
+                }, 3000);
+            }
+        }
+
+        // Helper function to update default badge
+        function updateDefaultBadge(newDefaultConnectionId) {
+            // Remove all existing default badges
+            document.querySelectorAll('#sqlServerConnectionTabs .badge').forEach(badge => {
+                if (badge.textContent === 'Default') {
+                    badge.remove();
+                }
+            });
+
+            // Add badge to new default connection
+            const newDefaultTab = document.getElementById(`sqlconn-${newDefaultConnectionId}-tab`);
+            if (newDefaultTab) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-primary ms-1';
+                badge.textContent = 'Default';
+                newDefaultTab.appendChild(badge);
+            }
+        }
+
+            // ADD this to the existing JavaScript section:
+
+        // Add New Connection functionality
+        document.getElementById('addNewConnection').addEventListener('click', function() {
+            addNewConnection();
+        });
+
+        let connectionCounter = @(Model.SqlServerConnections.Count > 0 ? Model.SqlServerConnections.Count : 1);
+
+        function addNewConnection() {
+            connectionCounter++;
+            const newConnectionId = generateGuid();
+
+            // Create new tab
+            const tabsContainer = document.getElementById('sqlServerConnectionTabs');
+            const newTabHtml = `
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link position-relative"
+                            id="sqlconn-${newConnectionId}-tab"
+                            data-bs-toggle="pill"
+                            data-bs-target="#sqlconn-${newConnectionId}"
+                            type="button"
+                            role="tab"
+                            aria-controls="sqlconn-${newConnectionId}"
+                            aria-selected="false"
+                            data-connection-id="${newConnectionId}">
+                        New Connection
+                        <button type="button" class="btn-close btn-close-sm ms-2" aria-label="Close"
+                                onclick="removeConnection('${newConnectionId}')"
+                                style="font-size: 0.6em; margin-left: 8px !important;"></button>
+                    </button>
+                </li>`;
+
+            tabsContainer.insertAdjacentHTML('beforeend', newTabHtml);
+
+            // Create new content panel
+            const contentContainer = document.getElementById('sqlServerConnectionContent');
+            const newContentHtml = createConnectionFormHtml(newConnectionId, connectionCounter - 1);
+            contentContainer.insertAdjacentHTML('beforeend', newContentHtml);
+
+            // Activate the new tab
+            const newTab = document.getElementById(`sqlconn-${newConnectionId}-tab`);
+            const newTabInstance = new bootstrap.Tab(newTab);
+            newTabInstance.show();
+        }
+
+        function createConnectionFormHtml(connectionId, index) {
+            return `
+                <div class="tab-pane fade" id="sqlconn-${connectionId}" role="tabpanel">
+                    <form class="sql-connection-form" data-connection-id="${connectionId}">
+                        <input type="hidden" name="ConnectionId" value="${connectionId}" />
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Connection Name *</label>
+                                    <input type="text" class="form-control" name="ConnectionName" placeholder="Enter connection name" required />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">PCVue Project Name</label>
+                                    <input type="text" class="form-control" name="ProjectName" placeholder="Enter project name" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    <label class="form-label">Host *</label>
+                                    <input type="text" class="form-control" name="Host" value="localhost" required />
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Port</label>
+                                    <input type="text" class="form-control" name="Port" value="1433" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Database *</label>
+                                    <input type="text" class="form-control" name="Database" placeholder="Database name" required />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Username *</label>
+                                    <input type="text" class="form-control" name="Username" required />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Password *</label>
+                                    <input type="password" class="form-control" name="Password" required />
+                                </div>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <button type="button" class="btn btn-outline-primary" onclick="testConnection('${connectionId}')">
+                                    <i class="bi bi-wifi"></i> Test Connection
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="connectionResult-${connectionId}" class="mt-3" style="display: none;"></div>
+                    </form>
+                </div>`;
+        }
+
+        function generateGuid() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+               window.removeConnection = function(connectionId) {
+            // Check if this is the last connection
+            const connectionTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-item');
+            if (connectionTabs.length <= 1) {
+                alert('Cannot remove the last connection. At least one connection is required.');
+                return;
+            }
+
+            // Get connection name for confirmation
+            const tabButton = document.getElementById(`sqlconn-${connectionId}-tab`);
+            const connectionName = tabButton ? tabButton.textContent.replace('×', '').trim() : 'this connection';
+
+            if (confirm(`Are you sure you want to delete "${connectionName}"? This action cannot be undone.`)) {
+                // Show loading state
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'alert alert-info';
+                resultDiv.textContent = 'Deleting connection...';
+                document.querySelector('.card-body').appendChild(resultDiv);
+
+                // Call server to delete the connection
+                fetch('/Settings/DeleteSqlServerConnection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ConnectionId: connectionId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Remove loading message
+                    resultDiv.remove();
+
+                    if (data.success) {
+                        // Remove the tab and content from UI
+                        const tabElement = document.getElementById(`sqlconn-${connectionId}-tab`);
+                        const contentElement = document.getElementById(`sqlconn-${connectionId}`);
+
+                        if (tabElement) {
+                            tabElement.closest('.nav-item').remove();
+                        }
+                        if (contentElement) {
+                            contentElement.remove();
+                        }
+
+                        // If no active tab remains, activate the first available tab
+                        const remainingTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-link');
+                        if (remainingTabs.length > 0 && !document.querySelector('#sqlServerConnectionTabs .nav-link.active')) {
+                            const firstTab = remainingTabs[0];
+                            const tabInstance = new bootstrap.Tab(firstTab);
+                            tabInstance.show();
+
+                            // If a new default was set, update the badge
+                            if (data.newDefaultConnectionId) {
+                                updateDefaultBadge(data.newDefaultConnectionId);
+                            }
+                        }
+
+                        // Show success message
+                        showMessage('Connection deleted successfully!', 'success');
+                    } else {
+                        // Show error message
+                        showMessage('Error deleting connection: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    // Remove loading message
+                    resultDiv.remove();
+
+                    console.error('Error deleting connection:', error);
+                    showMessage('Error deleting connection: ' + error.message, 'danger');
+                });
+            }
+        };
+
+        window.testConnection = function(connectionId) {
+            const form = document.querySelector(`[data-connection-id="${connectionId}"]`);
+            const formData = new FormData(form);
+            const connectionData = Object.fromEntries(formData.entries());
+
+            const resultElement = document.getElementById(`connectionResult-${connectionId}`);
+            resultElement.style.display = 'block';
+            resultElement.className = 'alert alert-info mt-3';
+            resultElement.textContent = 'Testing connection...';
+
+            fetch('/Settings/TestSqlServerConnection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(connectionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultElement.className = 'alert alert-success mt-3';
+                    resultElement.textContent = 'Connection successful!';
+                } else {
+                    resultElement.className = 'alert alert-danger mt-3';
+                    resultElement.textContent = 'Connection failed: ' + data.errorMessage;
+                }
+            })
+            .catch(error => {
+                resultElement.className = 'alert alert-danger mt-3';
+                resultElement.textContent = 'Error testing connection: ' + error;
+            });
+        };
+
+        // Save All Connections
+        document.getElementById('saveAllSqlConnections').addEventListener('click', function() {
+            const forms = document.querySelectorAll('.sql-connection-form');
+            const connections = [];
+
+            forms.forEach(form => {
+                const formData = new FormData(form);
+                const connectionData = Object.fromEntries(formData.entries());
+                connections.push(connectionData);
+            });
+
+            fetch('/Settings/SaveSqlServerConnections', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ connections: connections })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('SQL Server connections saved successfully!');
+                    location.reload();
+                } else {
+                    alert('Error saving connections: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error saving connections: ' + error);
+            });
+        });
     document.addEventListener('DOMContentLoaded', function() {
         // PostgreSQL Connection Testing
         document.getElementById('testConnection').addEventListener('click', function() {

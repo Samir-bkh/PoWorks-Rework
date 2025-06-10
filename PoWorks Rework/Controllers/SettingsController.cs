@@ -48,22 +48,12 @@ namespace PoWorks_Rework.Controllers
                 };
 
             // Load SQL Server settings from the service
-            var sqlSettings = _sqlServerService.IsInitialized
-                ? _sqlServerService.CurrentSettings
-                : new SqlServerSettings
-                {
-                    Host = _configuration["SqlServerSettings:Host"] ?? "localhost",
-                    Port = _configuration["SqlServerSettings:Port"] ?? "1433",
-                    Database = _configuration["SqlServerSettings:Database"] ?? "",
-                    Username = _configuration["SqlServerSettings:Username"] ?? "",
-                    Password = _configuration["SqlServerSettings:Password"] ?? "",
-                    ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? ""
-                };
+            var sqlConnections = LoadSqlServerConnections();
 
             var viewModel = new GeneralSettingsViewModel
             {
                 PostgreSql = pgSettings,
-                SqlServer = sqlSettings
+                SqlServerConnections = sqlConnections
             };
 
             return View(viewModel);
@@ -299,6 +289,193 @@ namespace PoWorks_Rework.Controllers
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);
         }
 
+        private List<SqlServerSettings> LoadSqlServerConnections()
+        {
+            var connections = new List<SqlServerSettings>();
+
+            // Try to load from the new multiple connections format first
+            var connectionsSection = _configuration.GetSection("SqlServerConnections");
+            if (connectionsSection.Exists() && connectionsSection.GetChildren().Any())
+            {
+                foreach (var connectionSection in connectionsSection.GetChildren())
+                {
+                    var connection = new SqlServerSettings
+                    {
+                        ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
+                        ConnectionName = connectionSection["ConnectionName"] ?? "",
+                        Host = connectionSection["Host"] ?? "localhost",
+                        Port = connectionSection["Port"] ?? "1433",
+                        Database = connectionSection["Database"] ?? "",
+                        Username = connectionSection["Username"] ?? "",
+                        Password = connectionSection["Password"] ?? "",
+                        ProjectName = connectionSection["ProjectName"] ?? "",
+                        IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                    };
+                    connections.Add(connection);
+                }
+            }
+            else
+            {
+                // Fallback to old single connection format for backward compatibility
+                var legacyConnection = new SqlServerSettings
+                {
+                    ConnectionId = "legacy",
+                    ConnectionName = "Legacy Connection",
+                    Host = _configuration["SqlServerSettings:Host"] ?? "localhost",
+                    Port = _configuration["SqlServerSettings:Port"] ?? "1433",
+                    Database = _configuration["SqlServerSettings:Database"] ?? "",
+                    Username = _configuration["SqlServerSettings:Username"] ?? "",
+                    Password = _configuration["SqlServerSettings:Password"] ?? "",
+                    ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? "",
+                    IsDefault = true
+                };
+
+                if (!string.IsNullOrEmpty(legacyConnection.Host) && !string.IsNullOrEmpty(legacyConnection.Database))
+                {
+                    connections.Add(legacyConnection);
+                }
+            }
+
+            // If no connections exist, create a default empty one
+            if (!connections.Any())
+            {
+                connections.Add(new SqlServerSettings
+                {
+                    ConnectionId = Guid.NewGuid().ToString(),
+                    ConnectionName = "Default Connection",
+                    Host = "localhost",
+                    Port = "1433",
+                    IsDefault = true
+                });
+            }
+
+            return connections;
+        }
+
+        [HttpPost]
+        public IActionResult DeleteSqlServerConnection([FromBody] DeleteConnectionRequest request)
+        {
+            try
+            {
+                var connections = LoadSqlServerConnections();
+
+                // Check if we're trying to delete the last connection
+                if (connections.Count <= 1)
+                {
+                    return Json(new { success = false, error = "Cannot delete the last connection. At least one connection is required." });
+                }
+
+                // Find the connection to delete
+                var connectionToDelete = connections.FirstOrDefault(c => c.ConnectionId == request.ConnectionId);
+                if (connectionToDelete == null)
+                {
+                    return Json(new { success = false, error = "Connection not found." });
+                }
+
+                // Remove the connection
+                connections.Remove(connectionToDelete);
+
+                // If we deleted the default connection, set a new default
+                if (connectionToDelete.IsDefault && connections.Any())
+                {
+                    connections.First().IsDefault = true;
+                }
+
+                // Save updated connections to appsettings.json
+                UpdateSqlServerConnections(connections);
+
+                // Update the service with new connections
+                _sqlServerService.InitializeMultiple(connections);
+
+                return Json(new
+                {
+                    success = true,
+                    message = "Connection deleted successfully!",
+                    newDefaultConnectionId = connections.FirstOrDefault(c => c.IsDefault)?.ConnectionId
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public IActionResult SaveSqlServerConnections([FromBody] SaveConnectionsRequest request)
+        {
+            try
+            {
+                var connections = new List<SqlServerSettings>();
+
+                foreach (var connData in request.Connections)
+                {
+                    var connection = new SqlServerSettings
+                    {
+                        ConnectionId = connData.ContainsKey("ConnectionId") ? connData["ConnectionId"] : Guid.NewGuid().ToString(),
+                        ConnectionName = connData.ContainsKey("ConnectionName") ? connData["ConnectionName"] : "",
+                        Host = connData.ContainsKey("Host") ? connData["Host"] : "localhost",
+                        Port = connData.ContainsKey("Port") ? connData["Port"] : "1433",
+                        Database = connData.ContainsKey("Database") ? connData["Database"] : "",
+                        Username = connData.ContainsKey("Username") ? connData["Username"] : "",
+                        Password = connData.ContainsKey("Password") ? connData["Password"] : "",
+                        ProjectName = connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "",
+                        IsDefault = connData.ContainsKey("IsDefault") && connData["IsDefault"].ToLower() == "true"
+                    };
+
+                    connections.Add(connection);
+                }
+
+                // Save to configuration
+                UpdateSqlServerConnections(connections);
+
+                return Json(new { success = true, message = "All SQL Server connections saved successfully!" });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        private void UpdateSqlServerConnections(List<SqlServerSettings> connections)
+        {
+            var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
+            var json = System.IO.File.ReadAllText(appSettingsPath);
+            var jsonSettings = JsonDocument.Parse(json);
+
+            var updatedSettings = new Dictionary<string, object>();
+
+            foreach (var element in jsonSettings.RootElement.EnumerateObject())
+            {
+                updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
+            }
+
+            // Remove old single connection format
+            if (updatedSettings.ContainsKey("SqlServerSettings"))
+            {
+                updatedSettings.Remove("SqlServerSettings");
+            }
+
+            // Add new multiple connections format
+            var connectionsList = connections.Select(c => new Dictionary<string, object>
+    {
+        { "ConnectionId", c.ConnectionId },
+        { "ConnectionName", c.ConnectionName },
+        { "Host", c.Host },
+        { "Port", c.Port },
+        { "Database", c.Database },
+        { "Username", c.Username },
+        { "Password", c.Password },
+        { "ProjectName", c.ProjectName },
+        { "IsDefault", c.IsDefault }
+    }).ToList();
+
+            updatedSettings["SqlServerConnections"] = connectionsList;
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
+            System.IO.File.WriteAllText(appSettingsPath, updatedJson);
+        }
+
         // Helper method to update appsettings.json for SQL Server
         private void UpdateSqlServerSettings(SqlServerSettings settings)
         {
@@ -335,4 +512,16 @@ namespace PoWorks_Rework.Controllers
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);
         }
     }
+
+
+}
+
+public class SaveConnectionsRequest
+{
+    public List<Dictionary<string, string>> Connections { get; set; } = new List<Dictionary<string, string>>();
+}
+
+public class DeleteConnectionRequest
+{
+    public string ConnectionId { get; set; } = "";
 }

@@ -13,11 +13,13 @@ namespace PoWorks_Rework.Services
         private readonly ILogger<SqlServerService> _logger;
         private SqlServerSettings _currentSettings;
         private bool _isInitialized = false;
+        private SqlServerConnectionCollection _connectionCollection;
 
         public SqlServerService(IConfiguration configuration, ILogger<SqlServerService> logger)
         {
             _configuration = configuration;
             _logger = logger;
+            _connectionCollection = new SqlServerConnectionCollection();
             // Load settings from configuration initially
             LoadSettingsFromConfig();
         }
@@ -39,22 +41,100 @@ namespace PoWorks_Rework.Services
             _isInitialized = true;
         }
 
+        public bool RemoveConnection(string connectionId)
+        {
+            try
+            {
+                if (_connectionCollection.Connections.Count <= 1)
+                {
+                    _logger.LogWarning("Cannot remove the last SQL Server connection");
+                    return false;
+                }
+
+                var connectionToRemove = _connectionCollection.GetConnection(connectionId);
+                if (connectionToRemove != null)
+                {
+                    _connectionCollection.RemoveConnection(connectionId);
+                    _isInitialized = _connectionCollection.Connections.Any();
+
+                    _logger.LogInformation($"Removed SQL Server connection '{connectionToRemove.ConnectionName}' (ID: {connectionId})");
+                    return true;
+                }
+
+                _logger.LogWarning($"SQL Server connection with ID '{connectionId}' not found");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error removing SQL Server connection '{connectionId}'");
+                return false;
+            }
+        }
+
+        // FIND the LoadSettingsFromConfig method and REPLACE with:
         private void LoadSettingsFromConfig()
         {
-            _currentSettings = new SqlServerSettings
+            try
             {
-                Host = _configuration["SqlServerSettings:Host"] ?? "localhost",
-                Port = _configuration["SqlServerSettings:Port"] ?? "1433",
-                Database = _configuration["SqlServerSettings:Database"] ?? "",
-                Username = _configuration["SqlServerSettings:Username"] ?? "",
-                Password = _configuration["SqlServerSettings:Password"] ?? "",
-                ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? ""
-            };
+                var connections = new List<SqlServerSettings>();
 
-            // Check if we have a valid database configuration
-            if (!string.IsNullOrEmpty(_currentSettings.Database))
+                // Try to load from the new multiple connections format first
+                var connectionsSection = _configuration.GetSection("SqlServerConnections");
+                if (connectionsSection.Exists() && connectionsSection.GetChildren().Any())
+                {
+                    foreach (var connectionSection in connectionsSection.GetChildren())
+                    {
+                        var connection = new SqlServerSettings
+                        {
+                            ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
+                            ConnectionName = connectionSection["ConnectionName"] ?? "",
+                            Host = connectionSection["Host"] ?? "localhost",
+                            Port = connectionSection["Port"] ?? "1433",
+                            Database = connectionSection["Database"] ?? "",
+                            Username = connectionSection["Username"] ?? "",
+                            Password = connectionSection["Password"] ?? "",
+                            ProjectName = connectionSection["ProjectName"] ?? "",
+                            IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                        };
+                        connections.Add(connection);
+                    }
+                }
+                else
+                {
+                    // Fallback to old single connection format for backward compatibility
+                    var legacyConnection = new SqlServerSettings
+                    {
+                        ConnectionId = "legacy",
+                        ConnectionName = "Legacy Connection",
+                        Host = _configuration["SqlServerSettings:Host"] ?? "localhost",
+                        Port = _configuration["SqlServerSettings:Port"] ?? "1433",
+                        Database = _configuration["SqlServerSettings:Database"] ?? "",
+                        Username = _configuration["SqlServerSettings:Username"] ?? "",
+                        Password = _configuration["SqlServerSettings:Password"] ?? "",
+                        ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? "",
+                        IsDefault = true
+                    };
+
+                    if (!string.IsNullOrEmpty(legacyConnection.Database))
+                    {
+                        connections.Add(legacyConnection);
+                    }
+                }
+
+                // Initialize the connection collection
+                _connectionCollection = new SqlServerConnectionCollection();
+                foreach (var connection in connections)
+                {
+                    _connectionCollection.AddConnection(connection);
+                }
+
+                _isInitialized = connections.Any(c => !string.IsNullOrEmpty(c.Database));
+            }
+            catch (Exception ex)
             {
-                _isInitialized = true;
+                _logger.LogError(ex, "Error loading SQL Server settings from configuration");
+                _connectionCollection = new SqlServerConnectionCollection();
+                _isInitialized = false;
             }
         }
 
@@ -235,6 +315,38 @@ namespace PoWorks_Rework.Services
             // Also allow spaces if the table name will be bracketed
             return System.Text.RegularExpressions.Regex.IsMatch(
                 cleanTableName, @"^[a-zA-Z0-9_\s\.]+$");
+        }
+
+        public SqlConnection GetConnection(string connectionId = null)
+        {
+            if (!_isInitialized)
+                throw new InvalidOperationException("SQL Server connection is not initialized.");
+
+            var settings = string.IsNullOrEmpty(connectionId)
+                ? _connectionCollection.GetDefaultConnection()
+                : _connectionCollection.GetConnection(connectionId);
+
+            if (settings == null)
+                throw new InvalidOperationException($"SQL Server connection '{connectionId}' not found.");
+
+            return new SqlConnection(settings.ToConnectionString());
+        }
+
+        public List<SqlServerSettings> GetAllConnections()
+        {
+            return _connectionCollection.Connections.ToList();
+        }
+
+        public void InitializeMultiple(List<SqlServerSettings> connections)
+        {
+            _connectionCollection = new SqlServerConnectionCollection();
+
+            foreach (var connection in connections)
+            {
+                _connectionCollection.AddConnection(connection);
+            }
+
+            _isInitialized = connections.Any();
         }
 
         // Alternative method to get table schema and validate table exists

@@ -23,6 +23,15 @@ namespace PoWorks_Rework.Models
         [Display(Name = "PCVue Project Name")]
         public string ProjectName { get; set; } = "";
 
+        [Display(Name = "Connection ID")]
+        public string ConnectionId { get; set; } = Guid.NewGuid().ToString();
+
+        [Display(Name = "Connection Name")]
+        public string ConnectionName { get; set; } = "";
+
+        [Display(Name = "Is Default Connection")]
+        public bool IsDefault { get; set; } = false;
+
         // Helper method to generate SQL Server connection string
         public string ToConnectionString()
         {
