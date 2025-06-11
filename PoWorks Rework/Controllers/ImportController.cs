@@ -41,6 +41,37 @@ namespace PoWorks_Rework.Controllers
             return View(viewModel);
         }
 
+        [HttpGet]
+        public IActionResult GetSqlServerConnections()
+        {
+            try
+            {
+                _logger.LogInformation("Getting SQL Server connections...");
+
+                var connections = _sqlServerService.GetAllConnections();
+                _logger.LogInformation($"Found {connections.Count} SQL Server connections");
+
+                var connectionData = connections.Select(c => new
+                {
+                    connectionId = c.ConnectionId,
+                    connectionName = c.ConnectionName,
+                    host = c.Host,
+                    port = c.Port,
+                    database = c.Database,
+                    isDefault = c.IsDefault
+                }).ToList();
+
+                _logger.LogInformation($"Returning connection data: {string.Join(", ", connectionData.Select(c => c.connectionName))}");
+
+                return Json(new { success = true, connections = connectionData });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting SQL Server connections");
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         [IgnoreAntiforgeryToken]
@@ -87,7 +118,7 @@ namespace PoWorks_Rework.Controllers
 
 
         [HttpGet]
-        public async Task<IActionResult> GetHdsTables()
+        public async Task<IActionResult> GetHdsTables(string connectionId = null)
         {
             try
             {
@@ -96,23 +127,22 @@ namespace PoWorks_Rework.Controllers
                     return Json(new { success = false, error = "SQL Server connection not configured" });
                 }
 
-                var tables = await _sqlServerService.GetAvailableTables();
+                var tables = await _sqlServerService.GetAvailableTables(connectionId);
                 return Json(new { success = true, tables = tables });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting tables from HDS");
+                _logger.LogError(ex, "Error getting tables from HDS for connection {ConnectionId}", connectionId);
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
-        // Controllers/ImportController.cs - Updated GetMetersFromTable method
         [HttpGet]
-        public async Task<IActionResult> GetMetersFromTable(string tableName, string startDate = null, string endDate = null, int limit = 1000)
+        public async Task<IActionResult> GetMetersFromTable(string tableName, string connectionId = null, string startDate = null, string endDate = null, int limit = 1000)
         {
             try
             {
-                _logger.LogInformation($"GetMetersFromTable called: tableName='{tableName}', limit={limit}");
+                _logger.LogInformation($"GetMetersFromTable called: tableName='{tableName}', connectionId='{connectionId}', limit={limit}");
 
                 if (!_sqlServerService.IsInitialized)
                 {
@@ -140,27 +170,27 @@ namespace PoWorks_Rework.Controllers
                     _logger.LogWarning($"Limit reduced to maximum allowed value: {limit}");
                 }
 
-                _logger.LogInformation($"Processing request for table '{tableName}' with limit {limit}");
+                _logger.LogInformation($"Processing request for table '{tableName}' on connection '{connectionId}' with limit {limit}");
 
                 // Validate that the table exists before trying to query it
-                var tableExists = await _sqlServerService.ValidateTableExists(tableName);
+                var tableExists = await _sqlServerService.ValidateTableExists(tableName, connectionId);
                 if (!tableExists)
                 {
-                    _logger.LogWarning($"Table '{tableName}' does not exist or is not accessible");
+                    _logger.LogWarning($"Table '{tableName}' does not exist or is not accessible on connection '{connectionId}'");
                     return Json(new
                     {
                         success = false,
-                        error = $"Table '{tableName}' does not exist or is not accessible. Please verify the table name and permissions."
+                        error = $"Table '{tableName}' does not exist or is not accessible on the selected connection. Please verify the table name and permissions."
                     });
                 }
 
-                // Get the HDS meters with the specified limit
-                var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName, limit);
+                // Get the HDS meters with the specified limit and connection
+                var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName, limit, connectionId);
 
                 // Get parent meter options from PostgreSQL database
                 var parentOptions = await GetParentMeterOptions();
 
-                _logger.LogInformation($"Successfully retrieved {hdsMeters.Count} meters from table '{tableName}'");
+                _logger.LogInformation($"Successfully retrieved {hdsMeters.Count} meters from table '{tableName}' on connection '{connectionId}'");
 
                 return Json(new
                 {
@@ -170,13 +200,14 @@ namespace PoWorks_Rework.Controllers
                     actualCount = hdsMeters.Count,
                     requestedLimit = limit,
                     tableName = tableName,
+                    connectionId = connectionId,
                     message = $"Retrieved {hdsMeters.Count} meters from table '{tableName}' (limit: {limit})"
                 });
             }
             catch (Microsoft.Data.SqlClient.SqlException sqlEx)
             {
                 // Handle specific SQL Server errors
-                _logger.LogError(sqlEx, $"SQL Server error getting meters from table '{tableName}' with limit {limit}");
+                _logger.LogError(sqlEx, $"SQL Server error getting meters from table '{tableName}' on connection '{connectionId}' with limit {limit}");
 
                 string errorMessage = "Database error occurred";
 
@@ -184,19 +215,19 @@ namespace PoWorks_Rework.Controllers
                 switch (sqlEx.Number)
                 {
                     case 208: // Invalid object name
-                        errorMessage = $"Table '{tableName}' does not exist or is not accessible";
+                        errorMessage = $"Table '{tableName}' does not exist or is not accessible on the selected connection";
                         break;
                     case 102: // Incorrect syntax
-                        errorMessage = $"SQL syntax error - please check table name '{tableName}'";
+                        errorMessage = "Invalid SQL syntax - please check table name format";
                         break;
-                    case 2: // Timeout
-                        errorMessage = "Database query timeout - try reducing the limit or check table size";
+                    case 2: // Connection timeout
+                        errorMessage = "Connection timeout - please check connection settings";
                         break;
                     case 18456: // Login failed
-                        errorMessage = "Database authentication failed - check connection settings";
+                        errorMessage = "Authentication failed - please check connection credentials";
                         break;
                     default:
-                        errorMessage = $"Database error: {sqlEx.Message}";
+                        errorMessage = $"SQL Server error: {sqlEx.Message}";
                         break;
                 }
 
@@ -205,17 +236,19 @@ namespace PoWorks_Rework.Controllers
                     success = false,
                     error = errorMessage,
                     sqlErrorNumber = sqlEx.Number,
-                    details = $"SQL Error {sqlEx.Number}: {sqlEx.Message}"
+                    tableName = tableName,
+                    connectionId = connectionId
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Unexpected error getting meters from table '{tableName}' with limit {limit}");
+                _logger.LogError(ex, $"Unexpected error getting meters from table '{tableName}' on connection '{connectionId}' with limit {limit}");
                 return Json(new
                 {
                     success = false,
                     error = $"Unexpected error: {ex.Message}",
-                    details = ex.ToString()
+                    tableName = tableName,
+                    connectionId = connectionId
                 });
             }
         }
@@ -538,12 +571,6 @@ namespace PoWorks_Rework.Controllers
                                             {
                                                 parentId = parsedParentId;
                                                 _logger.LogInformation($"Parent meter found with ID: {parentId}");
-                                            }
-                                            else if (request.CreateMissingParents)
-                                            {
-                                                // Create a missing parent if requested
-                                                _logger.LogWarning($"Parent meter with ID {parsedParentId} not found for {meter.HdsMeterName}");
-                                                parentId = null;
                                             }
                                             else
                                             {

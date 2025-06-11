@@ -27,12 +27,32 @@ namespace PoWorks_Rework.Services
         public SqlServerSettings CurrentSettings => _currentSettings;
         public bool IsInitialized => _isInitialized;
 
-        public SqlConnection GetConnection()
+        public SqlConnection GetConnection(string connectionId = null)
         {
             if (!_isInitialized)
                 throw new InvalidOperationException("SQL Server connection is not initialized.");
 
-            return new SqlConnection(_currentSettings.ToConnectionString());
+            SqlServerSettings settings;
+
+            if (_connectionCollection != null && _connectionCollection.Connections.Any())
+            {
+                // Use new multiple connections system
+                settings = string.IsNullOrEmpty(connectionId)
+                    ? _connectionCollection.GetDefaultConnection()
+                    : _connectionCollection.GetConnection(connectionId);
+
+                if (settings == null)
+                    throw new InvalidOperationException($"SQL Server connection '{connectionId ?? "default"}' not found.");
+            }
+            else
+            {
+                // Fallback to legacy single connection system
+                settings = _currentSettings;
+                if (settings == null)
+                    throw new InvalidOperationException("SQL Server connection is not initialized.");
+            }
+
+            return new SqlConnection(settings.ToConnectionString());
         }
 
         public void Initialize(SqlServerSettings settings)
@@ -69,6 +89,57 @@ namespace PoWorks_Rework.Services
                 _logger.LogError(ex, $"Error removing SQL Server connection '{connectionId}'");
                 return false;
             }
+        }
+
+        public async Task<List<string>> GetAvailableTables(string connectionId = null)
+        {
+            if (!IsInitialized)
+                throw new InvalidOperationException("SQL Server connection is not initialized.");
+
+            var tables = new List<string>();
+
+            try
+            {
+                using (var connection = GetConnection(connectionId))
+                {
+                    await connection.OpenAsync();
+
+                    // SQL to get all tables in the database
+                    string sql = @"
+                SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_TYPE = 'BASE TABLE'
+                AND TABLE_SCHEMA = 'dbo'
+                ORDER BY TABLE_NAME";
+
+                    using (var command = new SqlCommand(sql, connection))
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                tables.Add(reader.GetString(0));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available tables from SQL Server connection '{ConnectionId}'", connectionId ?? "default");
+                throw;
+            }
+
+            // If no tables found, add some sample tables for development/testing
+            if (tables.Count == 0)
+            {
+                tables.Add("HDS_RAW_DATA");
+                tables.Add("HDS_DAILY");
+                tables.Add("HDS_MONTHLY");
+                tables.Add("HDS_ARCHIVE");
+            }
+
+            return tables;
         }
 
         // FIND the LoadSettingsFromConfig method and REPLACE with:
@@ -190,7 +261,7 @@ namespace PoWorks_Rework.Services
         }
 
         // Services/SqlServerService.cs - Fixed GetDistinctMeterNames method with corrected SQL syntax
-        public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName, int? limit = null)
+        public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName, int? limit = null, string connectionId = null)
         {
             if (!IsInitialized)
                 throw new InvalidOperationException("SQL Server connection is not initialized.");
@@ -205,7 +276,7 @@ namespace PoWorks_Rework.Services
                     throw new ArgumentException("Invalid table name format");
                 }
 
-                using (var connection = new SqlConnection(_currentSettings.ToConnectionString()))
+                using (var connection = GetConnection(connectionId))
                 {
                     await connection.OpenAsync();
 
@@ -232,7 +303,7 @@ namespace PoWorks_Rework.Services
                     ORDER BY NAME";
                     }
 
-                    _logger.LogInformation($"Executing SQL query with limit {limit}: {sql}");
+                    _logger.LogInformation($"Executing SQL query on connection '{connectionId ?? "default"}' with limit {limit}: {sql}");
 
                     using (var command = new SqlCommand(sql, connection))
                     {
@@ -261,16 +332,16 @@ namespace PoWorks_Rework.Services
                     }
                 }
 
-                _logger.LogInformation($"Found {meters.Count} distinct meter names in table {tableName} (limit: {limit})");
+                _logger.LogInformation($"Found {meters.Count} distinct meter names in table {tableName} on connection '{connectionId ?? "default"}' (limit: {limit})");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting distinct meter names from table {tableName} with limit {limit}");
+                _logger.LogError(ex, $"Error getting distinct meter names from table {tableName} on connection '{connectionId ?? "default"}' with limit {limit}");
 
                 // Log the specific SQL error for debugging
                 if (ex.Message.Contains("Incorrect syntax"))
                 {
-                    _logger.LogError($"SQL Syntax Error - Table name: {tableName}, Limit: {limit}");
+                    _logger.LogError($"SQL Syntax Error - Table name: {tableName}, Connection: {connectionId ?? "default"}, Limit: {limit}");
                 }
 
                 throw;
@@ -279,7 +350,7 @@ namespace PoWorks_Rework.Services
             // If no meters found, create sample meters for development/testing
             if (meters.Count == 0)
             {
-                _logger.LogWarning($"No meters found in table {tableName}, creating sample meters for development");
+                _logger.LogWarning($"No meters found in table {tableName} on connection '{connectionId ?? "default"}', creating sample meters for development");
 
                 // Apply limit to sample data as well
                 int sampleCount = limit.HasValue && limit.Value > 0 ? Math.Min(limit.Value, 15) : 15;
@@ -317,20 +388,6 @@ namespace PoWorks_Rework.Services
                 cleanTableName, @"^[a-zA-Z0-9_\s\.]+$");
         }
 
-        public SqlConnection GetConnection(string connectionId = null)
-        {
-            if (!_isInitialized)
-                throw new InvalidOperationException("SQL Server connection is not initialized.");
-
-            var settings = string.IsNullOrEmpty(connectionId)
-                ? _connectionCollection.GetDefaultConnection()
-                : _connectionCollection.GetConnection(connectionId);
-
-            if (settings == null)
-                throw new InvalidOperationException($"SQL Server connection '{connectionId}' not found.");
-
-            return new SqlConnection(settings.ToConnectionString());
-        }
 
         public List<SqlServerSettings> GetAllConnections()
         {
@@ -350,14 +407,14 @@ namespace PoWorks_Rework.Services
         }
 
         // Alternative method to get table schema and validate table exists
-        public async Task<bool> ValidateTableExists(string tableName)
+        public async Task<bool> ValidateTableExists(string tableName, string connectionId = null)
         {
             if (!IsInitialized)
                 return false;
 
             try
             {
-                using (var connection = new SqlConnection(_currentSettings.ToConnectionString()))
+                using (var connection = GetConnection(connectionId))
                 {
                     await connection.OpenAsync();
 
@@ -386,7 +443,7 @@ namespace PoWorks_Rework.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error validating table existence for {tableName}");
+                _logger.LogError(ex, $"Error validating table existence for {tableName} on connection '{connectionId ?? "default"}'");
                 return false;
             }
         }

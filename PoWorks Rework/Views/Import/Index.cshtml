@@ -27,12 +27,26 @@
                             <div class="card-body">
                                 <h5 class="card-title mb-3">Import from PCVue HDS</h5>
 
+                                <!-- SQL Server Connection Selection -->
+                                <div class="mb-3">
+                                    <label for="hdsConnection" class="form-label">SQL Server Connection</label>
+                                    <select class="form-select" id="hdsConnection">
+                                        <option value="">Select a connection...</option>
+                                    </select>
+                                    <div class="form-text">
+                                        <span id="connectionStatus" class="text-muted">
+                                            <i class="bi bi-info-circle"></i> Select a connection to continue
+                                        </span>
+                                    </div>
+                                </div>
+
                                 <!-- Table Selection -->
                                 <div class="mb-3">
                                     <label for="hdsTable" class="form-label">Select HDS Table</label>
-                                    <select class="form-select" id="hdsTable">
+                                    <select class="form-select" id="hdsTable" disabled>
                                         <option value="">Select a table...</option>
                                     </select>
+                                    <div class="form-text">Choose a connection first to load available tables</div>
                                 </div>
 
                                 <!-- Date Range -->
@@ -57,7 +71,7 @@
 
                                 <!-- Load Meters Button -->
                                 <div class="d-grid">
-                                    <button type="button" class="btn btn-primary" id="loadMetersBtn">
+                                    <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
                                         <i class="bi bi-cloud-download"></i> Load Meters
                                     </button>
                                 </div>
@@ -258,4 +272,5 @@
 
         @section Scripts {
             <script src="~/js/import.js" asp-append-version="true"></script>
+                <script src="~/js/hdsMeterImport.js"></script>
         }

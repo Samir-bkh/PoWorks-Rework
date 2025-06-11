@@ -26,7 +26,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetTables()
+        public async Task<IActionResult> GetTables(string connectionId = null)
         {
             try
             {
@@ -35,18 +35,18 @@ namespace PoWorks_Rework.Controllers
                     return Json(new { success = false, error = "SQL Server connection not configured" });
                 }
 
-                var tables = await _sqlServerService.GetAvailableTables();
+                var tables = await _sqlServerService.GetAvailableTables(connectionId);
                 return Json(new { success = true, tables = tables });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting tables from HDS");
+                _logger.LogError(ex, "Error getting tables from HDS on connection '{ConnectionId}'", connectionId ?? "default");
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetMetersFromTable(string tableName, string startDate = null, string endDate = null, int limit = 1000)
+        public async Task<IActionResult> GetMetersFromTable(string tableName, string connectionId = null, string startDate = null, string endDate = null, int limit = 1000)
         {
             try
             {
@@ -55,8 +55,23 @@ namespace PoWorks_Rework.Controllers
                     return Json(new { success = false, error = "SQL Server connection not configured" });
                 }
 
-                // Get the HDS meters
-                var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName);
+                if (string.IsNullOrWhiteSpace(tableName))
+                {
+                    return Json(new { success = false, error = "Table name is required" });
+                }
+
+                // Validate the connection exists
+                if (!string.IsNullOrEmpty(connectionId))
+                {
+                    var connections = _sqlServerService.GetAllConnections();
+                    if (!connections.Any(c => c.ConnectionId == connectionId))
+                    {
+                        return Json(new { success = false, error = $"Connection '{connectionId}' not found" });
+                    }
+                }
+
+                // Get the HDS meters using the specified connection
+                var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName, limit, connectionId);
 
                 // Get parent meter options
                 var parentOptions = await GetParentMeterOptions();
@@ -65,89 +80,216 @@ namespace PoWorks_Rework.Controllers
                 {
                     success = true,
                     meters = hdsMeters,
-                    parentOptions = parentOptions
+                    parentOptions = parentOptions,
+                    connectionId = connectionId,
+                    tableName = tableName
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting meters from HDS table {tableName}");
+                _logger.LogError(ex, $"Error getting meters from HDS table {tableName} on connection '{connectionId ?? "default"}'");
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
+        public class ImportResult
+        {
+            public bool Success { get; set; }
+            public int ImportedCount { get; set; }
+            public int UpdatedCount { get; set; }
+            public int ErrorCount { get; set; }
+            public string Message { get; set; } = "";
+        }
+
+        private ImportResult ProcessMeterImport(List<HDSMeterItem> meters, string connectionId)
+        {
+            var result = new ImportResult
+            {
+                Success = false,
+                ImportedCount = 0,
+                UpdatedCount = 0,
+                ErrorCount = 0,
+                Message = ""
+            };
+
+            try
+            {
+                if (!_databaseService.IsInitialized)
+                {
+                    result.Message = "PostgreSQL database not configured";
+                    return result;
+                }
+
+                int importedCount = 0;
+                int updatedCount = 0;
+                int errorCount = 0;
+                var errorMessages = new List<string>();
+
+                using (var connection = new Npgsql.NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    connection.Open();
+
+                    foreach (var meter in meters)
+                    {
+                        try
+                        {
+                            // Check if meter already exists
+                            var checkCommand = new Npgsql.NpgsqlCommand(@"
+                        SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", connection);
+                            checkCommand.Parameters.AddWithValue("@Name", meter.HdsMeterName);
+
+                            var existingId = checkCommand.ExecuteScalar();
+
+                            if (existingId == null)
+                            {
+                                // Insert new meter
+                                var insertCommand = new Npgsql.NpgsqlCommand(@"
+                            INSERT INTO ""Meters"" (""Name"", ""Unit"", ""Type"", ""Active"", ""ParentId"", ""LastReading"") 
+                            VALUES (@Name, @Unit, @Type, @Active, @ParentId, @LastReading) 
+                            RETURNING ""MeterId""", connection);
+
+                                insertCommand.Parameters.AddWithValue("@Name", meter.HdsMeterName);
+                                insertCommand.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
+                                insertCommand.Parameters.AddWithValue("@Type", meter.Type?.ToLower() ?? "main");
+                                insertCommand.Parameters.AddWithValue("@Active", meter.Active);
+
+                                // Handle ParentId
+                                if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int parentId))
+                                {
+                                    insertCommand.Parameters.AddWithValue("@ParentId", parentId);
+                                }
+                                else
+                                {
+                                    insertCommand.Parameters.AddWithValue("@ParentId", DBNull.Value);
+                                }
+
+                                insertCommand.Parameters.AddWithValue("@LastReading", decimal.TryParse(meter.LastReading, out decimal reading) ? reading : 0);
+
+                                var newId = insertCommand.ExecuteScalar();
+                                importedCount++;
+                                _logger.LogInformation($"Imported meter: {meter.HdsMeterName}, ID: {newId}");
+                            }
+                            else
+                            {
+                                // Meter exists - could update here if needed
+                                _logger.LogInformation($"Meter {meter.HdsMeterName} already exists, skipping");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errorCount++;
+                            errorMessages.Add($"{meter.HdsMeterName}: {ex.Message}");
+                            _logger.LogError(ex, $"Error processing meter {meter.HdsMeterName}");
+                        }
+                    }
+
+                    result.Success = errorCount == 0;
+                    result.ImportedCount = importedCount;
+                    result.UpdatedCount = updatedCount;
+                    result.ErrorCount = errorCount;
+                    result.Message = $"Processed {meters.Count} meters: {importedCount} imported, {updatedCount} updated, {errorCount} errors";
+
+                    if (errorMessages.Any())
+                    {
+                        result.Message += $". Errors: {string.Join("; ", errorMessages)}";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Message = $"Import failed: {ex.Message}";
+                result.ErrorCount = meters.Count;
+                _logger.LogError(ex, "Failed to process meter import");
+            }
+
+            return result;
+        }
+
+
         [HttpPost]
-        public IActionResult ImportMeters([FromBody] ImportMetersRequest request)
+        public async Task<IActionResult> ImportMeters([FromBody] ImportMetersRequest request)
         {
             try
             {
                 _logger.LogInformation($"Received import request for {request?.Meters?.Count ?? 0} meters");
 
-                // For now just log the data and return success
-                // In a real implementation, you would insert these meters into your database
-                if (request?.Meters != null)
+                if (request?.Meters == null || !request.Meters.Any())
                 {
-                    foreach (var meter in request.Meters)
+                    return Json(new { success = false, error = "No meters provided for import" });
+                }
+
+                // Validate connection if specified
+                if (!string.IsNullOrEmpty(request.ConnectionId))
+                {
+                    var connections = _sqlServerService.GetAllConnections();
+                    if (!connections.Any(c => c.ConnectionId == request.ConnectionId))
                     {
-                        _logger.LogInformation($"Importing meter: {meter.HdsMeterName}, Type: {meter.Type}, Unit: {meter.Unit}");
+                        return Json(new { success = false, error = $"Connection '{request.ConnectionId}' not found" });
                     }
                 }
 
+                // Process the import using the corrected method name
+                var importResult = ProcessMeterImport(request.Meters, request.ConnectionId);
+
                 return Json(new
                 {
-                    success = true,
-                    importedCount = request?.Meters?.Count ?? 0,
-                    message = $"Successfully imported {request?.Meters?.Count ?? 0} meters."
+                    success = importResult.Success,
+                    importedCount = importResult.ImportedCount,
+                    updatedCount = importResult.UpdatedCount,
+                    errorCount = importResult.ErrorCount,
+                    message = importResult.Message,
+                    connectionId = request.ConnectionId
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error importing meters");
-                return Json(new
-                {
-                    success = false,
-                    error = ex.Message
-                });
+                return Json(new { success = false, error = $"Import failed: {ex.Message}" });
             }
         }
 
         // Helper classes
         public class ImportMetersRequest
         {
-            public string TableName { get; set; }
-            public List<HDSMeterItem> Meters { get; set; }
-            public bool SkipExisting { get; set; }
-            public bool UpdateExisting { get; set; }
-            public bool CreateMissingParents { get; set; }
+            public string? TableName { get; set; }
+            public List<HDSMeterItem> Meters { get; set; } = new List<HDSMeterItem>();
+            public string? ConnectionId { get; set; }
+            public bool ImportReadings { get; set; } = false;
+            public bool SkipExisting { get; set; } = true;
+            public bool UpdateExisting { get; set; } = false;
+            public bool CreateMissingParents { get; set; } = false;
         }
 
         // Helper methods
-        private async Task<List<SelectListItem>> GetParentMeterOptions()
+        private async Task<List<object>> GetParentMeterOptions()
         {
-            var options = new List<SelectListItem>
-            {
-                new SelectListItem { Value = "", Text = "None" }
-            };
+            var options = new List<object>
+    {
+        new { value = "", text = "None" }
+    };
 
             try
             {
                 if (_databaseService.IsInitialized)
                 {
-                    using (var connection = _databaseService.GetConnection())
+                    using (var connection = new Npgsql.NpgsqlConnection(_databaseService.GetConnectionString()))
                     {
+                        await connection.OpenAsync();
+
                         var command = new Npgsql.NpgsqlCommand(@"
-                            SELECT ""MeterId"", ""Name"" 
-                            FROM ""Meters"" 
-                            WHERE ""Type"" = 'main' AND ""Active"" = true
-                            ORDER BY ""Name""", connection);
+                    SELECT ""MeterId"", ""Name"" 
+                    FROM ""Meters"" 
+                    WHERE ""Type"" = 'main' AND ""Active"" = true
+                    ORDER BY ""Name""", connection);
 
                         using (var reader = await command.ExecuteReaderAsync())
                         {
                             while (await reader.ReadAsync())
                             {
-                                options.Add(new SelectListItem
+                                options.Add(new
                                 {
-                                    Value = reader.GetInt32(0).ToString(),
-                                    Text = reader.GetString(1)
+                                    value = reader.GetInt32(0).ToString(),
+                                    text = reader.GetString(1)
                                 });
                             }
                         }
@@ -162,5 +304,6 @@ namespace PoWorks_Rework.Controllers
 
             return options;
         }
+
     }
 }

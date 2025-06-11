@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Initialize event handlers that need to be set up immediately
     initializeEventHandlers();
 
+    loadSqlServerConnections();
+
     // Try to initialize immediately if the modal is already in the DOM
     const modal = document.getElementById('hdsMeterSelectionModal');
     if (modal) {
@@ -20,11 +22,156 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /**
+ * Populate the connection dropdown
+ */
+function populateConnectionDropdown(connections) {
+    const connectionSelect = document.getElementById('hdsConnection');
+    if (!connectionSelect) return;
+
+    // Clear existing options
+    connectionSelect.innerHTML = '<option value="">Select a connection...</option>';
+
+    // Add connections
+    connections.forEach(connection => {
+        const option = document.createElement('option');
+        option.value = connection.connectionId;
+        option.textContent = `${connection.connectionName} (${connection.host}:${connection.port}/${connection.database})`;
+        if (connection.isDefault) {
+            option.textContent += ' [Default]';
+        }
+        connectionSelect.appendChild(option);
+    });
+
+    // Auto-select default connection if available
+    const defaultConnection = connections.find(c => c.isDefault);
+    if (defaultConnection) {
+        connectionSelect.value = defaultConnection.connectionId;
+        handleConnectionChange();
+    }
+
+    updateConnectionStatus('success', `${connections.length} connections available`);
+}
+
+/**
+ * Handle connection selection change
+ */
+function handleConnectionChange() {
+    const connectionSelect = document.getElementById('hdsConnection');
+    const tableSelect = document.getElementById('hdsTable');
+    const loadButton = document.getElementById('loadMetersBtn');
+
+    if (!connectionSelect || !tableSelect || !loadButton) return;
+
+    const selectedConnectionId = connectionSelect.value;
+
+    if (!selectedConnectionId) {
+        // No connection selected
+        tableSelect.disabled = true;
+        tableSelect.innerHTML = '<option value="">Select a table...</option>';
+        loadButton.disabled = true;
+        updateConnectionStatus('info', 'Select a connection to continue');
+        return;
+    }
+
+    // Enable table selection and load tables
+    updateConnectionStatus('loading', 'Loading tables...');
+    loadTablesForConnection(selectedConnectionId);
+}
+
+function loadSqlServerConnections() {
+    console.log('Loading SQL Server connections...');
+
+    fetch('/Import/GetSqlServerConnections')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load connections: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                populateConnectionDropdown(data.connections);
+            } else {
+                console.error('Failed to load connections:', data.error);
+                updateConnectionStatus('error', data.error || 'Failed to load connections');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading connections:', error);
+            updateConnectionStatus('error', 'Error loading connections');
+        });
+}
+
+/**
+ * Populate the table dropdown
+ */
+function populateTableDropdown(tables) {
+    const tableSelect = document.getElementById('hdsTable');
+    const loadButton = document.getElementById('loadMetersBtn');
+
+    if (!tableSelect || !loadButton) return;
+
+    // Clear and populate tables
+    tableSelect.innerHTML = '<option value="">Select a table...</option>';
+
+    tables.forEach(tableName => {
+        const option = document.createElement('option');
+        option.value = tableName;
+        option.textContent = tableName;
+        tableSelect.appendChild(option);
+    });
+
+    // Enable controls
+    tableSelect.disabled = false;
+
+    // Enable load button only if a table is selected
+    tableSelect.addEventListener('change', function () {
+        loadButton.disabled = !this.value;
+    });
+}
+
+/**
+ * Update connection status display
+ */
+function updateConnectionStatus(type, message) {
+    const statusElement = document.getElementById('connectionStatus');
+    if (!statusElement) return;
+
+    let icon = 'bi-info-circle';
+    let className = 'text-muted';
+
+    switch (type) {
+        case 'loading':
+            icon = 'bi-arrow-clockwise';
+            className = 'text-primary';
+            break;
+        case 'success':
+            icon = 'bi-check-circle';
+            className = 'text-success';
+            break;
+        case 'error':
+            icon = 'bi-exclamation-triangle';
+            className = 'text-danger';
+            break;
+    }
+
+    statusElement.innerHTML = `<i class="${icon}"></i> ${message}`;
+    statusElement.className = className;
+}
+
+
+/**
  * Set up all event handlers using event delegation
  */
 function initializeEventHandlers() {
     // Set up event delegation for the entire document
     document.body.addEventListener('click', function (event) {
+        // Handle Load Meters Button click
+        if (event.target.id === 'loadMetersBtn' || event.target.closest('#loadMetersBtn')) {
+            console.log('Load Meters button clicked (delegated)');
+            handleLoadMeters(event);
+        }
+
         // Handle Select All button click
         if (event.target.id === 'selectAllBtn' || event.target.closest('#selectAllBtn')) {
             console.log('Select All button clicked (delegated)');
@@ -37,43 +184,22 @@ function initializeEventHandlers() {
             handleDeselectAll();
         }
 
-        // Handle Apply Bulk Type button click
-        if (event.target.id === 'applyBulkType' || event.target.closest('#applyBulkType')) {
-            console.log('Apply Bulk Type button clicked (delegated)');
-            applyBulkType();
-        }
-
-        // Handle Apply Bulk Parent button click
-        if (event.target.id === 'applyBulkParent' || event.target.closest('#applyBulkParent')) {
-            console.log('Apply Bulk Parent button clicked (delegated)');
-            applyBulkParent();
-        }
-
-        // Handle Apply Bulk Active button click
-        if (event.target.id === 'applyBulkActive' || event.target.closest('#applyBulkActive')) {
-            console.log('Apply Bulk Active button clicked (delegated)');
-            applyBulkActive();
-        }
-
         // Handle Import Selected button click
         if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
             console.log('Import Selected button clicked (delegated)');
             handleImport();
         }
-
-        // Handle Load Meters Button click
-        if (event.target.id === 'loadMetersBtn' || event.target.closest('#loadMetersBtn')) {
-            console.log('Load Meters button clicked (delegated)');
-            handleLoadMeters(event);
-        }
     });
 
-    // Listen for the Bootstrap modal shown event
-    document.body.addEventListener('shown.bs.modal', function (event) {
-        // Check if this is our meter selection modal
-        if (event.target.id === 'hdsMeterSelectionModal') {
-            console.log('HDS Meter Selection Modal shown');
-            initializeModal();
+    // Handle connection selection change
+    document.body.addEventListener('change', function (event) {
+        if (event.target.id === 'hdsConnection') {
+            console.log('Connection selection changed');
+            handleConnectionChange();
+        }
+
+        if (event.target.classList.contains('meter-checkbox')) {
+            handleCheckboxChange(event.target);
         }
     });
 
@@ -85,10 +211,11 @@ function initializeEventHandlers() {
         }
     });
 
-    // Setup checkbox change events using event delegation
-    document.body.addEventListener('change', function (event) {
-        if (event.target.classList.contains('meter-checkbox')) {
-            handleCheckboxChange(event.target);
+    // Listen for the Bootstrap modal shown event
+    document.body.addEventListener('shown.bs.modal', function (event) {
+        if (event.target.id === 'hdsMeterSelectionModal') {
+            console.log('HDS Meter Selection Modal shown');
+            initializeModal();
         }
     });
 }
@@ -388,7 +515,6 @@ function applyBulkActive() {
  * Load meters from PCVue HDS
  */
 function handleLoadMeters(event) {
-    // Prevent default behavior if this is a button click
     if (event) {
         event.preventDefault();
     }
@@ -396,10 +522,16 @@ function handleLoadMeters(event) {
     const button = document.getElementById('loadMetersBtn');
     if (!button) return;
 
-    const tableName = document.getElementById('pcvueTable').value;
-    const startDate = document.getElementById('importStartDate').value;
-    const endDate = document.getElementById('importEndDate').value;
-    const limit = document.getElementById('importLimit').value;
+    const connectionId = document.getElementById('hdsConnection').value;
+    const tableName = document.getElementById('hdsTable').value;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const limit = document.getElementById('limit').value;
+
+    if (!connectionId) {
+        alert('Please select a SQL Server connection first.');
+        return;
+    }
 
     if (!tableName) {
         alert('Please select a table to load meters from.');
@@ -410,14 +542,14 @@ function handleLoadMeters(event) {
     button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
     button.disabled = true;
 
-    // Build the query parameter string
-    let queryParams = `tableName=${encodeURIComponent(tableName)}`;
+    // Build the query parameter string (now includes connectionId)
+    let queryParams = `tableName=${encodeURIComponent(tableName)}&connectionId=${encodeURIComponent(connectionId)}`;
     if (startDate) queryParams += `&startDate=${encodeURIComponent(startDate)}`;
     if (endDate) queryParams += `&endDate=${encodeURIComponent(endDate)}`;
     if (limit) queryParams += `&limit=${encodeURIComponent(limit)}`;
 
-    // Fetch meters from the selected table
-    fetch(`/HdsImport/GetMetersFromTable?${queryParams}`)
+    // Fetch meters from the selected table using the selected connection
+    fetch(`/Import/GetMetersFromTable?${queryParams}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`Failed to load meters: ${response.statusText}`);
@@ -445,7 +577,7 @@ function handleLoadMeters(event) {
             }
 
             // Reset the button
-            button.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
+            button.innerHTML = '<i class="bi bi-cloud-download"></i> Load Meters';
             button.disabled = false;
         })
         .catch(error => {
@@ -453,10 +585,11 @@ function handleLoadMeters(event) {
             alert(`Error loading meters: ${error.message}`);
 
             // Reset the button
-            button.innerHTML = '<i class="bi bi-list"></i> Select Meters to Import';
+            button.innerHTML = '<i class="bi bi-cloud-download"></i> Load Meters';
             button.disabled = false;
         });
 }
+
 
 /**
  * Gather data from all selected meters
@@ -714,12 +847,7 @@ function handleImport() {
 /**
  * Import readings for the given meters
  */
-/**
- * Import readings for the given meters
- */
-/**
- * Import readings for the given meters
- */
+
 function importMeterReadings(meterNames, tableName) {
     console.log('importMeterReadings called with:', {
         meterNames,
