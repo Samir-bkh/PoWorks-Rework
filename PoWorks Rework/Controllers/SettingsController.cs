@@ -206,31 +206,117 @@ namespace PoWorks_Rework.Controllers
             return View("General", model);
         }
 
+        // Updated TestSqlServerConnection method in SettingsController.cs
+
         [HttpPost]
-        public IActionResult TestSqlServerConnection([FromBody] SqlServerSettings settings)
+        public IActionResult TestSqlServerConnection([FromBody] SqlServerConnectionTestRequest request)
         {
             try
             {
-                // If database name is not specified but project name is, generate the database name
-                if (string.IsNullOrEmpty(settings.Database) && !string.IsNullOrEmpty(settings.ProjectName))
+             
+
+                // Validate input
+                if (string.IsNullOrWhiteSpace(request.Host))
                 {
-                    settings.Database = $"{settings.ProjectName}_DB";
+                    return Json(new { success = false, errorMessage = "Host is required" });
                 }
 
+                if (string.IsNullOrWhiteSpace(request.Database))
+                {
+                    return Json(new { success = false, errorMessage = "Database name is required" });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Username))
+                {
+                    return Json(new { success = false, errorMessage = "Username is required" });
+                }
+
+                // Create connection settings from request
+                var settings = new SqlServerSettings
+                {
+                    ConnectionId = request.ConnectionId,
+                    ConnectionName = request.ConnectionName,
+                    Host = request.Host,
+                    Port = !string.IsNullOrWhiteSpace(request.Port) ? request.Port : "1433",
+                    Database = request.Database,
+                    Username = request.Username,
+                    Password = request.Password,
+                    ProjectName = request.ProjectName
+                };
+
+              
+
+                // Test the connection
                 using (var connection = new SqlConnection(settings.ToConnectionString()))
                 {
                     connection.Open();
-                    // If we get here, connection was successful
-                    return Json(new { success = true });
+
+                    // Test a simple query to ensure we can actually use the connection
+                    using (var command = new SqlCommand("SELECT 1", connection))
+                    {
+                        var result = command.ExecuteScalar();
+                    }
+
+                 
+
+                    return Json(new
+                    {
+                        success = true,
+                        message = "Connection successful",
+                        connectionInfo = new
+                        {
+                            host = settings.Host,
+                            port = settings.Port,
+                            database = settings.Database,
+                            username = settings.Username
+                        }
+                    });
                 }
+            }
+            catch (SqlException sqlEx)
+            {
+           
+
+                string friendlyMessage = sqlEx.Number switch
+                {
+                    2 => "Cannot connect to server. Please check the host and port.",
+                    18456 => "Login failed. Please check your username and password.",
+                    4060 => "Cannot open database. Please check the database name.",
+                    53 => "Network path not found. Please check the server name.",
+                    _ => $"SQL Server error: {sqlEx.Message}"
+                };
+
+                return Json(new
+                {
+                    success = false,
+                    errorMessage = friendlyMessage,
+                    sqlErrorNumber = sqlEx.Number
+                });
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, errorMessage = ex.Message });
+
+
+                return Json(new
+                {
+                    success = false,
+                    errorMessage = $"Connection test failed: {ex.Message}"
+                });
             }
         }
 
-        // Other methods remain the same...
+        // Add this request model class to your Models folder or in the same file
+        public class SqlServerConnectionTestRequest
+        {
+            public string ConnectionId { get; set; } = "";
+            public string ConnectionName { get; set; } = "";
+            public string Host { get; set; } = "";
+            public string Port { get; set; } = "1433";
+            public string Database { get; set; } = "";
+            public string Username { get; set; } = "";
+            public string Password { get; set; } = "";
+            public string ProjectName { get; set; } = "";
+        }
         private bool TablesExist(NpgsqlConnection connection)
         {
             using (var cmd = new NpgsqlCommand(

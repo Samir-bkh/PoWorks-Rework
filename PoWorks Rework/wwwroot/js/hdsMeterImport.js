@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     loadSqlServerConnections();
 
+    setupConnectionEventListeners();
+
     // Try to initialize immediately if the modal is already in the DOM
     const modal = document.getElementById('hdsMeterSelectionModal');
     if (modal) {
@@ -31,14 +33,17 @@ function populateConnectionDropdown(connections) {
     // Clear existing options
     connectionSelect.innerHTML = '<option value="">Select a connection...</option>';
 
-    // Add connections
+    // Add connections - SIMPLIFIED to show only connection name
     connections.forEach(connection => {
         const option = document.createElement('option');
         option.value = connection.connectionId;
-        option.textContent = `${connection.connectionName} (${connection.host}:${connection.port}/${connection.database})`;
+
+        // Show only the connection name
+        option.textContent = connection.connectionName || `Connection ${connection.connectionId}`;
         if (connection.isDefault) {
             option.textContent += ' [Default]';
         }
+
         connectionSelect.appendChild(option);
     });
 
@@ -60,9 +65,13 @@ function handleConnectionChange() {
     const tableSelect = document.getElementById('hdsTable');
     const loadButton = document.getElementById('loadMetersBtn');
 
-    if (!connectionSelect || !tableSelect || !loadButton) return;
+    if (!connectionSelect || !tableSelect || !loadButton) {
+        console.error('Required elements not found');
+        return;
+    }
 
     const selectedConnectionId = connectionSelect.value;
+    console.log('Connection changed to:', selectedConnectionId);
 
     if (!selectedConnectionId) {
         // No connection selected
@@ -103,16 +112,102 @@ function loadSqlServerConnections() {
 }
 
 /**
+ * Enhanced event listener setup
+ */
+function setupConnectionEventListeners() {
+    // Connection dropdown change listener
+    const connectionSelect = document.getElementById('hdsConnection');
+    if (connectionSelect) {
+        // Remove any existing listeners
+        connectionSelect.removeEventListener('change', handleConnectionChange);
+        // Add the listener
+        connectionSelect.addEventListener('change', handleConnectionChange);
+        console.log('Connection change listener added');
+    } else {
+        console.warn('Connection select element not found');
+    }
+}
+
+function loadTablesForConnection(connectionId) {
+    console.log('Loading tables for connection:', connectionId);
+
+    const tableSelect = document.getElementById('hdsTable');
+    const loadButton = document.getElementById('loadMetersBtn');
+
+    if (!connectionId) {
+        console.error('No connection ID provided');
+        updateConnectionStatus('error', 'No connection selected');
+        return;
+    }
+
+    // Disable table selection while loading
+    if (tableSelect) {
+        tableSelect.disabled = true;
+        tableSelect.innerHTML = '<option value="">Loading tables...</option>';
+    }
+    if (loadButton) {
+        loadButton.disabled = true;
+    }
+
+    // Fetch tables from the server
+    fetch(`/HdsImport/GetTables?connectionId=${encodeURIComponent(connectionId)}`)
+        .then(response => {
+            console.log('Tables response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`Failed to load tables: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Tables response data:', data);
+
+            if (data.success) {
+                populateTableDropdown(data.tables);
+                updateConnectionStatus('success', `${data.tables.length} tables available`);
+            } else {
+                console.error('Failed to load tables:', data.error);
+                updateConnectionStatus('error', data.error || 'Failed to load tables');
+
+                // Reset table dropdown
+                if (tableSelect) {
+                    tableSelect.innerHTML = '<option value="">Failed to load tables</option>';
+                    tableSelect.disabled = true;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading tables:', error);
+            updateConnectionStatus('error', `Error loading tables: ${error.message}`);
+
+            // Reset table dropdown
+            if (tableSelect) {
+                tableSelect.innerHTML = '<option value="">Error loading tables</option>';
+                tableSelect.disabled = true;
+            }
+        });
+}
+
+/**
  * Populate the table dropdown
  */
 function populateTableDropdown(tables) {
     const tableSelect = document.getElementById('hdsTable');
     const loadButton = document.getElementById('loadMetersBtn');
 
-    if (!tableSelect || !loadButton) return;
+    if (!tableSelect) {
+        console.error('Table select element not found');
+        return;
+    }
 
     // Clear and populate tables
     tableSelect.innerHTML = '<option value="">Select a table...</option>';
+
+    if (!tables || tables.length === 0) {
+        tableSelect.innerHTML = '<option value="">No tables found</option>';
+        tableSelect.disabled = true;
+        if (loadButton) loadButton.disabled = true;
+        return;
+    }
 
     tables.forEach(tableName => {
         const option = document.createElement('option');
@@ -121,13 +216,24 @@ function populateTableDropdown(tables) {
         tableSelect.appendChild(option);
     });
 
-    // Enable controls
+    // Enable table selection
     tableSelect.disabled = false;
 
-    // Enable load button only if a table is selected
-    tableSelect.addEventListener('change', function () {
-        loadButton.disabled = !this.value;
-    });
+    // Add event listener for table selection (remove any existing listeners first)
+    tableSelect.removeEventListener('change', handleTableSelection);
+    tableSelect.addEventListener('change', handleTableSelection);
+}
+
+/**
+ * Handle table selection change
+ */
+function handleTableSelection() {
+    const tableSelect = document.getElementById('hdsTable');
+    const loadButton = document.getElementById('loadMetersBtn');
+
+    if (loadButton) {
+        loadButton.disabled = !tableSelect.value;
+    }
 }
 
 /**
@@ -208,6 +314,18 @@ function initializeEventHandlers() {
         if (event.target.id === 'filterInput') {
             console.log('Filter input changed');
             filterRows(event.target.value);
+        }
+    });
+
+    document.body.addEventListener('change', function (event) {
+        if (event.target.id === 'hdsConnection') {
+            console.log('Connection selection changed (delegated)');
+            handleConnectionChange();
+        }
+
+        if (event.target.id === 'hdsTable') {
+            console.log('Table selection changed (delegated)');
+            handleTableSelection();
         }
     });
 
@@ -515,21 +633,38 @@ function applyBulkActive() {
  * Load meters from PCVue HDS
  */
 function handleLoadMeters(event) {
-    if (event) {
-        event.preventDefault();
+    console.log('Load Meters button clicked');
+
+    const button = event.target.closest('#loadMetersBtn') || event.target;
+    const connectionSelect = document.getElementById('hdsConnection');
+    const tableSelect = document.getElementById('hdsTable');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const limitInput = document.getElementById('limit');
+
+    // Validate inputs
+    if (!connectionSelect || !tableSelect) {
+        console.error('Required elements not found');
+        alert('Required form elements not found');
+        return;
     }
 
-    const button = document.getElementById('loadMetersBtn');
-    if (!button) return;
+    const connectionId = connectionSelect.value;
+    const tableName = tableSelect.value;
+    const startDate = startDateInput ? startDateInput.value : null;
+    const endDate = endDateInput ? endDateInput.value : null;
+    const limit = limitInput ? limitInput.value : 1000;
 
-    const connectionId = document.getElementById('hdsConnection').value;
-    const tableName = document.getElementById('hdsTable').value;
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-    const limit = document.getElementById('limit').value;
+    console.log('Load Meters Parameters:', {
+        connectionId,
+        tableName,
+        startDate,
+        endDate,
+        limit
+    });
 
     if (!connectionId) {
-        alert('Please select a SQL Server connection first.');
+        alert('Please select a connection first.');
         return;
     }
 
@@ -539,55 +674,476 @@ function handleLoadMeters(event) {
     }
 
     // Show loading indicator
+    const originalButtonContent = button.innerHTML;
     button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
     button.disabled = true;
 
-    // Build the query parameter string (now includes connectionId)
+    // Build the query parameter string
     let queryParams = `tableName=${encodeURIComponent(tableName)}&connectionId=${encodeURIComponent(connectionId)}`;
     if (startDate) queryParams += `&startDate=${encodeURIComponent(startDate)}`;
     if (endDate) queryParams += `&endDate=${encodeURIComponent(endDate)}`;
     if (limit) queryParams += `&limit=${encodeURIComponent(limit)}`;
 
+    console.log('Fetching meters with query:', queryParams);
+
     // Fetch meters from the selected table using the selected connection
     fetch(`/Import/GetMetersFromTable?${queryParams}`)
         .then(response => {
+            console.log('Response status:', response.status);
             if (!response.ok) {
-                throw new Error(`Failed to load meters: ${response.statusText}`);
+                throw new Error(`Failed to load meters: ${response.status} ${response.statusText}`);
             }
-            return response.text();
+            return response.json(); // CORRECTED: Expect JSON, not HTML
         })
-        .then(html => {
-            // Insert the meter selection modal into the page
-            const container = document.getElementById('hdsMeterSelectionContainer');
-            if (container) {
-                container.innerHTML = html;
-            } else {
-                console.error('No container found for meter selection modal');
-                throw new Error('Container element for meter selection modal not found');
+        .then(data => {
+            console.log('Received JSON response:', data);
+
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to load meters');
             }
 
-            // Show the modal
-            const modalElement = document.getElementById('hdsMeterSelectionModal');
-            if (modalElement) {
-                const hdsMeterSelectionModal = new bootstrap.Modal(modalElement);
-                hdsMeterSelectionModal.show();
-            } else {
-                console.error('Modal element not found after loading HTML');
-                throw new Error('Modal element not found after loading HTML');
-            }
+            // Store parent options globally for table population
+            window.parentOptions = data.parentOptions || [];
+
+            // Use the existing function to show the meter selection table
+            showHDSMeterSelection(data.meters, tableName, connectionId);
 
             // Reset the button
-            button.innerHTML = '<i class="bi bi-cloud-download"></i> Load Meters';
+            button.innerHTML = originalButtonContent;
             button.disabled = false;
+
+            console.log('Load Meters completed successfully');
         })
         .catch(error => {
             console.error('Error loading meters:', error);
             alert(`Error loading meters: ${error.message}`);
 
             // Reset the button
-            button.innerHTML = '<i class="bi bi-cloud-download"></i> Load Meters';
+            button.innerHTML = originalButtonContent;
             button.disabled = false;
         });
+}
+
+function showHDSMeterSelection(meters, tableName, connectionId) {
+    console.log('Showing HDS meter selection:', {
+        meterCount: meters.length,
+        tableName,
+        connectionId
+    });
+
+    // Show the existing meter selection section
+    const meterSelectionSection = document.getElementById('meterSelectionSection');
+    if (meterSelectionSection) {
+        meterSelectionSection.classList.remove('d-none');
+        console.log('Meter selection section shown');
+    } else {
+        console.error('Meter selection section not found!');
+        return;
+    }
+
+    // Update the section title to indicate HDS source
+    const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
+    if (sectionHeader) {
+        sectionHeader.textContent = `HDS Meter Selection - ${tableName}`;
+        console.log('Updated section header');
+    }
+
+    // Show the "Import historical readings" checkbox for HDS
+    const importReadingsCheckbox = document.getElementById('importReadings');
+    if (importReadingsCheckbox) {
+        const checkboxContainer = importReadingsCheckbox.closest('.form-check');
+        if (checkboxContainer) {
+            checkboxContainer.style.display = 'block';
+            console.log('Shown import readings checkbox');
+        }
+    }
+
+    // Populate the table with HDS meters
+    populateHDSMetersTable(meters);
+
+    // Update status
+    const statusElement = document.getElementById('meterFilterStatus');
+    if (statusElement) {
+        statusElement.textContent = `Loaded ${meters.length} meters from ${tableName}`;
+        console.log('Updated filter status');
+    }
+
+    console.log('HDS meter selection setup complete');
+
+    // Setup event handlers for the controls
+    setupHDSMeterEventHandlers();
+}
+
+/**
+ * Handle filter input for HDS meters
+ */
+function handleHDSFilterInput(event) {
+    const filterText = event.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#metersTableBody tr');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        // Skip the info header row
+        if (row.classList.contains('table-info')) {
+            return;
+        }
+
+        const meterNameCell = row.querySelector('strong');
+        if (meterNameCell) {
+            const meterName = meterNameCell.textContent.toLowerCase();
+
+            if (meterName.includes(filterText)) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        }
+    });
+
+    // Update filter status
+    const statusElement = document.getElementById('meterFilterStatus');
+    if (statusElement) {
+        const totalMeters = document.querySelectorAll('.meter-checkbox').length;
+        statusElement.textContent = `Showing ${visibleCount} of ${totalMeters} meters`;
+    }
+}
+
+/**
+ * Handle checkbox changes for HDS meters
+ */
+function handleHDSCheckboxChange(event) {
+    if (event.target.classList.contains('meter-checkbox')) {
+        updateHDSMeterCounter();
+    }
+}
+
+/**
+ * Handle import for HDS meters
+ */
+function handleHDSImport() {
+    console.log('HDS Import button clicked');
+
+    const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one meter to import.');
+        return;
+    }
+
+    // Gather meter data
+    const meters = [];
+    selectedCheckboxes.forEach((checkbox, index) => {
+        const row = checkbox.closest('tr');
+        if (!row || row.classList.contains('table-info')) return;
+
+        const meterName = row.querySelector('.meter-name')?.value ||
+            row.querySelector('strong')?.textContent;
+        const unit = row.querySelector('.meter-unit')?.value || '';
+        const parentId = row.querySelector('.meter-parent')?.value || '';
+        const type = row.querySelector('.meter-type')?.value || 'main';
+        const active = row.querySelector('.meter-active')?.checked || true;
+
+        if (meterName) {
+            meters.push({
+                hdsMeterName: meterName,
+                unit: unit,
+                parentMeterId: parentId,
+                type: type,
+                active: active
+            });
+        }
+    });
+
+    if (meters.length === 0) {
+        alert('No valid meters found to import.');
+        return;
+    }
+
+    console.log('Prepared meters for import:', meters);
+
+    // Get import options
+    const skipExisting = document.getElementById('skipExisting')?.checked || false;
+    const updateExisting = document.getElementById('updateExisting')?.checked || false;
+    const importReadings = document.getElementById('importReadings')?.checked || false;
+
+    // Prepare import request
+    const importData = {
+        meters: meters,
+        skipExisting: skipExisting,
+        updateExisting: updateExisting,
+        importReadings: importReadings,
+        connectionId: getCurrentConnectionId(),
+        tableName: getCurrentTableName()
+    };
+
+    console.log('Import data:', importData);
+
+    // Show loading state
+    const importBtn = document.getElementById('importSelectedBtn');
+    const originalText = importBtn.textContent;
+    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importing...';
+    importBtn.disabled = true;
+
+    // Send import request
+    fetch('/Import/ImportHDSMeters', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(importData)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Import failed: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Import response:', data);
+
+            // Reset button
+            importBtn.textContent = originalText;
+            importBtn.disabled = false;
+
+            // Show results
+            if (data.success) {
+                alert(`Successfully imported ${data.importedCount || 0} meters!`);
+
+                // Optionally reload page or update UI
+                if (confirm('Import completed! Would you like to reload the page to see the imported meters?')) {
+                    window.location.reload();
+                }
+            } else {
+                alert(`Import failed: ${data.error || 'Unknown error'}`);
+            }
+        })
+        .catch(error => {
+            console.error('Import error:', error);
+
+            // Reset button
+            importBtn.textContent = originalText;
+            importBtn.disabled = false;
+
+            alert(`Import error: ${error.message}`);
+        });
+}
+
+/**
+ * Helper functions to get current connection and table info
+ */
+function getCurrentConnectionId() {
+    const connectionSelect = document.getElementById('hdsConnection');
+    return connectionSelect ? connectionSelect.value : '';
+}
+
+function getCurrentTableName() {
+    const tableSelect = document.getElementById('hdsTable');
+    return tableSelect ? tableSelect.value : '';
+}
+
+function handleHDSSelectAll() {
+    console.log('HDS Select All clicked');
+    const checkboxes = document.querySelectorAll('.meter-checkbox');
+
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+    });
+
+    updateHDSMeterCounter();
+}
+
+/**
+ * Handle Deselect All for HDS meters
+ */
+function handleHDSDeselectAll() {
+    console.log('HDS Deselect All clicked');
+    const checkboxes = document.querySelectorAll('.meter-checkbox');
+
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+
+    updateHDSMeterCounter();
+}
+
+function setupHDSMeterEventHandlers() {
+    console.log('Setting up HDS meter event handlers');
+
+    // Select All button
+    const selectAllBtn = document.getElementById('selectAllMetersBtn');
+    if (selectAllBtn) {
+        selectAllBtn.removeEventListener('click', handleHDSSelectAll);
+        selectAllBtn.addEventListener('click', handleHDSSelectAll);
+    }
+
+    // Deselect All button
+    const deselectAllBtn = document.getElementById('deselectAllMetersBtn');
+    if (deselectAllBtn) {
+        deselectAllBtn.removeEventListener('click', handleHDSDeselectAll);
+        deselectAllBtn.addEventListener('click', handleHDSDeselectAll);
+    }
+
+    // Filter input
+    const filterInput = document.getElementById('meterFilterInput');
+    if (filterInput) {
+        filterInput.removeEventListener('input', handleHDSFilterInput);
+        filterInput.addEventListener('input', handleHDSFilterInput);
+    }
+
+    // Import button
+    const importBtn = document.getElementById('importSelectedBtn');
+    if (importBtn) {
+        importBtn.removeEventListener('click', handleHDSImport);
+        importBtn.addEventListener('click', handleHDSImport);
+    }
+
+    // Setup delegation for dynamically created checkboxes
+    document.body.removeEventListener('change', handleHDSCheckboxChange);
+    document.body.addEventListener('change', handleHDSCheckboxChange);
+
+    console.log('HDS meter event handlers setup complete');
+}
+
+
+function populateHDSMetersTable(meters) {
+    console.log('Populating HDS meters table with', meters.length, 'meters');
+
+    const tbody = document.getElementById('metersTableBody');
+    if (!tbody) {
+        console.error('Table body not found!');
+        return;
+    }
+
+    tbody.innerHTML = '';
+    console.log('Cleared table body');
+
+    if (!meters || meters.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No meters found in selected table</td></tr>';
+        console.log('No meters to display');
+        return;
+    }
+
+    // Add info header
+    const headerRow = document.createElement('tr');
+    headerRow.className = 'table-info';
+    headerRow.innerHTML = `
+        <td colspan="6" class="text-center">
+            <small><strong>HDS Import:</strong> Showing ${meters.length} meters from SQL Server. 
+            Configure settings below and select meters to import.</small>
+        </td>
+    `;
+    tbody.appendChild(headerRow);
+
+    // Add each meter as a row
+    meters.forEach((meter, index) => {
+        const row = document.createElement('tr');
+
+        // Checkbox cell
+        const checkboxCell = document.createElement('td');
+        checkboxCell.className = 'text-center';
+        checkboxCell.innerHTML = `
+            <input type="checkbox" class="meter-checkbox" 
+                   id="meter_${index}" 
+                   data-meter-name="${meter.hdsMeterName}" 
+                   checked>
+        `;
+
+        // Name cell
+        const nameCell = document.createElement('td');
+        nameCell.innerHTML = `
+            <strong>${meter.hdsMeterName}</strong>
+            <input type="hidden" class="meter-name" value="${meter.hdsMeterName}">
+        `;
+
+        // Unit cell
+        const unitCell = document.createElement('td');
+        unitCell.innerHTML = `
+            <input type="text" class="form-control form-control-sm meter-unit" 
+                   value="${meter.unit || ''}" 
+                   placeholder="Enter unit">
+        `;
+
+        // Parent cell
+        const parentCell = document.createElement('td');
+        if (window.parentOptions && window.parentOptions.length > 0) {
+            let parentSelectHtml = `<select class="form-select form-select-sm meter-parent">`;
+            parentSelectHtml += `<option value="">No Parent</option>`;
+
+            window.parentOptions.forEach(option => {
+                const value = option.value || option.Value;
+                const text = option.text || option.Text;
+                parentSelectHtml += `<option value="${value}">${text}</option>`;
+            });
+
+            parentSelectHtml += `</select>`;
+            parentCell.innerHTML = parentSelectHtml;
+        } else {
+            parentCell.innerHTML = `
+                <select class="form-select form-select-sm meter-parent">
+                    <option value="">No parent meters found</option>
+                </select>
+                <small class="text-muted">No existing meters in database</small>
+            `;
+        }
+
+        // Type cell
+        const typeCell = document.createElement('td');
+        typeCell.innerHTML = `
+            <select class="form-select form-select-sm meter-type">
+                <option value="main" selected>Main</option>
+                <option value="sub">Sub</option>
+            </select>
+        `;
+
+        // Active cell
+        const activeCell = document.createElement('td');
+        activeCell.className = 'text-center';
+        activeCell.innerHTML = `
+            <div class="form-check d-flex justify-content-center">
+                <input class="form-check-input meter-active" type="checkbox"
+                       id="active_${index}" checked>
+            </div>
+        `;
+
+        // Append cells to row
+        row.appendChild(checkboxCell);
+        row.appendChild(nameCell);
+        row.appendChild(unitCell);
+        row.appendChild(parentCell);
+        row.appendChild(typeCell);
+        row.appendChild(activeCell);
+
+        // Append row to table
+        tbody.appendChild(row);
+    });
+
+    console.log(`Table populated with ${meters.length} meters`);
+
+    // Update counter
+    updateHDSMeterCounter();
+}
+
+function updateHDSMeterCounter() {
+    const checkboxes = document.querySelectorAll('.meter-checkbox');
+    const checkedBoxes = document.querySelectorAll('.meter-checkbox:checked');
+
+    // Update filter status to show selection count
+    const statusElement = document.getElementById('meterFilterStatus');
+    if (statusElement) {
+        const totalMeters = checkboxes.length - 1; // Subtract 1 for header row
+        const selectedMeters = checkedBoxes.length;
+        statusElement.textContent = `Selected ${selectedMeters} of ${totalMeters} meters`;
+    }
+
+    // Update import button text
+    const importBtn = document.getElementById('importSelectedBtn');
+    if (importBtn) {
+        importBtn.textContent = checkedBoxes.length > 0 ?
+            `Import Selected (${checkedBoxes.length})` :
+            'Import Selected';
+    }
+
+    console.log(`Counter updated: ${checkedBoxes.length} selected of ${checkboxes.length - 1} total`);
 }
 
 

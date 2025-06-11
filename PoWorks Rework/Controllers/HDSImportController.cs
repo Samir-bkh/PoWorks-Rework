@@ -30,18 +30,35 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                _logger.LogInformation($"GetTables called with connectionId: '{connectionId}'");
+
                 if (!_sqlServerService.IsInitialized)
                 {
+                    _logger.LogError("SQL Server service not initialized");
                     return Json(new { success = false, error = "SQL Server connection not configured" });
                 }
 
+                // Get tables using the SQL Server service
                 var tables = await _sqlServerService.GetAvailableTables(connectionId);
-                return Json(new { success = true, tables = tables });
+
+                _logger.LogInformation($"Retrieved {tables.Count} tables for connection '{connectionId ?? "default"}'");
+
+                return Json(new
+                {
+                    success = true,
+                    tables = tables,
+                    connectionId = connectionId
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting tables from HDS on connection '{ConnectionId}'", connectionId ?? "default");
-                return Json(new { success = false, error = ex.Message });
+                return Json(new
+                {
+                    success = false,
+                    error = $"Error retrieving tables: {ex.Message}",
+                    connectionId = connectionId
+                });
             }
         }
 

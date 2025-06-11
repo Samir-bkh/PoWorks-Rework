@@ -137,6 +137,8 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        // REPLACE the GetMetersFromTable method in your ImportController.cs with this version
+
         [HttpGet]
         public async Task<IActionResult> GetMetersFromTable(string tableName, string connectionId = null, string startDate = null, string endDate = null, int limit = 1000)
         {
@@ -192,6 +194,7 @@ namespace PoWorks_Rework.Controllers
 
                 _logger.LogInformation($"Successfully retrieved {hdsMeters.Count} meters from table '{tableName}' on connection '{connectionId}'");
 
+                // RETURN JSON RESPONSE - NOT PARTIAL VIEW
                 return Json(new
                 {
                     success = true,
@@ -252,7 +255,7 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-
+     
         [HttpPost]
         public async Task<IActionResult> ImportMeterReadings([FromBody] ImportReadingsRequest request)
         {
