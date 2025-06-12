@@ -30,8 +30,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Handle Print Selected button (you already have this)
+        // Handle Print Selected button - only for VAREXP context
         if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
-            console.log('🔍 DEBUG: Print Selected button clicked');
+            // Only handle if we're NOT in HDS modal
+            const hdsModal = document.getElementById('hdsMeterSelectionModal');
+            if (hdsModal && hdsModal.classList.contains('show')) {
+                return; // Let HDS handler take over
+            }
+
+            console.log('🔍 DEBUG: VAREXP Print Selected button clicked');
             handleVarexpPrint();
         }
 

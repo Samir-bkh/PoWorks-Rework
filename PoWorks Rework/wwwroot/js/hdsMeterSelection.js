@@ -422,18 +422,18 @@ console.log('HDS Meter Selection JS initialization complete');
 // Print Selected Data button
 // —————————————————————————————————————————————————————
 document.body.addEventListener('click', function (e) {
-    if (e.target.id !== 'directPrintBtn') return;
-    console.log('🖨️ directPrintBtn handler running');
+    if (e.target.id !== 'printSelectedBtn') return;
 
-    // Get the form and container elements
-    const form = document.getElementById('printForm');
-    const container = document.getElementById('selected-meters-container');
+    // Only handle if we're in HDS modal context
+    const hdsModal = document.getElementById('hdsMeterSelectionModal');
+    if (!hdsModal || !hdsModal.classList.contains('show')) {
+        return; // Let other handlers take over
+    }
 
-    // Clear any existing hidden inputs
-    container.innerHTML = '';
+    console.log('🖨️ HDS printSelectedBtn handler running');
 
-    // Get the table name
-    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name');
+    // Get the table name from modal data
+    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name') || 'Unknown';
 
     // Get all selected checkboxes
     const selectedCheckboxes = document.querySelectorAll('#hdsMeterSelectionModal .meter-checkbox:checked');
@@ -448,31 +448,25 @@ document.body.addEventListener('click', function (e) {
     document.getElementById('selectedCount').value = selectedCheckboxes.length;
 
     // Create hidden inputs for each selected meter
+    // Collect meter data for printing
+    const meterData = [];
     selectedCheckboxes.forEach(function (checkbox, index) {
         const row = checkbox.closest('tr');
 
-        // Get meter details from the row
-        const meterName = row.querySelector('td:nth-child(2)').textContent.trim();
-        const meterUnit = row.querySelector('input[name$=".Unit"]').value;
-        const meterType = row.querySelector('select[name$=".Type"]').value;
+        const meterName = row.querySelector('td:nth-child(2) strong').textContent.trim();
+        const meterUnit = row.querySelector('.meter-unit').value || '';
+        const meterType = row.querySelector('.meter-type').value || 'Main';
 
-        // Create hidden inputs for this meter's data
-        function createHiddenInput(name, value) {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = name;
-            input.value = value;
-            container.appendChild(input);
-        }
-
-        // Add hidden inputs to the form
-        createHiddenInput(`selectedMeterNames[${index}]`, meterName);
-        createHiddenInput(`selectedMeterTypes[${index}]`, meterType);
-        createHiddenInput(`selectedMeterUnits[${index}]`, meterUnit);
+        meterData.push({
+            name: meterName,
+            unit: meterUnit,
+            type: meterType
+        });
     });
 
-    // Submit the form
-    form.submit();
+    // Print to console (you can replace this with server call if needed)
+    console.log('HDS Selected Meters:', meterData);
+    alert(`Successfully printed ${meterData.length} HDS meters to console. Check developer tools.`);
 
     console.log(`🖨️ Form submitted with ${selectedCheckboxes.length} meters`);
 });
