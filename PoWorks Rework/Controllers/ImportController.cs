@@ -475,6 +475,114 @@ namespace PoWorks_Rework.Controllers
         }
 
         [HttpPost]
+        public IActionResult PrintHDSMeters([FromBody] PrintHDSMetersRequest request)
+        {
+            try
+            {
+                Console.WriteLine("\n=====================================================");
+                Console.WriteLine("HDS METERS PRINT FUNCTION");
+                Console.WriteLine("=====================================================");
+                Console.WriteLine($"HDS Table Name: {request?.TableName ?? "Not provided"}");
+                Console.WriteLine($"HDS Connection ID: {request?.ConnectionId ?? "Not provided"}");
+                Console.WriteLine($"Selected HDS meters count: {request?.SelectedMeters?.Count ?? 0}");
+                Console.WriteLine($"Print timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+
+                if (request?.SelectedMeters != null && request.SelectedMeters.Count > 0)
+                {
+                    Console.WriteLine("\n--- HDS METER DETAILS ---");
+
+                    for (int i = 0; i < request.SelectedMeters.Count; i++)
+                    {
+                        var meter = request.SelectedMeters[i];
+                        Console.WriteLine($"\nHDS Meter {i + 1}:");
+                        Console.WriteLine($"  Name: {meter.HdsMeterName ?? "N/A"}");
+                        Console.WriteLine($"  Unit: {meter.Unit ?? "N/A"}");
+                        Console.WriteLine($"  Type: {meter.Type ?? "main"}");
+                        Console.WriteLine($"  Parent ID: {meter.ParentMeterId ?? "None"}");
+                        Console.WriteLine($"  Active: {meter.Active}");
+                        Console.WriteLine($"  Last Reading: {meter.LastReading ?? "N/A"}");
+                        Console.WriteLine($"  Selected: {meter.IsSelected}");
+                    }
+
+                    // Additional HDS-specific information
+                    Console.WriteLine("\n--- HDS IMPORT SUMMARY ---");
+                    Console.WriteLine($"Total meters to import: {request.SelectedMeters.Count}");
+                    Console.WriteLine($"Active meters: {request.SelectedMeters.Count(m => m.Active)}");
+                    Console.WriteLine($"Main meters: {request.SelectedMeters.Count(m => m.Type?.ToLower() == "main")}");
+                    Console.WriteLine($"Sub meters: {request.SelectedMeters.Count(m => m.Type?.ToLower() == "sub")}");
+                    Console.WriteLine($"Meters with parents: {request.SelectedMeters.Count(m => !string.IsNullOrEmpty(m.ParentMeterId))}");
+                    Console.WriteLine($"Source table: {request.TableName}");
+                    Console.WriteLine($"Connection: {request.ConnectionId}");
+
+                    // Group by unit type
+                    var unitGroups = request.SelectedMeters
+                        .GroupBy(m => m.Unit ?? "Unknown")
+                        .OrderBy(g => g.Key);
+
+                    Console.WriteLine("\n--- METERS BY UNIT TYPE ---");
+                    foreach (var group in unitGroups)
+                    {
+                        Console.WriteLine($"  {group.Key}: {group.Count()} meters");
+                        foreach (var meter in group.Take(3)) // Show first 3 in each group
+                        {
+                            Console.WriteLine($"    - {meter.HdsMeterName}");
+                        }
+                        if (group.Count() > 3)
+                        {
+                            Console.WriteLine($"    ... and {group.Count() - 3} more");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("❌ No HDS meters were provided for printing");
+                }
+
+                Console.WriteLine("=====================================================\n");
+
+                return Json(new
+                {
+                    success = true,
+                    message = "HDS meters printed to console successfully",
+                    count = request?.SelectedMeters?.Count ?? 0,
+                    tableName = request?.TableName,
+                    connectionId = request?.ConnectionId
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error in HDS Print function: {ex.Message}");
+                return Json(new
+                {
+                    success = false,
+                    error = $"HDS Print failed: {ex.Message}"
+                });
+            }
+        }
+
+        // HDS-specific request model
+        public class PrintHDSMetersRequest
+        {
+            public string TableName { get; set; } = "";
+            public string ConnectionId { get; set; } = "";
+            public List<HDSMeterPrintItem> SelectedMeters { get; set; } = new();
+            public bool ImportHistoricalReadings { get; set; } = false;
+            public DateTime? StartDate { get; set; }
+            public DateTime? EndDate { get; set; }
+        }
+
+        public class HDSMeterPrintItem
+        {
+            public string HdsMeterName { get; set; } = "";
+            public string Unit { get; set; } = "";
+            public string Type { get; set; } = "main";
+            public string ParentMeterId { get; set; } = "";
+            public bool Active { get; set; } = true;
+            public string LastReading { get; set; } = "";
+            public bool IsSelected { get; set; } = true;
+        }
+
+        [HttpPost]
         public async Task<IActionResult> ImportMeters([FromBody] ImportMetersRequest request)
         {
             try

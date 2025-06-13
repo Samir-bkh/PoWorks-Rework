@@ -116,17 +116,17 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Placeholder for the meter-selection table -->
-                    <div id="varexpRecordsContainer" class="mt-4"></div>
-
+                <!-- Placeholder for the meter-selection table -->
+                <div id="varexpRecordsContainer" class="mt-4"></div>
 
                 <!-- Meter Selection Table (initially hidden) -->
                 <div id="meterSelectionSection" class="d-none">
                     <div class="card mb-4">
                         <div class="card-header bg-light">
                             <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">Meter Selection</h5>
+                                <h5 class="mb-0" id="meterSelectionTitle">Meter Selection</h5>
                                 <div>
                                     <button type="button" class="btn btn-sm btn-outline-primary me-2" id="selectAllMetersBtn">
                                         <i class="bi bi-check-all"></i> Select All
@@ -169,16 +169,29 @@
                             </div>
                         </div>
                         <div class="card-footer">
-                            <div class="d-flex justify-content-between">
-                                <button type="button" class="btn btn-success" id="printSelectedBtn">
-                                    <i class="bi bi-printer"></i> Print Selected
-                                </button>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <!-- 🎯 SEPARATE PRINT BUTTONS - Only one will be visible at a time -->
+                                <div>
+                                    <!-- HDS Print Button (shown only for HDS meters) -->
+                                    <button type="button" class="btn btn-info d-none" id="printSelectedHDSBtn">
+                                        <i class="bi bi-printer"></i> Print HDS Meters
+                                    </button>
+
+                                    <!-- VAREXP Print Button (shown by default, hidden when HDS is active) -->
+                                    <button type="button" class="btn btn-info" id="printSelectedBtn">
+                                        <i class="bi bi-printer"></i> Print Selected
+                                    </button>
+                                </div>
+
+                                <!-- Import Options -->
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="importReadings">
                                     <label class="form-check-label" for="importReadings">
                                         Import historical readings
                                     </label>
                                 </div>
+
+                                <!-- Import Button -->
                                 <button type="button" class="btn btn-primary" id="importSelectedBtn">
                                     <i class="bi bi-cloud-upload"></i> Import Selected
                                 </button>
@@ -204,77 +217,80 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-            <!-- Export Tab -->
-            <div class="tab-pane fade" id="export-tab-pane" role="tabpanel" aria-labelledby="export-tab" tabindex="0">
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <h5 class="card-title mb-3">Export Meters</h5>
+                <!-- Export Tab -->
+                <div class="tab-pane fade" id="export-tab-pane" role="tabpanel" aria-labelledby="export-tab" tabindex="0">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">Export Meters</h5>
 
-                        <!-- Export Options -->
-                        <div class="mb-3">
-                            <label class="form-label">Export Format</label>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
-                                <label class="form-check-label" for="exportFormatCsv">
-                                    CSV
-                                </label>
+                            <!-- Export Options -->
+                            <div class="mb-3">
+                                <label class="form-label">Export Format</label>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
+                                    <label class="form-check-label" for="exportFormatCsv">
+                                        CSV
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatExcel" value="excel">
+                                    <label class="form-check-label" for="exportFormatExcel">
+                                        Excel
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
+                                    <label class="form-check-label" for="exportFormatJson">
+                                        JSON
+                                    </label>
+                                </div>
                             </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatExcel" value="excel">
-                                <label class="form-check-label" for="exportFormatExcel">
-                                    Excel
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
-                                <label class="form-check-label" for="exportFormatJson">
-                                    JSON
-                                </label>
-                            </div>
-                        </div>
 
-                        <!-- Export Filters -->
-                        <div class="mb-3">
-                            <label class="form-label">Export Filters</label>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="exportAllMeters" checked>
-                                <label class="form-check-label" for="exportAllMeters">
-                                    Export all meters
-                                </label>
+                            <!-- Export Filters -->
+                            <div class="mb-3">
+                                <label class="form-label">Export Filters</label>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="exportAllMeters" checked>
+                                    <label class="form-check-label" for="exportAllMeters">
+                                        Export all meters
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="exportActiveOnly">
+                                    <label class="form-check-label" for="exportActiveOnly">
+                                        Export active meters only
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="includeReadings">
+                                    <label class="form-check-label" for="includeReadings">
+                                        Include historical readings
+                                    </label>
+                                </div>
                             </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="exportActiveOnly">
-                                <label class="form-check-label" for="exportActiveOnly">
-                                    Export active meters only
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="includeReadings">
-                                <label class="form-check-label" for="includeReadings">
-                                    Include historical readings
-                                </label>
-                            </div>
-                        </div>
 
-                        <!-- Export Button -->
-                        <div class="d-grid">
-                            <button type="button" class="btn btn-primary" id="exportBtn">
-                                <i class="bi bi-download"></i> Export Meters
-                            </button>
+                            <!-- Export Button -->
+                            <div class="d-grid">
+                                <button type="button" class="btn btn-primary" id="exportBtn">
+                                    <i class="bi bi-download"></i> Export Meters
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <div id="hdsMeterSelectionContainer">
+            <!-- Modal content will be dynamically loaded here -->
+        </div>
     </div>
-                <div id="hdsMeterSelectionContainer">
-                    <!-- Modal content will be dynamically loaded here -->
-                </div>
 </div>
 
-        @section Scripts {
-                <script src="~/js/hdsMeterImport.js"></script>
-                <script src="~/js/hdsMeterSelection.js"></script>
-                <script src="~/js/import.js"></script>
-        }
+@section Scripts {
+    <script src="~/js/hdsMeterImport.js"></script>
+    <script src="~/js/hdsMeterSelection.js"></script>
+    <script src="~/js/import.js"></script>
+}

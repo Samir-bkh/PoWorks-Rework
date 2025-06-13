@@ -1,85 +1,48 @@
-﻿// wwwroot/js/import.js - With VAREXP Print Functionality
+﻿// wwwroot/js/import.js - Clean VAREXP-Only Functionality
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🔍 DEBUG: DOM Content Loaded');
+    console.log('🟨 DEBUG: DOM Content Loaded');
 
     // VAREXP Import functions
     const parseVarexpBtn = document.getElementById('parseVarexpBtn');
     const varexpFileInput = document.getElementById('varexpFileInput');
     const recordsContainer = document.getElementById('varexpRecordsContainer');
 
-    console.log('🔍 DEBUG: VAREXP Elements found:', {
+    console.log('🟨 DEBUG: VAREXP Elements found:', {
         parseVarexpBtn: !!parseVarexpBtn,
         varexpFileInput: !!varexpFileInput,
         recordsContainer: !!recordsContainer
     });
 
-    // ✅ ADD: Setup Select All/Deselect All event delegation for VAREXP
+    // ✅ Setup Select All/Deselect All event delegation for VAREXP
     document.body.addEventListener('click', function (event) {
         // Handle VAREXP Select All button click
         if (event.target.id === 'selectAllMetersBtn' || event.target.closest('#selectAllMetersBtn')) {
-            console.log('🔍 DEBUG: VAREXP Select All button clicked');
+            console.log('🟨 DEBUG: VAREXP Select All button clicked');
             handleVarexpSelectAll();
         }
 
         // Handle VAREXP Deselect All button click
         if (event.target.id === 'deselectAllMetersBtn' || event.target.closest('#deselectAllMetersBtn')) {
-            console.log('🔍 DEBUG: VAREXP Deselect All button clicked');
+            console.log('🟨 DEBUG: VAREXP Deselect All button clicked');
             handleVarexpDeselectAll();
         }
 
-        // Handle Print Selected button (you already have this)
-        // Handle Print Selected button - only for VAREXP context
-        // Handle Print Selected button - only for VAREXP context
-        // Handle Print Selected button - DEBUG VERSION
+        // Handle VAREXP Print Selected button - CLEAN VERSION
         if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
-            console.log('🟦 ===== VAREXP HANDLER DEBUG START =====');
-            console.log('🟦 VAREXP: Print button handler triggered');
-
-            // ✅ DETECT DATA TYPE by checking actual DOM structure
-            const firstMeterRow = document.querySelector('#meterSelectionSection tbody tr:not(.table-info)');
-            const firstNameCell = firstMeterRow?.querySelector('td:nth-child(2)');
-
-            console.log('🟦 VAREXP: First meter row found:', !!firstMeterRow);
-            console.log('🟦 VAREXP: First name cell found:', !!firstNameCell);
-
-            if (firstNameCell) {
-                console.log('🟦 VAREXP: First name cell HTML:', firstNameCell.innerHTML);
-            }
-
-            // Check if this is HDS data (has <strong> element) vs VAREXP data (has .badge)
-            const hasStrong = firstNameCell?.querySelector('strong');
-            const hasBadge = firstNameCell?.querySelector('.badge');
-
-            console.log('🟦 VAREXP: Has <strong> element:', !!hasStrong);
-            console.log('🟦 VAREXP: Has .badge element:', !!hasBadge);
-
-            if (hasStrong && !hasBadge) {
-                console.log('🟦 VAREXP: HDS data detected (has <strong>, no .badge), skipping VAREXP handler');
-                console.log('🟦 ===== VAREXP HANDLER DEBUG END (EXITING) =====');
-                return; // ✅ CRITICAL: Actually exit here!
-            }
-
-            if (hasBadge) {
-                console.log('🟦 VAREXP: VAREXP data detected (has .badge), processing with VAREXP handler');
-                handleVarexpPrint();
-                console.log('🟦 ===== VAREXP HANDLER DEBUG END (PROCESSED) =====');
-                return;
-            }
-
-            console.log('🟦 VAREXP: Unknown data structure, skipping VAREXP handler');
-            console.log('🟦 ===== VAREXP HANDLER DEBUG END (UNKNOWN) =====');
-            return;
+            console.log('🟨 VAREXP Print Handler - Processing VAREXP meters...');
+            handleVarexpPrint();
         }
 
+        // Handle VAREXP Import Selected button
         if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
-            console.log('🔍 DEBUG: VAREXP Import Selected button clicked');
+            console.log('🟨 DEBUG: VAREXP Import Selected button clicked');
             handleVarexpImport();
         }
     });
 
-    // ✅ ADD: Setup checkbox change events for VAREXP
+    // ✅ Setup checkbox change events for VAREXP
     document.body.addEventListener('change', function (event) {
         if (event.target.classList.contains('meter-checkbox')) {
             handleVarexpCheckboxChange(event.target);
@@ -88,30 +51,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (parseVarexpBtn && varexpFileInput && recordsContainer) {
         parseVarexpBtn.addEventListener('click', () => {
-            console.log('🔍 DEBUG: Parse VAREXP button clicked');
+            console.log('🟨 DEBUG: Parse VAREXP button clicked');
 
             const file = varexpFileInput.files[0];
             if (!file) {
-                console.log('🔍 DEBUG: No file selected');
+                console.log('🟨 DEBUG: No file selected');
                 return alert('Please select a VAREXP.DAT file first');
             }
 
-            console.log('🔍 DEBUG: File selected:', file.name);
+            console.log('🟨 DEBUG: File selected:', file.name);
 
             const formData = new FormData();
             formData.append('VarexpFile', file);
 
-            console.log('🔍 DEBUG: Sending request to /Import/ParseVarexp');
+            console.log('🟨 DEBUG: Sending request to /Import/ParseVarexp');
 
             fetch('/Import/ParseVarexp', {
                 method: 'POST',
                 body: formData
             })
                 .then(async res => {
-                    console.log('🔍 DEBUG: Response status:', res.status);
+                    console.log('🟨 DEBUG: Response status:', res.status);
 
                     const contentType = res.headers.get('content-type') || '';
-                    console.log('🔍 DEBUG: Content type:', contentType);
+                    console.log('🟨 DEBUG: Content type:', contentType);
 
                     if (res.ok) {
                         if (contentType.includes('application/json')) {
@@ -130,55 +93,40 @@ document.addEventListener('DOMContentLoaded', function () {
                     throw new Error(errMsg || `Error ${res.status} ${res.statusText}`);
                 })
                 .then(data => {
-                    console.log('🔍 DEBUG: Server response received:', data);
-                    console.log('🔍 DEBUG: Full response structure:', JSON.stringify(data, null, 2)); // ✅ ADD THIS LINE
+                    console.log('🟨 DEBUG: Server response received:', data);
 
                     if (data.records) {
-                        console.log('🔍 DEBUG: Records found:', data.records.length);
-                        console.log('🔍 DEBUG: First 3 records:', data.records.slice(0, 3));
-
-                        // ✅ ADD MORE DETAILED LOGGING
-                        console.log('🔍 DEBUG: data.parentOptions exists?', !!data.parentOptions);
-                        console.log('🔍 DEBUG: data.parentOptions type:', typeof data.parentOptions);
-                        console.log('🔍 DEBUG: data.parentOptions content:', data.parentOptions);
+                        console.log('🟨 DEBUG: Records found:', data.records.length);
 
                         if (data.parentOptions) {
-                            console.log('🔍 DEBUG: Parent options received:', data.parentOptions.length);
+                            console.log('🟨 DEBUG: Parent options received:', data.parentOptions.length);
                             window.parentOptions = data.parentOptions;
                         } else {
-                            console.log('🔍 DEBUG: No parent options in response, using default');
+                            console.log('🟨 DEBUG: No parent options in response, using default');
                             window.parentOptions = [{ value: '', text: 'None' }];
                         }
 
-                        // ✅ VERIFY WHAT'S STORED
-                        console.log('🔍 DEBUG: window.parentOptions after setting:', window.parentOptions);
-
                         // Convert VAREXP records to meter format
-                        debugConvertVarexpToMeterSelection(data.records);
+                        convertVarexpToMeterSelection(data.records);
                     } else {
-                        console.log('🔍 DEBUG: No records in response');
+                        console.log('🟨 DEBUG: No records in response');
                         alert(data.error || 'No records returned');
                     }
                 })
+                .catch(error => {
+                    console.error('🟨 ERROR: VAREXP parsing failed:', error);
+                    alert(`Error parsing VAREXP file: ${error.message}`);
+                });
         });
     } else {
-        console.log('🔍 DEBUG: VAREXP elements not found!');
+        console.log('🟨 DEBUG: VAREXP elements not found!');
     }
-
-    // Setup print button handler using event delegation
-    document.body.addEventListener('click', function (event) {
-        if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
-            console.log('🔍 DEBUG: Print Selected button clicked');
-            handleVarexpPrint();
-        }
-    });
 });
 
-// Handle VAREXP print functionality
+// Handle VAREXP print functionality - CLEAN VERSION
 function handleVarexpPrint() {
-    console.log('🔍 DEBUG: Starting VAREXP print process');
+    console.log('🟨 Starting VAREXP print process');
 
-    // Get all selected checkboxes
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
 
     if (selectedCheckboxes.length === 0) {
@@ -186,9 +134,9 @@ function handleVarexpPrint() {
         return;
     }
 
-    console.log(`🔍 DEBUG: Found ${selectedCheckboxes.length} selected meters`);
+    console.log(`🟨 Found ${selectedCheckboxes.length} selected VAREXP meters`);
 
-    // Gather selected meter data
+    // Gather VAREXP meter data
     const selectedMeterNames = [];
     const selectedMeterTypes = [];
     const selectedMeterUnits = [];
@@ -197,25 +145,23 @@ function handleVarexpPrint() {
         const row = checkbox.closest('tr');
         if (!row) return;
 
-        // Get meter name from the name cell (skip the info header row)
+        // Skip the info header row
+        if (row.classList.contains('table-info')) return;
+
         const nameCell = row.cells[1];
         if (!nameCell) return;
 
-        // Extract meter name (skip badge, get the span text)
+        // Extract meter name from span (VAREXP has .badge elements)
         const nameSpan = nameCell.querySelector('span:not(.badge)');
         const meterName = nameSpan ? nameSpan.textContent.trim() : '';
 
         if (!meterName) return;
 
-        // Get unit from input field
         const unitInput = row.querySelector('.meter-unit');
         const unit = unitInput ? unitInput.value.trim() : '';
 
-        // Get type from select
         const typeSelect = row.querySelector('.meter-type');
         const type = typeSelect ? typeSelect.value : 'main';
-
-        console.log(`🔍 DEBUG: Meter ${index + 1}: Name="${meterName}", Type="${type}", Unit="${unit}"`);
 
         selectedMeterNames.push(meterName);
         selectedMeterTypes.push(type);
@@ -223,17 +169,17 @@ function handleVarexpPrint() {
     });
 
     if (selectedMeterNames.length === 0) {
-        alert('No valid meters found in selection.');
+        alert('No valid VAREXP meters found in selection.');
         return;
     }
 
-    console.log('🔍 DEBUG: Collected meter data:', {
+    console.log('🟨 Collected VAREXP meter data:', {
         names: selectedMeterNames,
         types: selectedMeterTypes,
         units: selectedMeterUnits
     });
 
-    // Prepare request data
+    // Prepare VAREXP request data
     const requestData = {
         tableName: 'VAREXP.DAT',
         selectedMeterNames: selectedMeterNames,
@@ -241,9 +187,9 @@ function handleVarexpPrint() {
         selectedMeterUnits: selectedMeterUnits
     };
 
-    console.log('🔍 DEBUG: Sending print request:', requestData);
+    console.log('🟨 Sending VAREXP print request:', requestData);
 
-    // Send to server
+    // Send to VAREXP endpoint
     fetch('/Import/PrintSelectedMeters', {
         method: 'POST',
         headers: {
@@ -258,17 +204,17 @@ function handleVarexpPrint() {
             return response.json();
         })
         .then(data => {
-            console.log('🔍 DEBUG: Print response:', data);
+            console.log('🟨 VAREXP print response:', data);
 
             if (data.success) {
-                alert(`Successfully printed ${data.count} meters to console. Check the server console for details.`);
+                alert(`✅ Successfully printed ${data.count} VAREXP meters to console!\nCheck the server console for details.`);
             } else {
-                alert('Print failed: ' + (data.error || 'Unknown error'));
+                alert('❌ VAREXP Print failed: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(error => {
-            console.error('🔍 DEBUG: Print request failed:', error);
-            alert('Print request failed: ' + error.message);
+            console.error('🟨 VAREXP print request failed:', error);
+            alert('❌ VAREXP Print request failed: ' + error.message);
         });
 }
 
@@ -277,12 +223,11 @@ function handleVarexpPrint() {
  */
 function handleVarexpSelectAll() {
     const checkboxes = document.querySelectorAll('.meter-checkbox');
-    console.log(`🔍 DEBUG: Selecting all ${checkboxes.length} VAREXP checkboxes`);
+    console.log(`🟨 Selecting all ${checkboxes.length} VAREXP checkboxes`);
 
     checkboxes.forEach(function (checkbox) {
         checkbox.checked = true;
 
-        // Update any related hidden inputs if they exist
         const hiddenInput = checkbox.nextElementSibling;
         if (hiddenInput && hiddenInput.type === 'hidden') {
             hiddenInput.disabled = true;
@@ -297,12 +242,11 @@ function handleVarexpSelectAll() {
  */
 function handleVarexpDeselectAll() {
     const checkboxes = document.querySelectorAll('.meter-checkbox');
-    console.log(`🔍 DEBUG: Deselecting all ${checkboxes.length} VAREXP checkboxes`);
+    console.log(`🟨 Deselecting all ${checkboxes.length} VAREXP checkboxes`);
 
     checkboxes.forEach(function (checkbox) {
         checkbox.checked = false;
 
-        // Update any related hidden inputs if they exist
         const hiddenInput = checkbox.nextElementSibling;
         if (hiddenInput && hiddenInput.type === 'hidden') {
             hiddenInput.disabled = false;
@@ -316,16 +260,14 @@ function handleVarexpDeselectAll() {
  * Handle individual VAREXP checkbox changes
  */
 function handleVarexpCheckboxChange(checkbox) {
-    console.log(`🔍 DEBUG: VAREXP checkbox changed: ${checkbox.id}, Checked: ${checkbox.checked}`);
+    console.log(`🟨 VAREXP checkbox changed: ${checkbox.id}, Checked: ${checkbox.checked}`);
 
-    // Find corresponding hidden input and update its disabled state
     const hiddenInput = checkbox.nextElementSibling;
     if (hiddenInput && hiddenInput.type === 'hidden') {
         hiddenInput.disabled = checkbox.checked;
-        console.log(`🔍 DEBUG: Updated hidden input disabled: ${hiddenInput.disabled}`);
+        console.log(`🟨 Updated hidden input disabled: ${hiddenInput.disabled}`);
     }
 
-    // Update selection counter
     updateVarexpCounter();
 }
 
@@ -335,9 +277,8 @@ function handleVarexpCheckboxChange(checkbox) {
 function updateVarexpCounter() {
     const checkboxes = document.querySelectorAll('.meter-checkbox');
     const checkedBoxes = document.querySelectorAll('.meter-checkbox:checked');
-    console.log(`🔍 DEBUG: VAREXP selection count: ${checkedBoxes.length} of ${checkboxes.length}`);
+    console.log(`🟨 VAREXP selection count: ${checkedBoxes.length} of ${checkboxes.length}`);
 
-    // Update filter status to show selection count
     const statusElement = document.getElementById('meterFilterStatus');
     if (statusElement) {
         const totalMeters = checkboxes.length;
@@ -345,7 +286,6 @@ function updateVarexpCounter() {
         statusElement.textContent = `Selected ${selectedMeters} of ${totalMeters} meters`;
     }
 
-    // Update import button text if it exists
     const importBtn = document.getElementById('importSelectedBtn');
     if (importBtn) {
         importBtn.textContent = checkedBoxes.length > 0 ?
@@ -353,7 +293,6 @@ function updateVarexpCounter() {
             'Import Selected';
     }
 
-    // Update print button text
     const printBtn = document.getElementById('printSelectedBtn');
     if (printBtn) {
         printBtn.textContent = checkedBoxes.length > 0 ?
@@ -362,38 +301,27 @@ function updateVarexpCounter() {
     }
 }
 
-// DEBUG: Convert VAREXP records to meter selection format
-function debugConvertVarexpToMeterSelection(records) {
-    console.log('🔍 DEBUG: Converting VAREXP records to meter selection');
-    console.log('🔍 DEBUG: Total records received:', records.length);
-
-    // Show first few records to understand structure
-    console.log('🔍 DEBUG: First 5 records structure:');
-    records.slice(0, 5).forEach((record, index) => {
-        console.log(`Record ${index}:`, record);
-    });
+// Convert VAREXP records to meter selection format
+function convertVarexpToMeterSelection(records) {
+    console.log('🟨 Converting VAREXP records to meter selection');
+    console.log('🟨 Total records received:', records.length);
 
     // Filter out header rows and system records
     const meterRecords = records.filter((record, index) => {
         if (!record || record.length < 2) {
-            console.log(`🔍 DEBUG: Filtered out record ${index}: insufficient fields`);
             return false;
         }
 
         const recordType = record[0]?.trim() || '';
         const combinedName = record[1]?.trim() || '';
 
-        console.log(`🔍 DEBUG: Record ${index}: Type="${recordType}", Name="${combinedName}"`);
-
         // Skip header row
         if (combinedName === 'CombinedName' || recordType === 'Class') {
-            console.log(`🔍 DEBUG: Filtered out record ${index}: header row`);
             return false;
         }
 
         // Skip system records
         if (combinedName.toLowerCase().startsWith('system')) {
-            console.log(`🔍 DEBUG: Filtered out record ${index}: system record`);
             return false;
         }
 
@@ -401,72 +329,58 @@ function debugConvertVarexpToMeterSelection(records) {
         const validTypes = ['CHR', 'CMD', 'REG', 'TXT'];
         const isValidType = validTypes.includes(recordType.toUpperCase());
 
-        if (!isValidType) {
-            console.log(`🔍 DEBUG: Filtered out record ${index}: invalid type "${recordType}"`);
+        if (!isValidType || !combinedName) {
             return false;
         }
 
-        if (!combinedName) {
-            console.log(`🔍 DEBUG: Filtered out record ${index}: empty name`);
-            return false;
-        }
-
-        console.log(`🔍 DEBUG: ✅ Keeping record ${index}: Type="${recordType}", Name="${combinedName}"`);
         return true;
     });
 
-    console.log(`🔍 DEBUG: Filtered ${meterRecords.length} valid meter records from ${records.length} total records`);
+    console.log(`🟨 Filtered ${meterRecords.length} valid meter records from ${records.length} total records`);
 
     if (meterRecords.length === 0) {
-        console.log('🔍 DEBUG: ❌ No valid meter records found!');
+        console.log('🟨 No valid meter records found!');
         alert('No valid meter records found in VAREXP.DAT file. Check console for details.');
         return;
     }
 
-    // Convert to simplified meter format - ONLY extract the combined name
+    // Convert to simplified meter format
     const meters = meterRecords.map((record, index) => {
         const recordType = record[0]?.trim() || '';
         const combinedName = record[1]?.trim() || '';
 
-        const meter = {
-            hdsMeterName: combinedName,  // Only the combined name matters
-            unit: '',                    // Empty, user can fill
-            type: 'Main',               // Default to Main type
-            active: true,               // Default to active
-            isSelected: true,           // Default selected
-            lastReading: '0',           // Default reading
-            recordType: recordType      // Keep for display purposes
+        return {
+            hdsMeterName: combinedName,
+            unit: '',
+            type: 'Main',
+            active: true,
+            isSelected: true,
+            lastReading: '0',
+            recordType: recordType
         };
-
-        console.log(`🔍 DEBUG: Converted meter ${index}:`, meter);
-        return meter;
     });
 
-    console.log('🔍 DEBUG: ✅ Converted meters:', meters.length);
-    console.log('🔍 DEBUG: Sample meter names:', meters.slice(0, 5).map(m => m.hdsMeterName));
+    console.log('🟨 Converted meters:', meters.length);
 
     // Show the meter selection section and populate with VAREXP data
-    debugShowMeterSelectionForVarexp(meters);
+    showMeterSelectionForVarexp(meters);
 }
 
-function debugShowMeterSelectionForVarexp(meters) {
-    console.log('🔍 DEBUG: Showing meter selection for VAREXP data');
-    console.log('🔍 DEBUG: Available parent options:', window.parentOptions?.length || 0);
+function showMeterSelectionForVarexp(meters) {
+    console.log('🟨 Showing meter selection for VAREXP data');
 
     // Hide the VAREXP records container
     const recordsContainer = document.getElementById('varexpRecordsContainer');
     if (recordsContainer) {
         recordsContainer.innerHTML = '';
-        console.log('🔍 DEBUG: Cleared VAREXP records container');
     }
 
     // Show meter selection section
     const meterSelectionSection = document.getElementById('meterSelectionSection');
     if (meterSelectionSection) {
         meterSelectionSection.classList.remove('d-none');
-        console.log('🔍 DEBUG: Meter selection section shown');
     } else {
-        console.log('🔍 DEBUG: ❌ Meter selection section not found!');
+        console.log('🟨 Meter selection section not found!');
         return;
     }
 
@@ -474,8 +388,16 @@ function debugShowMeterSelectionForVarexp(meters) {
     const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
     if (sectionHeader) {
         sectionHeader.textContent = 'VAREXP Meter Selection';
-        console.log('🔍 DEBUG: Updated section header');
     }
+
+    // 🎯 Show VAREXP print button, hide HDS print button
+    const hdsBtn = document.getElementById('printSelectedHDSBtn');
+    const varexpBtn = document.getElementById('printSelectedBtn');
+
+    if (hdsBtn) hdsBtn.classList.add('d-none');
+    if (varexpBtn) varexpBtn.classList.remove('d-none');
+
+    console.log('🟨 VAREXP print button shown, HDS button hidden');
 
     // Hide the "Import historical readings" checkbox for VAREXP
     const importReadingsCheckbox = document.getElementById('importReadings');
@@ -483,39 +405,35 @@ function debugShowMeterSelectionForVarexp(meters) {
         const checkboxContainer = importReadingsCheckbox.closest('.form-check');
         if (checkboxContainer) {
             checkboxContainer.style.display = 'none';
-            console.log('🔍 DEBUG: Hidden import readings checkbox');
         }
     }
 
-    // Render the table with parent options already available
-    debugRenderVarexpMetersTable(meters);
+    // Render the table with VAREXP data
+    renderVarexpMetersTable(meters);
 
     // Update status
     const statusElement = document.getElementById('meterFilterStatus');
     if (statusElement) {
         statusElement.textContent = `Loaded ${meters.length} meters from VAREXP.DAT`;
-        console.log('🔍 DEBUG: Updated filter status');
     }
 
-    console.log('🔍 DEBUG: ✅ Meter selection setup complete');
+    console.log('🟨 VAREXP meter selection setup complete');
 }
 
-// DEBUG: Render VAREXP meters in the table
-function debugRenderVarexpMetersTable(meters) {
-    console.log('🔍 DEBUG: Rendering VAREXP meters table');
+// Render VAREXP meters in the table
+function renderVarexpMetersTable(meters) {
+    console.log('🟨 Rendering VAREXP meters table');
 
     const tbody = document.getElementById('metersTableBody');
     if (!tbody) {
-        console.log('🔍 DEBUG: ❌ Table body not found!');
+        console.log('🟨 Table body not found!');
         return;
     }
 
     tbody.innerHTML = '';
-    console.log('🔍 DEBUG: Cleared table body');
 
     if (!meters || meters.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center">No meters found in VAREXP.DAT</td></tr>';
-        console.log('🔍 DEBUG: No meters to display');
         return;
     }
 
@@ -529,7 +447,6 @@ function debugRenderVarexpMetersTable(meters) {
         </td>
     `;
     tbody.appendChild(headerRow);
-    console.log('🔍 DEBUG: Added header row');
 
     meters.forEach((meter, index) => {
         const row = document.createElement('tr');
@@ -544,7 +461,7 @@ function debugRenderVarexpMetersTable(meters) {
             </div>
         `;
 
-        // Meter name cell - ONLY show the combined name
+        // Meter name cell - VAREXP format with badge
         const nameCell = document.createElement('td');
         nameCell.innerHTML = `
             <div>
@@ -560,39 +477,25 @@ function debugRenderVarexpMetersTable(meters) {
                    value="" placeholder="Enter unit (e.g., kWh, bar, °C)">
         `;
 
-        // Parent meter cell - NOW ENABLED with options from database
+        // Parent meter cell
         const parentCell = document.createElement('td');
-
-        // ✅ ADD DETAILED LOGGING
-        console.log(`🔍 DEBUG: Creating parent cell for meter ${index}`);
-        console.log('🔍 DEBUG: window.parentOptions available?', !!window.parentOptions);
-        console.log('🔍 DEBUG: window.parentOptions length:', window.parentOptions?.length || 0);
-
-        // Check if we have parent options available
         if (window.parentOptions && window.parentOptions.length > 0) {
             let parentSelectHtml = `<select class="form-select form-select-sm meter-parent">`;
-
-            // Add options from the stored parent options
             window.parentOptions.forEach(option => {
                 parentSelectHtml += `<option value="${option.value || option.Value}">${option.text || option.Text}</option>`;
             });
-
             parentSelectHtml += `</select>`;
             parentCell.innerHTML = parentSelectHtml;
-
-            console.log(`🔍 DEBUG: Created parent dropdown with ${window.parentOptions.length} options for meter ${index}`);
         } else {
-            // ✅ BETTER FALLBACK MESSAGE
-            console.log(`🔍 DEBUG: No parent options available for meter ${index}, using fallback`);
             parentCell.innerHTML = `
-        <select class="form-select form-select-sm meter-parent">
-            <option value="">No parent meters found</option>
-        </select>
-        <small class="text-muted">No existing meters in database</small>
-    `;
+                <select class="form-select form-select-sm meter-parent">
+                    <option value="">No parent meters found</option>
+                </select>
+                <small class="text-muted">No existing meters in database</small>
+            `;
         }
 
-        // Type cell - allow user selection
+        // Type cell
         const typeCell = document.createElement('td');
         typeCell.innerHTML = `
             <select class="form-select form-select-sm meter-type">
@@ -621,20 +524,16 @@ function debugRenderVarexpMetersTable(meters) {
 
         // Append row to table
         tbody.appendChild(row);
-
-        if (index < 3) {
-            console.log(`🔍 DEBUG: Added row ${index} for meter: ${meter.hdsMeterName}`);
-        }
     });
 
-    console.log(`🔍 DEBUG: ✅ Table rendered with ${meters.length} meters`);
+    console.log(`🟨 Table rendered with ${meters.length} VAREXP meters`);
 }
 
 /**
-* Handle VAREXP import functionality
-*/
+ * Handle VAREXP import functionality
+ */
 function handleVarexpImport() {
-    console.log('🔍 DEBUG: VAREXP Import button clicked');
+    console.log('🟨 VAREXP Import button clicked');
 
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
     if (selectedCheckboxes.length === 0) {
@@ -642,40 +541,33 @@ function handleVarexpImport() {
         return;
     }
 
-    // Show confirmation dialog
     const confirmMessage = `Are you sure you want to import ${selectedCheckboxes.length} meters from VAREXP into the database?`;
     if (!confirm(confirmMessage)) {
         return;
     }
 
-    // Disable the import button and show loading state
     const importBtn = document.getElementById('importSelectedBtn');
     const originalBtnText = importBtn.textContent;
     importBtn.disabled = true;
     importBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
 
-    // Gather import options
     const skipExisting = document.getElementById('skipExisting')?.checked || true;
     const updateExisting = document.getElementById('updateExisting')?.checked || false;
     const createMissingParents = document.getElementById('createMissingParents')?.checked || false;
 
-    // Gather selected meter data (CORRECTED meter name extraction)
     const meters = [];
     selectedCheckboxes.forEach((checkbox, index) => {
         const row = checkbox.closest('tr');
 
-        // Skip the info header row
         if (row.classList.contains('table-info')) {
             return;
         }
 
-        // Extract meter name from the span, NOT the entire cell text
         const nameCell = row.querySelector('td:nth-child(2)');
-        const meterNameSpan = nameCell.querySelector('span:not(.badge)'); // Get span that's NOT the badge
+        const meterNameSpan = nameCell.querySelector('span:not(.badge)');
         const meterName = meterNameSpan ? meterNameSpan.textContent.trim() : '';
 
         if (!meterName) {
-            console.warn(`🔍 DEBUG: No meter name found for row ${index}`);
             return;
         }
 
@@ -691,8 +583,6 @@ function handleVarexpImport() {
             parentMeterId: meterParent,
             active: meterActive
         });
-
-        console.log(`🔍 DEBUG: Prepared meter ${index + 1}: "${meterName}", Type: ${meterType}, Unit: "${meterUnit}"`);
     });
 
     if (meters.length === 0) {
@@ -702,9 +592,8 @@ function handleVarexpImport() {
         return;
     }
 
-    console.log(`🔍 DEBUG: Prepared ${meters.length} meters for import`);
+    console.log(`🟨 Prepared ${meters.length} meters for import`);
 
-    // Send import request
     fetch('/Import/ImportVarexpMeters', {
         method: 'POST',
         headers: {
@@ -724,16 +613,13 @@ function handleVarexpImport() {
             return response.json();
         })
         .then(data => {
-            console.log('🔍 DEBUG: Import response:', data);
+            console.log('🟨 Import response:', data);
 
-            // Reset button
             importBtn.disabled = false;
             importBtn.textContent = originalBtnText;
 
-            // Show detailed results
             showVarexpImportResults(data);
 
-            // If successful, offer to reload page to see imported meters
             if (data.success && (data.importedCount > 0 || data.updatedCount > 0)) {
                 setTimeout(() => {
                     if (confirm('Import completed successfully! Would you like to reload the page to see the imported meters in the meter management section?')) {
@@ -743,13 +629,11 @@ function handleVarexpImport() {
             }
         })
         .catch(error => {
-            console.error('🔍 DEBUG: Import error:', error);
+            console.error('🟨 Import error:', error);
 
-            // Reset button
             importBtn.disabled = false;
             importBtn.textContent = originalBtnText;
 
-            // Show error message
             alert(`Error importing meters: ${error.message}`);
         });
 }
@@ -783,7 +667,6 @@ function showVarexpImportResults(data) {
         }
         message += `• ${data.errorCount} errors encountered\n\n`;
 
-        // Add detailed error messages if available
         if (data.detailedErrors && Object.keys(data.detailedErrors).length > 0) {
             message += `🔍 Detailed Errors:\n`;
             for (const [meterName, errorMsg] of Object.entries(data.detailedErrors)) {
@@ -792,6 +675,5 @@ function showVarexpImportResults(data) {
         }
     }
 
-    // Show the message in an alert (you could create a nicer modal for this)
     alert(message);
 }

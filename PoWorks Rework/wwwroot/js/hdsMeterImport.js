@@ -748,6 +748,9 @@ function showHDSMeterSelection(meters, tableName, connectionId) {
         console.log('Updated section header');
     }
 
+    // 🎯 ADD THIS CALL: Switch to HDS print button
+    switchToHDSPrintButton();
+
     // Show the "Import historical readings" checkbox for HDS
     const importReadingsCheckbox = document.getElementById('importReadings');
     if (importReadingsCheckbox) {
@@ -772,6 +775,20 @@ function showHDSMeterSelection(meters, tableName, connectionId) {
 
     // Setup event handlers for the controls
     setupHDSMeterEventHandlers();
+}
+
+function switchToHDSPrintButton() {
+    const hdsBtn = document.getElementById('printSelectedHDSBtn');
+    const varexpBtn = document.getElementById('printSelectedBtn');
+
+    if (hdsBtn) {
+        hdsBtn.classList.remove('d-none');
+        console.log('🔵 HDS print button shown');
+    }
+    if (varexpBtn) {
+        varexpBtn.classList.add('d-none');
+        console.log('🔵 VAREXP print button hidden');
+    }
 }
 
 /**
