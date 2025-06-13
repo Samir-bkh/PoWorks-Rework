@@ -31,15 +31,46 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Handle Print Selected button (you already have this)
         // Handle Print Selected button - only for VAREXP context
+        // Handle Print Selected button - only for VAREXP context
+        // Handle Print Selected button - DEBUG VERSION
         if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
-            // Only handle if we're NOT in HDS modal
-            const hdsModal = document.getElementById('hdsMeterSelectionModal');
-            if (hdsModal && hdsModal.classList.contains('show')) {
-                return; // Let HDS handler take over
+            console.log('🟦 ===== VAREXP HANDLER DEBUG START =====');
+            console.log('🟦 VAREXP: Print button handler triggered');
+
+            // ✅ DETECT DATA TYPE by checking actual DOM structure
+            const firstMeterRow = document.querySelector('#meterSelectionSection tbody tr:not(.table-info)');
+            const firstNameCell = firstMeterRow?.querySelector('td:nth-child(2)');
+
+            console.log('🟦 VAREXP: First meter row found:', !!firstMeterRow);
+            console.log('🟦 VAREXP: First name cell found:', !!firstNameCell);
+
+            if (firstNameCell) {
+                console.log('🟦 VAREXP: First name cell HTML:', firstNameCell.innerHTML);
             }
 
-            console.log('🔍 DEBUG: VAREXP Print Selected button clicked');
-            handleVarexpPrint();
+            // Check if this is HDS data (has <strong> element) vs VAREXP data (has .badge)
+            const hasStrong = firstNameCell?.querySelector('strong');
+            const hasBadge = firstNameCell?.querySelector('.badge');
+
+            console.log('🟦 VAREXP: Has <strong> element:', !!hasStrong);
+            console.log('🟦 VAREXP: Has .badge element:', !!hasBadge);
+
+            if (hasStrong && !hasBadge) {
+                console.log('🟦 VAREXP: HDS data detected (has <strong>, no .badge), skipping VAREXP handler');
+                console.log('🟦 ===== VAREXP HANDLER DEBUG END (EXITING) =====');
+                return; // ✅ CRITICAL: Actually exit here!
+            }
+
+            if (hasBadge) {
+                console.log('🟦 VAREXP: VAREXP data detected (has .badge), processing with VAREXP handler');
+                handleVarexpPrint();
+                console.log('🟦 ===== VAREXP HANDLER DEBUG END (PROCESSED) =====');
+                return;
+            }
+
+            console.log('🟦 VAREXP: Unknown data structure, skipping VAREXP handler');
+            console.log('🟦 ===== VAREXP HANDLER DEBUG END (UNKNOWN) =====');
+            return;
         }
 
         if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {

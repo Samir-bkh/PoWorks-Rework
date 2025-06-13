@@ -418,55 +418,237 @@ console.log('HDS Meter Selection JS initialization complete');
 // —————————————————————————————————————————————————————
 // at the bottom of hdsMeterSelection.js
 
-// —————————————————————————————————————————————————————
-// Print Selected Data button
-// —————————————————————————————————————————————————————
 document.body.addEventListener('click', function (e) {
     if (e.target.id !== 'printSelectedBtn') return;
 
-    // Only handle if we're in HDS modal context
-    const hdsModal = document.getElementById('hdsMeterSelectionModal');
-    if (!hdsModal || !hdsModal.classList.contains('show')) {
-        return; // Let other handlers take over
+    console.log('🔥 ===== COMPREHENSIVE HDS PRINT DEBUG START =====');
+    console.log('🔥 Print button clicked, starting comprehensive debugging...');
+
+    // ✅ DEBUG 1: Check what elements exist
+    console.log('🔍 DEBUG 1: Checking page elements...');
+    const meterSelectionSection = document.getElementById('meterSelectionSection');
+    const sectionHeader = meterSelectionSection?.querySelector('.card-header h5');
+    const metersTableBody = document.getElementById('metersTableBody');
+
+    console.log('🔍 meterSelectionSection exists:', !!meterSelectionSection);
+    console.log('🔍 sectionHeader exists:', !!sectionHeader);
+    console.log('🔍 sectionHeader text:', sectionHeader?.textContent);
+    console.log('🔍 metersTableBody exists:', !!metersTableBody);
+
+    // ✅ DEBUG 2: Check if this is HDS context
+    const isHDSContext = sectionHeader && sectionHeader.textContent.includes('HDS Meter Selection');
+    console.log('🔍 DEBUG 2: Is HDS context?', isHDSContext);
+
+    if (!isHDSContext) {
+        console.log('🔍 Not HDS context, exiting HDS handler');
+        return;
     }
 
-    console.log('🖨️ HDS printSelectedBtn handler running');
+    console.log('🖨️ HDS context confirmed - continuing with HDS print handler');
 
-    // Get the table name from modal data
-    const tableName = document.getElementById('hdsMeterSelectionModal').getAttribute('data-table-name') || 'Unknown';
+    // ✅ DEBUG 3: Find all checkboxes and their states
+    console.log('🔍 DEBUG 3: Analyzing checkboxes...');
+    const allCheckboxes = document.querySelectorAll('.meter-checkbox');
+    const sectionCheckboxes = document.querySelectorAll('#meterSelectionSection .meter-checkbox');
+    const checkedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+    const sectionCheckedCheckboxes = document.querySelectorAll('#meterSelectionSection .meter-checkbox:checked');
 
-    // Get all selected checkboxes
-    const selectedCheckboxes = document.querySelectorAll('#hdsMeterSelectionModal .meter-checkbox:checked');
+    console.log('🔍 Total .meter-checkbox elements found:', allCheckboxes.length);
+    console.log('🔍 Checkboxes in #meterSelectionSection:', sectionCheckboxes.length);
+    console.log('🔍 Total checked checkboxes:', checkedCheckboxes.length);
+    console.log('🔍 Checked checkboxes in section:', sectionCheckedCheckboxes.length);
 
-    // If no meters selected, show alert and exit
-    if (selectedCheckboxes.length === 0) {
-        console.warn('No meters selected, aborting print.');
-        return alert('Please select at least one meter.');
-    }
-
-    // Update selected count
-    document.getElementById('selectedCount').value = selectedCheckboxes.length;
-
-    // Create hidden inputs for each selected meter
-    // Collect meter data for printing
-    const meterData = [];
-    selectedCheckboxes.forEach(function (checkbox, index) {
-        const row = checkbox.closest('tr');
-
-        const meterName = row.querySelector('td:nth-child(2) strong').textContent.trim();
-        const meterUnit = row.querySelector('.meter-unit').value || '';
-        const meterType = row.querySelector('.meter-type').value || 'Main';
-
-        meterData.push({
-            name: meterName,
-            unit: meterUnit,
-            type: meterType
-        });
+    // ✅ DEBUG 4: Examine first few checkboxes in detail
+    console.log('🔍 DEBUG 4: Examining first 3 checkboxes in detail...');
+    sectionCheckboxes.forEach((checkbox, index) => {
+        if (index < 3) {
+            console.log(`🔍 Checkbox ${index}:`, {
+                id: checkbox.id,
+                checked: checkbox.checked,
+                className: checkbox.className,
+                dataAttributes: {
+                    'data-meter-name': checkbox.getAttribute('data-meter-name')
+                },
+                parentElement: checkbox.parentElement?.innerHTML
+            });
+        }
     });
 
-    // Print to console (you can replace this with server call if needed)
-    console.log('HDS Selected Meters:', meterData);
-    alert(`Successfully printed ${meterData.length} HDS meters to console. Check developer tools.`);
+    if (sectionCheckedCheckboxes.length === 0) {
+        console.error('🔥 CRITICAL: No checked checkboxes found in section!');
+        alert('No meters selected. Check console for detailed debugging info.');
+        return;
+    }
 
-    console.log(`🖨️ Form submitted with ${selectedCheckboxes.length} meters`);
+    // ✅ DEBUG 5: Examine table structure
+    console.log('🔍 DEBUG 5: Examining table structure...');
+    const tableRows = document.querySelectorAll('#metersTableBody tr');
+    console.log('🔍 Total rows in table:', tableRows.length);
+
+    tableRows.forEach((row, index) => {
+        if (index < 3) {
+            console.log(`🔍 Row ${index}:`, {
+                classList: Array.from(row.classList),
+                cellCount: row.cells.length,
+                innerHTML: row.innerHTML.substring(0, 200) + '...'
+            });
+        }
+    });
+
+    // ✅ DEBUG 6: Process selected checkboxes with detailed logging
+    console.log('🔍 DEBUG 6: Processing selected checkboxes...');
+    const selectedMeterNames = [];
+    const selectedMeterTypes = [];
+    const selectedMeterUnits = [];
+
+    sectionCheckedCheckboxes.forEach(function (checkbox, index) {
+        console.log(`🔍 Processing checkbox ${index}:`, checkbox.id);
+
+        const row = checkbox.closest('tr');
+        if (!row) {
+            console.error(`🔥 ERROR: No row found for checkbox ${index}`);
+            return;
+        }
+
+        console.log(`🔍 Row ${index} found:`, {
+            classList: Array.from(row.classList),
+            cellCount: row.cells.length
+        });
+
+        // Skip header row
+        if (row.classList.contains('table-info')) {
+            console.log(`🔍 Skipping header row ${index}`);
+            return;
+        }
+
+        // ✅ DEBUG 7: Try multiple methods to get meter name
+        console.log(`🔍 DEBUG 7: Extracting meter name for row ${index}...`);
+
+        // Method 1: data-meter-name attribute
+        const dataAttrName = checkbox.getAttribute('data-meter-name');
+        console.log(`🔍 Method 1 - data-meter-name: "${dataAttrName}"`);
+
+        // Method 2: strong element
+        const nameCell = row.cells[1];
+        console.log(`🔍 Name cell exists:`, !!nameCell);
+        if (nameCell) {
+            console.log(`🔍 Name cell HTML:`, nameCell.innerHTML);
+        }
+
+        const strongElement = nameCell?.querySelector('strong');
+        const strongName = strongElement?.textContent.trim() || '';
+        console.log(`🔍 Method 2 - strong element: "${strongName}"`);
+
+        // Method 3: hidden input
+        const hiddenInput = nameCell?.querySelector('.meter-name');
+        const hiddenName = hiddenInput?.value || '';
+        console.log(`🔍 Method 3 - hidden input: "${hiddenName}"`);
+
+        // Method 4: entire cell text
+        const cellText = nameCell?.textContent.trim() || '';
+        console.log(`🔍 Method 4 - cell text: "${cellText}"`);
+
+        // Choose best name
+        const meterName = dataAttrName || strongName || hiddenName || cellText;
+        console.log(`🔍 Final meter name chosen: "${meterName}"`);
+
+        if (!meterName) {
+            console.error(`🔥 ERROR: No meter name found for checkbox ${index} using any method!`);
+            return;
+        }
+
+        // ✅ DEBUG 8: Get unit and type with detailed logging
+        console.log(`🔍 DEBUG 8: Getting unit and type for row ${index}...`);
+
+        const unitInput = row.querySelector('.meter-unit');
+        const meterUnit = unitInput?.value?.trim() || '';
+        console.log(`🔍 Unit input found:`, !!unitInput);
+        console.log(`🔍 Unit value: "${meterUnit}"`);
+
+        const typeSelect = row.querySelector('.meter-type');
+        const meterType = typeSelect?.value || 'main';
+        console.log(`🔍 Type select found:`, !!typeSelect);
+        console.log(`🔍 Type value: "${meterType}"`);
+
+        // Add to arrays
+        selectedMeterNames.push(meterName);
+        selectedMeterTypes.push(meterType);
+        selectedMeterUnits.push(meterUnit);
+
+        console.log(`✅ Successfully processed meter ${index + 1}: Name="${meterName}", Type="${meterType}", Unit="${meterUnit}"`);
+    });
+
+    // ✅ DEBUG 9: Final data validation
+    console.log('🔍 DEBUG 9: Final data validation...');
+    console.log('🔍 Final collected data:', {
+        names: selectedMeterNames,
+        types: selectedMeterTypes,
+        units: selectedMeterUnits,
+        totalCount: selectedMeterNames.length
+    });
+
+    if (selectedMeterNames.length === 0) {
+        console.error('🔥 CRITICAL ERROR: No valid meter names collected!');
+        console.log('🔥 This suggests the DOM structure is different than expected.');
+        alert('No valid HDS meters found. Check console for detailed debugging info.');
+        return;
+    }
+
+    // ✅ DEBUG 10: Get table name
+    console.log('🔍 DEBUG 10: Getting table name...');
+    let tableName = '';
+
+    try {
+        tableName = getCurrentTableName();
+        console.log('🔍 getCurrentTableName() returned:', tableName);
+    } catch (error) {
+        console.error('🔥 Error calling getCurrentTableName():', error);
+    }
+
+    if (!tableName) {
+        tableName = 'TRENDTABLE1';
+        console.log('🔍 Using fallback table name:', tableName);
+    }
+
+    // ✅ DEBUG 11: Prepare request
+    console.log('🔍 DEBUG 11: Preparing request...');
+    const requestData = {
+        tableName: tableName,
+        selectedMeterNames: selectedMeterNames,
+        selectedMeterTypes: selectedMeterTypes,
+        selectedMeterUnits: selectedMeterUnits
+    };
+
+    console.log('🔍 Request data prepared:', requestData);
+
+    // ✅ DEBUG 12: Send request
+    console.log('🔍 DEBUG 12: Sending request to server...');
+
+    fetch('/Import/PrintSelectedMeters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => {
+            console.log('🔍 Server response status:', response.status);
+            console.log('🔍 Server response ok:', response.ok);
+            return response.json();
+        })
+        .then(data => {
+            console.log('🔍 Server response data:', data);
+
+            if (data.success) {
+                console.log('✅ SUCCESS: Print request completed successfully');
+                alert(`Successfully printed ${data.count} HDS meters to console.`);
+            } else {
+                console.error('🔥 Server reported failure:', data.error);
+                alert('HDS Print failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('🔥 Request failed with error:', error);
+            alert('HDS Print request failed: ' + error.message);
+        });
+
+    console.log('🔥 ===== COMPREHENSIVE HDS PRINT DEBUG END =====');
 });
