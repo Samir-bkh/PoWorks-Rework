@@ -1,307 +1,115 @@
-﻿// wwwroot/js/import.js - Clean VAREXP-Only Functionality
+﻿/**
+ * import.js - Clean VAREXP-Only Functionality
+ * Works with unified print button system from hdsMeterImport.js
+ */
 
-// Initialize the page
+// =====================================================
+// INITIALIZATION
+// =====================================================
+
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🟨 DEBUG: DOM Content Loaded');
+    console.log('🟨 VAREXP Import JS loaded');
 
-    // VAREXP Import functions
+    initializeVarexpElements();
+});
+
+function initializeVarexpElements() {
     const parseVarexpBtn = document.getElementById('parseVarexpBtn');
     const varexpFileInput = document.getElementById('varexpFileInput');
     const recordsContainer = document.getElementById('varexpRecordsContainer');
 
-    console.log('🟨 DEBUG: VAREXP Elements found:', {
+    console.log('🟨 VAREXP Elements found:', {
         parseVarexpBtn: !!parseVarexpBtn,
         varexpFileInput: !!varexpFileInput,
         recordsContainer: !!recordsContainer
     });
 
-    // ✅ Setup Select All/Deselect All event delegation for VAREXP
-    document.body.addEventListener('click', function (event) {
-        // Handle VAREXP Select All button click
-        if (event.target.id === 'selectAllMetersBtn' || event.target.closest('#selectAllMetersBtn')) {
-            console.log('🟨 DEBUG: VAREXP Select All button clicked');
-            handleVarexpSelectAll();
-        }
-
-        // Handle VAREXP Deselect All button click
-        if (event.target.id === 'deselectAllMetersBtn' || event.target.closest('#deselectAllMetersBtn')) {
-            console.log('🟨 DEBUG: VAREXP Deselect All button clicked');
-            handleVarexpDeselectAll();
-        }
-
-        // Handle VAREXP Print Selected button - CLEAN VERSION
-        if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
-            console.log('🟨 VAREXP Print Handler - Processing VAREXP meters...');
-            handleVarexpPrint();
-        }
-
-        // Handle VAREXP Import Selected button
-        if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
-            console.log('🟨 DEBUG: VAREXP Import Selected button clicked');
-            handleVarexpImport();
-        }
-    });
-
-    // ✅ Setup checkbox change events for VAREXP
-    document.body.addEventListener('change', function (event) {
-        if (event.target.classList.contains('meter-checkbox')) {
-            handleVarexpCheckboxChange(event.target);
-        }
-    });
-
     if (parseVarexpBtn && varexpFileInput && recordsContainer) {
-        parseVarexpBtn.addEventListener('click', () => {
-            console.log('🟨 DEBUG: Parse VAREXP button clicked');
-
-            const file = varexpFileInput.files[0];
-            if (!file) {
-                console.log('🟨 DEBUG: No file selected');
-                return alert('Please select a VAREXP.DAT file first');
-            }
-
-            console.log('🟨 DEBUG: File selected:', file.name);
-
-            const formData = new FormData();
-            formData.append('VarexpFile', file);
-
-            console.log('🟨 DEBUG: Sending request to /Import/ParseVarexp');
-
-            fetch('/Import/ParseVarexp', {
-                method: 'POST',
-                body: formData
-            })
-                .then(async res => {
-                    console.log('🟨 DEBUG: Response status:', res.status);
-
-                    const contentType = res.headers.get('content-type') || '';
-                    console.log('🟨 DEBUG: Content type:', contentType);
-
-                    if (res.ok) {
-                        if (contentType.includes('application/json')) {
-                            return res.json();
-                        }
-                        throw new Error('Invalid JSON response');
-                    }
-
-                    let errMsg = '';
-                    if (contentType.includes('application/json')) {
-                        const errData = await res.json();
-                        errMsg = errData.error || JSON.stringify(errData);
-                    } else {
-                        errMsg = await res.text();
-                    }
-                    throw new Error(errMsg || `Error ${res.status} ${res.statusText}`);
-                })
-                .then(data => {
-                    console.log('🟨 DEBUG: Server response received:', data);
-
-                    if (data.records) {
-                        console.log('🟨 DEBUG: Records found:', data.records.length);
-
-                        if (data.parentOptions) {
-                            console.log('🟨 DEBUG: Parent options received:', data.parentOptions.length);
-                            window.parentOptions = data.parentOptions;
-                        } else {
-                            console.log('🟨 DEBUG: No parent options in response, using default');
-                            window.parentOptions = [{ value: '', text: 'None' }];
-                        }
-
-                        // Convert VAREXP records to meter format
-                        convertVarexpToMeterSelection(data.records);
-                    } else {
-                        console.log('🟨 DEBUG: No records in response');
-                        alert(data.error || 'No records returned');
-                    }
-                })
-                .catch(error => {
-                    console.error('🟨 ERROR: VAREXP parsing failed:', error);
-                    alert(`Error parsing VAREXP file: ${error.message}`);
-                });
-        });
+        parseVarexpBtn.addEventListener('click', handleVarexpFileParse);
     } else {
-        console.log('🟨 DEBUG: VAREXP elements not found!');
+        console.log('🟨 VAREXP elements not found - VAREXP functionality disabled');
     }
-});
+}
 
-// Handle VAREXP print functionality - CLEAN VERSION
-function handleVarexpPrint() {
-    console.log('🟨 Starting VAREXP print process');
+// =====================================================
+// VAREXP FILE PARSING
+// =====================================================
 
-    const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+function handleVarexpFileParse() {
+    console.log('🟨 Parse VAREXP button clicked');
 
-    if (selectedCheckboxes.length === 0) {
-        alert('Please select at least one meter to print.');
-        return;
-    }
+    const varexpFileInput = document.getElementById('varexpFileInput');
+    const file = varexpFileInput.files[0];
 
-    console.log(`🟨 Found ${selectedCheckboxes.length} selected VAREXP meters`);
-
-    // Gather VAREXP meter data
-    const selectedMeterNames = [];
-    const selectedMeterTypes = [];
-    const selectedMeterUnits = [];
-
-    selectedCheckboxes.forEach((checkbox, index) => {
-        const row = checkbox.closest('tr');
-        if (!row) return;
-
-        // Skip the info header row
-        if (row.classList.contains('table-info')) return;
-
-        const nameCell = row.cells[1];
-        if (!nameCell) return;
-
-        // Extract meter name from span (VAREXP has .badge elements)
-        const nameSpan = nameCell.querySelector('span:not(.badge)');
-        const meterName = nameSpan ? nameSpan.textContent.trim() : '';
-
-        if (!meterName) return;
-
-        const unitInput = row.querySelector('.meter-unit');
-        const unit = unitInput ? unitInput.value.trim() : '';
-
-        const typeSelect = row.querySelector('.meter-type');
-        const type = typeSelect ? typeSelect.value : 'main';
-
-        selectedMeterNames.push(meterName);
-        selectedMeterTypes.push(type);
-        selectedMeterUnits.push(unit);
-    });
-
-    if (selectedMeterNames.length === 0) {
-        alert('No valid VAREXP meters found in selection.');
-        return;
+    if (!file) {
+        console.log('🟨 No file selected');
+        return alert('Please select a VAREXP.DAT file first');
     }
 
-    console.log('🟨 Collected VAREXP meter data:', {
-        names: selectedMeterNames,
-        types: selectedMeterTypes,
-        units: selectedMeterUnits
-    });
+    console.log('🟨 File selected:', file.name);
 
-    // Prepare VAREXP request data
-    const requestData = {
-        tableName: 'VAREXP.DAT',
-        selectedMeterNames: selectedMeterNames,
-        selectedMeterTypes: selectedMeterTypes,
-        selectedMeterUnits: selectedMeterUnits
-    };
+    const formData = new FormData();
+    formData.append('VarexpFile', file);
 
-    console.log('🟨 Sending VAREXP print request:', requestData);
+    console.log('🟨 Sending request to /Import/ParseVarexp');
 
-    // Send to VAREXP endpoint
-    fetch('/Import/PrintSelectedMeters', {
+    fetch('/Import/ParseVarexp', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
+        body: formData
     })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        .then(async res => {
+            console.log('🟨 Response status:', res.status);
+
+            const contentType = res.headers.get('content-type') || '';
+            console.log('🟨 Content type:', contentType);
+
+            if (res.ok) {
+                if (contentType.includes('application/json')) {
+                    return res.json();
+                }
+                throw new Error('Invalid JSON response');
             }
-            return response.json();
+
+            let errMsg = '';
+            if (contentType.includes('application/json')) {
+                const errData = await res.json();
+                errMsg = errData.error || JSON.stringify(errData);
+            } else {
+                errMsg = await res.text();
+            }
+            throw new Error(errMsg || `Error ${res.status} ${res.statusText}`);
         })
         .then(data => {
-            console.log('🟨 VAREXP print response:', data);
+            console.log('🟨 Server response received:', data);
 
-            if (data.success) {
-                alert(`✅ Successfully printed ${data.count} VAREXP meters to console!\nCheck the server console for details.`);
+            if (data.records) {
+                console.log('🟨 Records found:', data.records.length);
+
+                if (data.parentOptions) {
+                    console.log('🟨 Parent options received:', data.parentOptions.length);
+                    window.parentOptions = data.parentOptions;
+                } else {
+                    console.log('🟨 No parent options in response, using default');
+                    window.parentOptions = [{ value: '', text: 'None' }];
+                }
+
+                // Convert VAREXP records to meter format
+                convertVarexpToMeterSelection(data.records);
             } else {
-                alert('❌ VAREXP Print failed: ' + (data.error || 'Unknown error'));
+                console.log('🟨 No records in response');
+                alert(data.error || 'No records returned');
             }
         })
         .catch(error => {
-            console.error('🟨 VAREXP print request failed:', error);
-            alert('❌ VAREXP Print request failed: ' + error.message);
+            console.error('🟨 ERROR: VAREXP parsing failed:', error);
+            alert(`Error parsing VAREXP file: ${error.message}`);
         });
 }
 
-/**
- * Handle VAREXP Select All button click
- */
-function handleVarexpSelectAll() {
-    const checkboxes = document.querySelectorAll('.meter-checkbox');
-    console.log(`🟨 Selecting all ${checkboxes.length} VAREXP checkboxes`);
+// =====================================================
+// VAREXP TO METER CONVERSION
+// =====================================================
 
-    checkboxes.forEach(function (checkbox) {
-        checkbox.checked = true;
-
-        const hiddenInput = checkbox.nextElementSibling;
-        if (hiddenInput && hiddenInput.type === 'hidden') {
-            hiddenInput.disabled = true;
-        }
-    });
-
-    updateVarexpCounter();
-}
-
-/**
- * Handle VAREXP Deselect All button click
- */
-function handleVarexpDeselectAll() {
-    const checkboxes = document.querySelectorAll('.meter-checkbox');
-    console.log(`🟨 Deselecting all ${checkboxes.length} VAREXP checkboxes`);
-
-    checkboxes.forEach(function (checkbox) {
-        checkbox.checked = false;
-
-        const hiddenInput = checkbox.nextElementSibling;
-        if (hiddenInput && hiddenInput.type === 'hidden') {
-            hiddenInput.disabled = false;
-        }
-    });
-
-    updateVarexpCounter();
-}
-
-/**
- * Handle individual VAREXP checkbox changes
- */
-function handleVarexpCheckboxChange(checkbox) {
-    console.log(`🟨 VAREXP checkbox changed: ${checkbox.id}, Checked: ${checkbox.checked}`);
-
-    const hiddenInput = checkbox.nextElementSibling;
-    if (hiddenInput && hiddenInput.type === 'hidden') {
-        hiddenInput.disabled = checkbox.checked;
-        console.log(`🟨 Updated hidden input disabled: ${hiddenInput.disabled}`);
-    }
-
-    updateVarexpCounter();
-}
-
-/**
- * Update the VAREXP selection counter display
- */
-function updateVarexpCounter() {
-    const checkboxes = document.querySelectorAll('.meter-checkbox');
-    const checkedBoxes = document.querySelectorAll('.meter-checkbox:checked');
-    console.log(`🟨 VAREXP selection count: ${checkedBoxes.length} of ${checkboxes.length}`);
-
-    const statusElement = document.getElementById('meterFilterStatus');
-    if (statusElement) {
-        const totalMeters = checkboxes.length;
-        const selectedMeters = checkedBoxes.length;
-        statusElement.textContent = `Selected ${selectedMeters} of ${totalMeters} meters`;
-    }
-
-    const importBtn = document.getElementById('importSelectedBtn');
-    if (importBtn) {
-        importBtn.textContent = checkedBoxes.length > 0 ?
-            `Import Selected (${checkedBoxes.length})` :
-            'Import Selected';
-    }
-
-    const printBtn = document.getElementById('printSelectedBtn');
-    if (printBtn) {
-        printBtn.textContent = checkedBoxes.length > 0 ?
-            `Print Selected (${checkedBoxes.length})` :
-            'Print Selected';
-    }
-}
-
-// Convert VAREXP records to meter selection format
 function convertVarexpToMeterSelection(records) {
     console.log('🟨 Converting VAREXP records to meter selection');
     console.log('🟨 Total records received:', records.length);
@@ -390,14 +198,10 @@ function showMeterSelectionForVarexp(meters) {
         sectionHeader.textContent = 'VAREXP Meter Selection';
     }
 
-    // 🎯 Show VAREXP print button, hide HDS print button
-    const hdsBtn = document.getElementById('printSelectedHDSBtn');
-    const varexpBtn = document.getElementById('printSelectedBtn');
-
-    if (hdsBtn) hdsBtn.classList.add('d-none');
-    if (varexpBtn) varexpBtn.classList.remove('d-none');
-
-    console.log('🟨 VAREXP print button shown, HDS button hidden');
+    // 🎯 SET DATA TYPE FLAG FOR UNIFIED PRINT BUTTON
+    window.currentMeterDataType = 'VAREXP';
+    window.currentHDSContext = null; // Clear HDS context
+    console.log('🟨 Set data type to VAREXP');
 
     // Hide the "Import historical readings" checkbox for VAREXP
     const importReadingsCheckbox = document.getElementById('importReadings');
@@ -411,6 +215,11 @@ function showMeterSelectionForVarexp(meters) {
     // Render the table with VAREXP data
     renderVarexpMetersTable(meters);
 
+    // 🎯 UPDATE PRINT BUTTON FOR VAREXP
+    if (typeof updatePrintButtonForDataType === 'function') {
+        updatePrintButtonForDataType('VAREXP');
+    }
+
     // Update status
     const statusElement = document.getElementById('meterFilterStatus');
     if (statusElement) {
@@ -420,7 +229,10 @@ function showMeterSelectionForVarexp(meters) {
     console.log('🟨 VAREXP meter selection setup complete');
 }
 
-// Render VAREXP meters in the table
+// =====================================================
+// VAREXP TABLE RENDERING
+// =====================================================
+
 function renderVarexpMetersTable(meters) {
     console.log('🟨 Rendering VAREXP meters table');
 
@@ -527,11 +339,115 @@ function renderVarexpMetersTable(meters) {
     });
 
     console.log(`🟨 Table rendered with ${meters.length} VAREXP meters`);
+
+    // Update counter using the unified system
+    if (typeof updateMeterCounter === 'function') {
+        updateMeterCounter();
+    }
 }
 
-/**
- * Handle VAREXP import functionality
- */
+// =====================================================
+// VAREXP PRINT FUNCTIONALITY
+// =====================================================
+
+function handleVarexpPrint() {
+    console.log('🟨 Starting VAREXP print process');
+
+    const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
+
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one meter to print.');
+        return;
+    }
+
+    console.log(`🟨 Found ${selectedCheckboxes.length} selected VAREXP meters`);
+
+    // Gather VAREXP meter data
+    const selectedMeterNames = [];
+    const selectedMeterTypes = [];
+    const selectedMeterUnits = [];
+
+    selectedCheckboxes.forEach((checkbox, index) => {
+        const row = checkbox.closest('tr');
+        if (!row) return;
+
+        // Skip the info header row
+        if (row.classList.contains('table-info')) return;
+
+        const nameCell = row.cells[1];
+        if (!nameCell) return;
+
+        // Extract meter name from span (VAREXP has .badge elements)
+        const nameSpan = nameCell.querySelector('span:not(.badge)');
+        const meterName = nameSpan ? nameSpan.textContent.trim() : '';
+
+        if (!meterName) return;
+
+        const unitInput = row.querySelector('.meter-unit');
+        const unit = unitInput ? unitInput.value.trim() : '';
+
+        const typeSelect = row.querySelector('.meter-type');
+        const type = typeSelect ? typeSelect.value : 'main';
+
+        selectedMeterNames.push(meterName);
+        selectedMeterTypes.push(type);
+        selectedMeterUnits.push(unit);
+    });
+
+    if (selectedMeterNames.length === 0) {
+        alert('No valid VAREXP meters found in selection.');
+        return;
+    }
+
+    console.log('🟨 Collected VAREXP meter data:', {
+        names: selectedMeterNames,
+        types: selectedMeterTypes,
+        units: selectedMeterUnits
+    });
+
+    // Prepare VAREXP request data
+    const requestData = {
+        tableName: 'VAREXP.DAT',
+        selectedMeterNames: selectedMeterNames,
+        selectedMeterTypes: selectedMeterTypes,
+        selectedMeterUnits: selectedMeterUnits
+    };
+
+    console.log('🟨 Sending VAREXP print request:', requestData);
+
+    // Send to VAREXP endpoint
+    fetch('/Import/PrintSelectedMeters', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('🟨 VAREXP print response:', data);
+
+            if (data.success) {
+                alert(`✅ Successfully printed ${data.count} VAREXP meters to console!\nCheck the server console for details.`);
+            } else {
+                alert('❌ VAREXP Print failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('🟨 VAREXP print request failed:', error);
+            alert('❌ VAREXP Print request failed: ' + error.message);
+        });
+}
+
+// =====================================================
+// VAREXP IMPORT FUNCTIONALITY
+// =====================================================
+
 function handleVarexpImport() {
     console.log('🟨 VAREXP Import button clicked');
 
@@ -638,9 +554,6 @@ function handleVarexpImport() {
         });
 }
 
-/**
- * Show detailed import results
- */
 function showVarexpImportResults(data) {
     let message = '';
 
@@ -677,3 +590,17 @@ function showVarexpImportResults(data) {
 
     alert(message);
 }
+
+// =====================================================
+// GLOBAL EXPORTS
+// =====================================================
+
+// Make VAREXP functions available globally
+window.VarexpImport = {
+    handleVarexpPrint: handleVarexpPrint,
+    handleVarexpImport: handleVarexpImport,
+    convertVarexpToMeterSelection: convertVarexpToMeterSelection,
+    showMeterSelectionForVarexp: showMeterSelectionForVarexp
+};
+
+console.log('🟨 VAREXP Import JS initialization complete');
