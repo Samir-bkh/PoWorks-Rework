@@ -245,17 +245,88 @@ namespace PoWorks_Rework.Controllers
                     }
                 }
 
-                // Process the import using the corrected method name
-                var importResult = ProcessMeterImport(request.Meters, request.ConnectionId);
+                // ✅ STEP 1: Import meters first (existing logic)
+                _logger.LogInformation("Step 1: Importing meters...");
+                var meterImportResult = ProcessMeterImport(request.Meters, request.ConnectionId);
+
+                // ✅ STEP 2: Import readings if requested (for ALL requested meters, not just imported ones)
+                int totalReadingsImported = 0;
+                int readingsErrorCount = 0;
+                string readingsMessage = "";
+
+                if (request.ImportReadings)
+                {
+                    // Get ALL meter names from the request (imported + skipped + updated)
+                    var allRequestedMeterNames = request.Meters.Select(m => m.HdsMeterName).ToList();
+
+                    _logger.LogInformation($"Step 2: Importing readings for {allRequestedMeterNames.Count} meters (including existing ones)...");
+
+                    try
+                    {
+                        var readingsResult = await ImportMeterReadingsForMeters(
+                            request.TableName,
+                            allRequestedMeterNames,
+                            request.ConnectionId);
+
+                        totalReadingsImported = readingsResult.totalReadingsImported;
+                        readingsErrorCount = readingsResult.errorCount;
+                        readingsMessage = readingsResult.message;
+
+                        _logger.LogInformation($"Readings import completed: {totalReadingsImported} readings imported");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error during readings import");
+                        readingsMessage = $"Readings import failed: {ex.Message}";
+                        readingsErrorCount = allRequestedMeterNames.Count;
+                    }
+                }
+
+                // ✅ STEP 3: Return combined results
+                var combinedMessage = $"Meters: {meterImportResult.ImportedCount} imported, {meterImportResult.UpdatedCount} updated, {meterImportResult.ErrorCount} errors";
+
+                // Calculate skipped meters
+                var totalMetersProcessed = request.Meters.Count;
+                var skippedMeters = totalMetersProcessed - meterImportResult.ImportedCount - meterImportResult.UpdatedCount - meterImportResult.ErrorCount;
+                if (skippedMeters > 0)
+                {
+                    combinedMessage += $", {skippedMeters} skipped (already exist)";
+                }
+
+                if (request.ImportReadings)
+                {
+                    combinedMessage += $". Readings: {totalReadingsImported} imported";
+                    if (readingsErrorCount > 0)
+                    {
+                        combinedMessage += $", {readingsErrorCount} meters had reading errors";
+                    }
+                    combinedMessage += ".";
+                }
+                else
+                {
+                    combinedMessage += ".";
+                }
 
                 return Json(new
                 {
-                    success = importResult.Success,
-                    importedCount = importResult.ImportedCount,
-                    updatedCount = importResult.UpdatedCount,
-                    errorCount = importResult.ErrorCount,
-                    message = importResult.Message,
-                    connectionId = request.ConnectionId
+                    success = meterImportResult.Success && readingsErrorCount == 0,
+                    importedCount = meterImportResult.ImportedCount,
+                    updatedCount = meterImportResult.UpdatedCount,
+                    errorCount = meterImportResult.ErrorCount + readingsErrorCount,
+
+                    // ✅ NEW: Add readings-specific results
+                    readingsImported = totalReadingsImported,
+                    readingsEnabled = request.ImportReadings,
+
+                    message = combinedMessage,
+                    connectionId = request.ConnectionId,
+
+                    // Detailed breakdown
+                    details = new
+                    {
+                        metersMessage = meterImportResult.Message,
+                        readingsMessage = readingsMessage
+                    }
                 });
             }
             catch (Exception ex)
@@ -265,6 +336,150 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        // ✅ NEW: Helper method to import readings for specific meters (simplified)
+        private async Task<(int totalReadingsImported, int errorCount, string message)> ImportMeterReadingsForMeters(
+            string tableName,
+            List<string> meterNames,
+            string connectionId)
+        {
+            if (string.IsNullOrEmpty(tableName) || !meterNames.Any())
+            {
+                return (0, 0, "No table name or meter names provided");
+            }
+
+            if (!_databaseService.IsInitialized || !_sqlServerService.IsInitialized)
+            {
+                return (0, meterNames.Count, "Database connections not initialized");
+            }
+
+            int totalReadingsImported = 0;
+            int errorCount = 0;
+            var errorMeters = new List<string>();
+
+            foreach (var meterName in meterNames)
+            {
+                try
+                {
+                    _logger.LogInformation($"Importing readings for meter: {meterName}");
+
+                    // 1. Find meter ID in PostgreSQL
+                    int? meterId = null;
+                    using (var pgConnection = new Npgsql.NpgsqlConnection(_databaseService.GetConnectionString()))
+                    {
+                        await pgConnection.OpenAsync();
+                        using var cmd = new Npgsql.NpgsqlCommand(@"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", pgConnection);
+                        cmd.Parameters.AddWithValue("@Name", meterName);
+                        var result = await cmd.ExecuteScalarAsync();
+                        if (result != null)
+                        {
+                            meterId = Convert.ToInt32(result);
+                        }
+                    }
+
+                    if (!meterId.HasValue)
+                    {
+                        _logger.LogWarning($"Meter {meterName} not found in PostgreSQL for readings import");
+                        errorCount++;
+                        errorMeters.Add(meterName);
+                        continue;
+                    }
+
+                    // 2. Get ALL readings from SQL Server (simplified - no date filtering)
+                    var readings = new List<(DateTime timestamp, double value, int quality)>();
+
+                    using (var sqlConnection = _sqlServerService.GetConnection(connectionId))
+                    {
+                        await sqlConnection.OpenAsync();
+
+                        // Simple query to get all readings for this meter
+                        string sql = $"SELECT Chrono, Value, Quality FROM {tableName} WHERE NAME = @Name ORDER BY Chrono";
+
+                        using var cmd = new Microsoft.Data.SqlClient.SqlCommand(sql, sqlConnection);
+                        cmd.Parameters.AddWithValue("@Name", meterName);
+
+                        using var reader = await cmd.ExecuteReaderAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            try
+                            {
+                                long chrono = reader.GetInt64(0);
+                                double value = reader.GetDouble(1);
+                                int quality = reader.GetInt16(2);
+
+                                // Convert Windows filetime to DateTime
+                                DateTime timestamp = DateTime.FromFileTimeUtc(chrono);
+                                readings.Add((timestamp, value, quality));
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning($"Error parsing reading for {meterName}: {ex.Message}");
+                            }
+                        }
+                    }
+
+                    _logger.LogInformation($"Retrieved {readings.Count} readings for meter {meterName}");
+
+                    // 3. Insert readings into PostgreSQL
+                    if (readings.Count > 0)
+                    {
+                        using (var pgConnection = new Npgsql.NpgsqlConnection(_databaseService.GetConnectionString()))
+                        {
+                            await pgConnection.OpenAsync();
+                            using var transaction = await pgConnection.BeginTransactionAsync();
+
+                            try
+                            {
+                                foreach (var reading in readings)
+                                {
+                                    using var insertCmd = new Npgsql.NpgsqlCommand(
+                                        @"INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"") 
+                                  VALUES (@MeterId, @Timestamp, @Value, @Quality) 
+                                  ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING",
+                                        pgConnection, transaction);
+
+                                    insertCmd.Parameters.AddWithValue("@MeterId", meterId.Value);
+                                    insertCmd.Parameters.AddWithValue("@Timestamp", reading.timestamp);
+                                    insertCmd.Parameters.AddWithValue("@Value", reading.value);
+                                    insertCmd.Parameters.AddWithValue("@Quality", reading.quality);
+
+                                    await insertCmd.ExecuteNonQueryAsync();
+                                }
+
+                                await transaction.CommitAsync();
+                                totalReadingsImported += readings.Count;
+
+                                _logger.LogInformation($"Successfully imported {readings.Count} readings for meter {meterName}");
+                            }
+                            catch (Exception ex)
+                            {
+                                await transaction.RollbackAsync();
+                                _logger.LogError(ex, $"Error inserting readings for meter {meterName}");
+                                errorCount++;
+                                errorMeters.Add(meterName);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation($"No readings found for meter {meterName}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error processing readings for meter {meterName}");
+                    errorCount++;
+                    errorMeters.Add(meterName);
+                }
+            }
+
+            string message = $"Imported {totalReadingsImported} readings from {meterNames.Count - errorCount} meters";
+            if (errorCount > 0)
+            {
+                message += $", {errorCount} meters had errors: {string.Join(", ", errorMeters)}";
+            }
+
+            return (totalReadingsImported, errorCount, message);
+        }
         // Helper classes
         public class ImportMetersRequest
         {

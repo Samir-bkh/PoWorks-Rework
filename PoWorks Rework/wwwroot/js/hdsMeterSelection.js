@@ -39,12 +39,12 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log('Apply Bulk Active button clicked (delegated)');
             applyBulkActive();
         }
-
+        /*
         // Handle Import Selected button click
         if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
             console.log('Import Selected button clicked (delegated)');
-            handleImport();
-        }
+            handleHDSImportProgress();
+        */
     });
 
     // Also listen for the Bootstrap modal shown event
@@ -334,7 +334,7 @@ function applyBulkActive() {
 /**
  * Handle the import process
  */
-function handleImport() {
+function handleHDSImportProgress() {
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
 
     if (selectedCheckboxes.length === 0) {
@@ -342,7 +342,7 @@ function handleImport() {
         return;
     }
 
-    console.log(`Starting import of ${selectedCheckboxes.length} meters`);
+    console.log(`Starting import progress animation for ${selectedCheckboxes.length} meters`);
 
     // Show progress container
     const progressContainer = document.getElementById('meterImportProgressContainer');
@@ -364,7 +364,7 @@ function handleImport() {
         statusText.textContent = 'Starting import...';
     }
 
-    // Simulate progress (would be replaced with actual AJAX call)
+    // Simulate progress (this is just UI animation, not real import)
     let progress = 0;
     const interval = setInterval(function () {
         progress += 5;
@@ -394,6 +394,7 @@ function handleImport() {
         }
     }, 100);
 }
+
 
 // Make key functions available in the global scope for debugging
 window.HDSMeterSelection = {

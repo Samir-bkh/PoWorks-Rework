@@ -881,14 +881,18 @@ function handleImport() {
     }
 }
 
+// In hdsMeterImport.js - Update the handleHDSImport function
+
 function handleHDSImport() {
-    console.log('HDS Import button clicked');
+    console.log('🔵 HDS Import button clicked');
 
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
     if (selectedCheckboxes.length === 0) {
         alert('Please select at least one meter to import.');
         return;
     }
+
+    console.log(`🔵 Starting import of ${selectedCheckboxes.length} HDS meters...`);
 
     // Gather meter data
     const meters = [];
@@ -919,12 +923,18 @@ function handleHDSImport() {
         return;
     }
 
-    console.log('Prepared meters for import:', meters);
+    console.log('🔵 Prepared meters for import:', meters);
 
-    // Get import options
+    // ✅ Get import options (existing)
     const skipExisting = document.getElementById('skipExisting')?.checked || false;
     const updateExisting = document.getElementById('updateExisting')?.checked || false;
     const importReadings = document.getElementById('importReadings')?.checked || false;
+
+    console.log('🔵 Import options:', {
+        skipExisting,
+        updateExisting,
+        importReadings
+    });
 
     // Prepare import request
     const hdsContext = window.currentHDSContext || {};
@@ -932,21 +942,32 @@ function handleHDSImport() {
         meters: meters,
         skipExisting: skipExisting,
         updateExisting: updateExisting,
+
+        // ✅ NEW: Add readings import property
         importReadings: importReadings,
+
         connectionId: hdsContext.connectionId,
         tableName: hdsContext.tableName
     };
 
-    console.log('Import data:', importData);
+    console.log('🔵 Complete import data prepared:', importData);
 
     // Show loading state
     const importBtn = document.getElementById('importSelectedBtn');
     const originalText = importBtn.textContent;
-    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importing...';
+
+    // ✅ NEW: Update button text based on what's being imported
+    const loadingText = importReadings ?
+        '<span class="spinner-border spinner-border-sm"></span> Importing Meters & Readings...' :
+        '<span class="spinner-border spinner-border-sm"></span> Importing Meters...';
+
+    importBtn.innerHTML = loadingText;
     importBtn.disabled = true;
 
+    console.log('🔵 Sending request to /HdsImport/ImportMeters...');
+
     // Send import request
-    fetch('/Import/ImportHDSMeters', {
+    fetch('/HdsImport/ImportMeters', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -954,37 +975,69 @@ function handleHDSImport() {
         body: JSON.stringify(importData)
     })
         .then(response => {
+            console.log('🔵 Server response status:', response.status);
+
             if (!response.ok) {
                 throw new Error(`Import failed: ${response.status} ${response.statusText}`);
             }
             return response.json();
         })
         .then(data => {
-            console.log('Import response:', data);
+            console.log('🔵 Import response received:', data);
 
             // Reset button
             importBtn.textContent = originalText;
             importBtn.disabled = false;
 
-            // Show results
+            // ✅ NEW: Enhanced success message with readings info
             if (data.success) {
-                alert(`Successfully imported ${data.importedCount || 0} meters!`);
+                console.log('✅ Import successful!');
+
+                let message = `✅ Successfully imported ${data.importedCount || 0} meters!`;
+
+                // Add readings information if applicable
+                if (data.readingsEnabled) {
+                    message += `\n📊 Readings: ${data.readingsImported || 0} imported`;
+                }
+
+                message += `\n\nDetails:`;
+                message += `\n• Meters Imported: ${data.importedCount || 0}`;
+                message += `\n• Meters Updated: ${data.updatedCount || 0}`;
+
+                if (data.readingsEnabled) {
+                    message += `\n• Readings Imported: ${data.readingsImported || 0}`;
+                }
+
+                message += `\n• Errors: ${data.errorCount || 0}`;
+
+                if (data.details) {
+                    console.log('📋 Detailed results:', data.details);
+                }
+
+                alert(message);
 
                 if (confirm('Import completed! Would you like to reload the page to see the imported meters?')) {
                     window.location.reload();
                 }
             } else {
-                alert(`Import failed: ${data.error || 'Unknown error'}`);
+                console.error('❌ Import failed:', data.error);
+                let errorMessage = `❌ Import failed: ${data.error || 'Unknown error'}`;
+
+                if (data.details && data.details.readingsMessage) {
+                    errorMessage += `\n\nReadings: ${data.details.readingsMessage}`;
+                }
+
+                alert(errorMessage);
             }
         })
         .catch(error => {
-            console.error('Import error:', error);
+            console.error('🔴 Import error:', error);
 
             // Reset button
             importBtn.textContent = originalText;
             importBtn.disabled = false;
 
-            alert(`Import error: ${error.message}`);
+            alert(`❌ Import error: ${error.message}\n\nCheck the browser console for more details.`);
         });
 }
 
