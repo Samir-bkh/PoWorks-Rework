@@ -15,6 +15,10 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="sqlserver-tab" data-bs-toggle="tab" data-bs-target="#sqlserver" type="button" role="tab" aria-controls="sqlserver" aria-selected="false">SQL Server Connections</button>
             </li>
+            <!-- NEW: Web Services Tab -->
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="webservices-tab" data-bs-toggle="tab" data-bs-target="#webservices" type="button" role="tab" aria-controls="webservices" aria-selected="false">Web Services</button>
+            </li>
         </ul>
 
         <div class="tab-content" id="databaseTabsContent">
@@ -89,7 +93,6 @@
             </div>
 
             <!-- SQL Server Tab -->
-            <!-- FIND the SQL Server tab content and REPLACE the entire tab-pane with: -->
             <div class="tab-pane fade" id="sqlserver" role="tabpanel" aria-labelledby="sqlserver-tab">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5>SQL Server Connections</h5>
@@ -156,10 +159,6 @@
                 <div class="tab-content" id="sqlServerConnectionContent">
                     @if (Model.SqlServerConnections.Any())
                     {
-                        <!-- Updated SQL Server Connection Form Structure -->
-                        <!-- Replace the form section in each connection tab with this structure -->
-                        <!-- Updated SQL Server Connection Form Structure -->
-                        <!-- Replace the form section in each connection tab with this structure -->
                         @for (int i = 0; i < Model.SqlServerConnections.Count; i++)
                         {
                             var connection = Model.SqlServerConnections[i];
@@ -272,6 +271,221 @@
                 </div>
             </div>
 
+            <!-- NEW: Web Services Tab -->
+            <div class="tab-pane fade" id="webservices" role="tabpanel" aria-labelledby="webservices-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5>PCVue Web Services Connections</h5>
+                    <button type="button" class="btn btn-success btn-sm" id="addNewWebServiceConnection">
+                        <i class="bi bi-plus-circle"></i> Add New Connection
+                    </button>
+                </div>
+
+                <!-- Web Service Connection Tabs -->
+                <ul class="nav nav-pills mb-3" id="webServiceConnectionTabs" role="tablist">
+                    @if (Model.WebServiceConnections != null && Model.WebServiceConnections.Any())
+                    {
+                        @for (int i = 0; i < Model.WebServiceConnections.Count; i++)
+                        {
+                            var connection = Model.WebServiceConnections[i];
+                            var isActive = i == 0 ? "active" : "";
+                            var isSelected = i == 0 ? "true" : "false";
+
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link @isActive position-relative"
+                                        id="webservice-@connection.ConnectionId-tab"
+                                        data-bs-toggle="pill"
+                                        data-bs-target="#webservice-@connection.ConnectionId"
+                                        type="button"
+                                        role="tab"
+                                        aria-controls="webservice-@connection.ConnectionId"
+                                        aria-selected="@isSelected"
+                                        data-connection-id="@connection.ConnectionId">
+                                    @(!string.IsNullOrEmpty(connection.ConnectionName) ? connection.ConnectionName : $"Web Service {i + 1}")
+                                    @if (connection.IsDefault)
+                                    {
+                                        <span class="badge bg-primary ms-1">Default</span>
+                                    }
+                                    @if (Model.WebServiceConnections.Count > 1)
+                                    {
+                                        <button type="button" class="btn-close btn-close-sm ms-2" aria-label="Close"
+                                                onclick="removeWebServiceConnection('@connection.ConnectionId')"
+                                                style="font-size: 0.6em; margin-left: 8px !important;"></button>
+                                    }
+                                </button>
+                            </li>
+                        }
+                    }
+                    else
+                    {
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active"
+                                    id="webservice-default-tab"
+                                    data-bs-toggle="pill"
+                                    data-bs-target="#webservice-default"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="webservice-default"
+                                    aria-selected="true"
+                                    data-connection-id="default">
+                                Web Service 1
+                                <span class="badge bg-primary ms-1">Default</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+
+                <!-- Web Service Connection Content -->
+                <div class="tab-content" id="webServiceConnectionContent">
+                    @if (Model.WebServiceConnections != null && Model.WebServiceConnections.Any())
+                    {
+                        @for (int i = 0; i < Model.WebServiceConnections.Count; i++)
+                        {
+                            var connection = Model.WebServiceConnections[i];
+                            var isActive = i == 0 ? "show active" : "";
+
+                            <div class="tab-pane fade @isActive" id="webservice-@connection.ConnectionId" role="tabpanel" aria-labelledby="webservice-@connection.ConnectionId-tab">
+                                <form class="webservice-connection-form" data-connection-id="@connection.ConnectionId">
+                                    <input type="hidden" name="ConnectionId" value="@connection.ConnectionId" />
+
+                                    <!-- Connection Name and Project Name -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-8">
+                                            <label class="form-label">Connection Name *</label>
+                                            <input type="text" class="form-control" name="ConnectionName"
+                                                   value="@connection.ConnectionName"
+                                                   placeholder="Enter connection name" required />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-check mt-4">
+                                                <input class="form-check-input" type="checkbox" name="IsDefault"
+                                                       value="true" @(connection.IsDefault ? "checked" : "")
+                                                       id="isDefaultWebService-@connection.ConnectionId" />
+                                                <label class="form-check-label" for="isDefaultWebService-@connection.ConnectionId">
+                                                    Set as default connection
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">PCVue Project Name</label>
+                                            <input type="text" class="form-control" name="ProjectName"
+                                                   value="@connection.ProjectName"
+                                                   placeholder="Enter project name" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Timeout (seconds)</label>
+                                            <input type="number" class="form-control" name="TimeoutSeconds"
+                                                   value="@connection.TimeoutSeconds" min="5" max="300" />
+                                        </div>
+                                    </div>
+
+                                    <!-- Base URL -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label">Base URL *</label>
+                                            <input type="url" class="form-control" name="BaseUrl"
+                                                   value="@connection.BaseUrl"
+                                                   placeholder="https://pcvue-server:8080/api" required />
+                                            <small class="form-text text-muted">Full URL to the PCVue Web Services API endpoint</small>
+                                        </div>
+                                    </div>
+
+                                    <!-- Authentication Type - FIXED SYNTAX -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label">Authentication Type</label>
+                                            <select class="form-select" name="AuthType" onchange="toggleAuthFields(this, '@connection.ConnectionId')">
+                                                @{
+                                                    var isOAuth = connection.AuthType == PoWorks_Rework.Models.AuthenticationType.OAuth;
+                                                    var isApiKey = connection.AuthType == PoWorks_Rework.Models.AuthenticationType.ApiKey;
+                                                    var isBasic = connection.AuthType == PoWorks_Rework.Models.AuthenticationType.Basic;
+                                                }
+                                                <option value="0" selected="@isOAuth">OAuth 2.0</option>
+                                                <option value="1" selected="@isApiKey">API Key</option>
+                                                <option value="2" selected="@isBasic">Basic Auth</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <!-- OAuth Fields -->
+                                    <div class="auth-fields oauth-fields-@connection.ConnectionId" style="display: @(connection.AuthType == PoWorks_Rework.Models.AuthenticationType.OAuth ? "block" : "none")">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Client ID</label>
+                                                <input type="text" class="form-control" name="ClientId"
+                                                       value="@connection.ClientId"
+                                                       placeholder="Enter OAuth Client ID" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Client Secret</label>
+                                                <input type="password" class="form-control" name="ClientSecret"
+                                                       value="@connection.ClientSecret"
+                                                       placeholder="Enter OAuth Client Secret" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- API Key Fields -->
+                                    <div class="auth-fields apikey-fields-@connection.ConnectionId" style="display: @(connection.AuthType == PoWorks_Rework.Models.AuthenticationType.ApiKey ? "block" : "none")">
+                                        <div class="row mb-3">
+                                            <div class="col-md-12">
+                                                <label class="form-label">API Key</label>
+                                                <input type="password" class="form-control" name="ApiKey"
+                                                       value="@connection.ApiKey"
+                                                       placeholder="Enter API Key" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Basic Auth Fields -->
+                                    <div class="auth-fields basic-fields-@connection.ConnectionId" style="display: @(connection.AuthType == PoWorks_Rework.Models.AuthenticationType.Basic ? "block" : "none")">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Username</label>
+                                                <input type="text" class="form-control" name="BasicUsername" placeholder="Enter username" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Password</label>
+                                                <input type="password" class="form-control" name="BasicPassword" placeholder="Enter password" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Action Buttons -->
+                                    <div class="row mt-4">
+                                        <div class="col-md-8">
+                                            <!-- Connection Test Result -->
+                                            <div id="webServiceConnectionResult-@connection.ConnectionId" class="mt-3" style="display: none;"></div>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <button type="button" class="btn btn-outline-primary" onclick="testWebServiceConnection('@connection.ConnectionId')">
+                                                <i class="bi bi-wifi"></i> Test Connection
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="tab-pane fade show active" id="webservice-default" role="tabpanel" aria-labelledby="webservice-default-tab">
+                            <p>No Web Service connections configured. Click "Add New Connection" to create one.</p>
+                        </div>
+                    }
+                </div>
+
+                <!-- Save All Web Service Connections Button -->
+                <div class="mt-4 text-end">
+                    <button type="button" class="btn btn-primary" id="saveAllWebServiceConnections">
+                        <i class="bi bi-save"></i> Save All Web Service Connections
+                    </button>
+                </div>
+            </div>
+
+        </div>
 
         <div id="connectionResult" class="alert mt-3" style="display: none;"></div>
         @if (TempData["SuccessMessage"] != null)
@@ -298,387 +512,723 @@
 </div>
 
 <script>
-
-            // Helper function to show messages
-        function showMessage(message, type) {
-            // Remove any existing alerts
-            document.querySelectorAll('.alert-dismissible').forEach(alert => {
-                if (alert.textContent.includes('deleted') || alert.textContent.includes('Error')) {
-                    alert.remove();
-                }
-            });
-
-            // Create new alert
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-
-            // Insert at the top of the SQL Server tab content
-            const sqlServerTab = document.getElementById('sqlserver');
-            if (sqlServerTab) {
-                sqlServerTab.insertBefore(alertDiv, sqlServerTab.firstChild);
+    // Helper function to show messages
+    function showMessage(message, type) {
+        // Remove any existing alerts
+        document.querySelectorAll('.alert-dismissible').forEach(alert => {
+            if (alert.textContent.includes('deleted') || alert.textContent.includes('Error')) {
+                alert.remove();
             }
-
-            // Auto-hide success messages after 3 seconds
-            if (type === 'success') {
-                setTimeout(() => {
-                    if (alertDiv.parentNode) {
-                        alertDiv.remove();
-                    }
-                }, 3000);
-            }
-        }
-
-        // Helper function to update default badge
-        function updateDefaultBadge(newDefaultConnectionId) {
-            // Remove all existing default badges
-            document.querySelectorAll('#sqlServerConnectionTabs .badge').forEach(badge => {
-                if (badge.textContent === 'Default') {
-                    badge.remove();
-                }
-            });
-
-            // Add badge to new default connection
-            const newDefaultTab = document.getElementById(`sqlconn-${newDefaultConnectionId}-tab`);
-            if (newDefaultTab) {
-                const badge = document.createElement('span');
-                badge.className = 'badge bg-primary ms-1';
-                badge.textContent = 'Default';
-                newDefaultTab.appendChild(badge);
-            }
-        }
-
-            // ADD this to the existing JavaScript section:
-
-        // Add New Connection functionality
-        document.getElementById('addNewConnection').addEventListener('click', function() {
-            addNewConnection();
         });
 
-        let connectionCounter = @(Model.SqlServerConnections.Count > 0 ? Model.SqlServerConnections.Count : 1);
+        // Create new alert
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
 
-        function addNewConnection() {
-            connectionCounter++;
-            const newConnectionId = generateGuid();
-
-            // Create new tab
-            const tabsContainer = document.getElementById('sqlServerConnectionTabs');
-            const newTabHtml = `
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link position-relative"
-                            id="sqlconn-${newConnectionId}-tab"
-                            data-bs-toggle="pill"
-                            data-bs-target="#sqlconn-${newConnectionId}"
-                            type="button"
-                            role="tab"
-                            aria-controls="sqlconn-${newConnectionId}"
-                            aria-selected="false"
-                            data-connection-id="${newConnectionId}">
-                        New Connection
-                        <button type="button" class="btn-close btn-close-sm ms-2" aria-label="Close"
-                                onclick="removeConnection('${newConnectionId}')"
-                                style="font-size: 0.6em; margin-left: 8px !important;"></button>
-                    </button>
-                </li>`;
-
-            tabsContainer.insertAdjacentHTML('beforeend', newTabHtml);
-
-            // Create new content panel
-            const contentContainer = document.getElementById('sqlServerConnectionContent');
-            const newContentHtml = createConnectionFormHtml(newConnectionId, connectionCounter - 1);
-            contentContainer.insertAdjacentHTML('beforeend', newContentHtml);
-
-            // Activate the new tab
-            const newTab = document.getElementById(`sqlconn-${newConnectionId}-tab`);
-            const newTabInstance = new bootstrap.Tab(newTab);
-            newTabInstance.show();
+        // Insert at the top of the current tab content
+        const activeTab = document.querySelector('.tab-pane.active');
+        if (activeTab) {
+            activeTab.insertBefore(alertDiv, activeTab.firstChild);
         }
 
-        function createConnectionFormHtml(connectionId, index) {
-            return `
-                <div class="tab-pane fade" id="sqlconn-${connectionId}" role="tabpanel">
-                    <form class="sql-connection-form" data-connection-id="${connectionId}">
-                        <input type="hidden" name="ConnectionId" value="${connectionId}" />
+        // Auto-hide success messages after 3 seconds
+        if (type === 'success') {
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 3000);
+        }
+    }
 
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Connection Name *</label>
-                                    <input type="text" class="form-control" name="ConnectionName" placeholder="Enter connection name" required />
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">PCVue Project Name</label>
-                                    <input type="text" class="form-control" name="ProjectName" placeholder="Enter project name" />
-                                </div>
+    // Helper function to update default badge
+    function updateDefaultBadge(newDefaultConnectionId, tabPrefix = 'sqlconn') {
+        // Remove all existing default badges for this tab type
+        document.querySelectorAll(`#${tabPrefix === 'sqlconn' ? 'sqlServerConnectionTabs' : 'webServiceConnectionTabs'} .badge`).forEach(badge => {
+            if (badge.textContent === 'Default') {
+                badge.remove();
+            }
+        });
+
+        // Add badge to new default connection
+        const newDefaultTab = document.getElementById(`${tabPrefix}-${newDefaultConnectionId}-tab`);
+        if (newDefaultTab) {
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-primary ms-1';
+            badge.textContent = 'Default';
+            newDefaultTab.appendChild(badge);
+        }
+    }
+
+    // Generate GUID helper
+    function generateGuid() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    // ================================
+    // SQL SERVER CONNECTION FUNCTIONS
+    // ================================
+
+    // Add New SQL Server Connection functionality
+    document.getElementById('addNewConnection').addEventListener('click', function() {
+        addNewConnection();
+    });
+
+    let connectionCounter = @(Model.SqlServerConnections.Count > 0 ? Model.SqlServerConnections.Count : 1);
+
+    function addNewConnection() {
+        connectionCounter++;
+        const newConnectionId = generateGuid();
+
+        // Create new tab
+        const tabsContainer = document.getElementById('sqlServerConnectionTabs');
+        const newTabHtml = `
+            <li class="nav-item" role="presentation">
+                <button class="nav-link position-relative"
+                        id="sqlconn-${newConnectionId}-tab"
+                        data-bs-toggle="pill"
+                        data-bs-target="#sqlconn-${newConnectionId}"
+                        type="button"
+                        role="tab"
+                        aria-controls="sqlconn-${newConnectionId}"
+                        aria-selected="false"
+                        data-connection-id="${newConnectionId}">
+                    New Connection
+                    <button type="button" class="btn-close btn-close-sm ms-2" aria-label="Close"
+                            onclick="removeConnection('${newConnectionId}')"
+                            style="font-size: 0.6em; margin-left: 8px !important;"></button>
+                </button>
+            </li>`;
+
+        tabsContainer.insertAdjacentHTML('beforeend', newTabHtml);
+
+        // Create new content panel
+        const contentContainer = document.getElementById('sqlServerConnectionContent');
+        const newContentHtml = createConnectionFormHtml(newConnectionId, connectionCounter - 1);
+        contentContainer.insertAdjacentHTML('beforeend', newContentHtml);
+
+        // Activate the new tab
+        const newTab = document.getElementById(`sqlconn-${newConnectionId}-tab`);
+        const newTabInstance = new bootstrap.Tab(newTab);
+        newTabInstance.show();
+    }
+
+    function createConnectionFormHtml(connectionId, index) {
+        return `
+            <div class="tab-pane fade" id="sqlconn-${connectionId}" role="tabpanel">
+                <form class="sql-connection-form" data-connection-id="${connectionId}">
+                    <input type="hidden" name="ConnectionId" value="${connectionId}" />
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Connection Name *</label>
+                                <input type="text" class="form-control" name="ConnectionName" placeholder="Enter connection name" required />
                             </div>
                         </div>
-
-                        <div class="row">
-                            <div class="col-md-8">
-                                <div class="mb-3">
-                                    <label class="form-label">Host *</label>
-                                    <input type="text" class="form-control" name="Host" value="localhost" required />
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Port</label>
-                                    <input type="text" class="form-control" name="Port" value="1433" />
-                                </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">PCVue Project Name</label>
+                                <input type="text" class="form-control" name="ProjectName" placeholder="Enter project name" />
                             </div>
                         </div>
+                    </div>
 
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Database *</label>
-                                    <input type="text" class="form-control" name="Database" placeholder="Database name" required />
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Username *</label>
-                                    <input type="text" class="form-control" name="Username" required />
-                                </div>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label class="form-label">Host *</label>
+                                <input type="text" class="form-control" name="Host" value="localhost" required />
                             </div>
                         </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Password *</label>
-                                    <input type="password" class="form-control" name="Password" required />
-                                </div>
-                            </div>
-                            <div class="col-md-6 text-end">
-                                <button type="button" class="btn btn-outline-primary" onclick="testConnection('${connectionId}')">
-                                    <i class="bi bi-wifi"></i> Test Connection
-                                </button>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Port</label>
+                                <input type="text" class="form-control" name="Port" value="1433" />
                             </div>
                         </div>
+                    </div>
 
-                        <div id="connectionResult-${connectionId}" class="mt-3" style="display: none;"></div>
-                    </form>
-                </div>`;
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Database *</label>
+                                <input type="text" class="form-control" name="Database" placeholder="Database name" required />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Username *</label>
+                                <input type="text" class="form-control" name="Username" required />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Password *</label>
+                                <input type="password" class="form-control" name="Password" required />
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button type="button" class="btn btn-outline-primary" onclick="testConnection('${connectionId}')">
+                                <i class="bi bi-wifi"></i> Test Connection
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="connectionResult-${connectionId}" class="mt-3" style="display: none;"></div>
+                </form>
+            </div>`;
+    }
+
+    window.removeConnection = function(connectionId) {
+        // Check if this is the last connection
+        const connectionTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-item');
+        if (connectionTabs.length <= 1) {
+            alert('Cannot remove the last connection. At least one connection is required.');
+            return;
         }
 
-        function generateGuid() {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-                return v.toString(16);
-            });
-        }
+        // Get connection name for confirmation
+        const tabButton = document.getElementById(`sqlconn-${connectionId}-tab`);
+        const connectionName = tabButton ? tabButton.textContent.replace('×', '').trim() : 'this connection';
 
-               window.removeConnection = function(connectionId) {
-            // Check if this is the last connection
-            const connectionTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-item');
-            if (connectionTabs.length <= 1) {
-                alert('Cannot remove the last connection. At least one connection is required.');
-                return;
-            }
+        if (confirm(`Are you sure you want to delete "${connectionName}"? This action cannot be undone.`)) {
+            // Show loading state
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'alert alert-info';
+            resultDiv.textContent = 'Deleting connection...';
+            document.querySelector('.card-body').appendChild(resultDiv);
 
-            // Get connection name for confirmation
-            const tabButton = document.getElementById(`sqlconn-${connectionId}-tab`);
-            const connectionName = tabButton ? tabButton.textContent.replace('×', '').trim() : 'this connection';
-
-            if (confirm(`Are you sure you want to delete "${connectionName}"? This action cannot be undone.`)) {
-                // Show loading state
-                const resultDiv = document.createElement('div');
-                resultDiv.className = 'alert alert-info';
-                resultDiv.textContent = 'Deleting connection...';
-                document.querySelector('.card-body').appendChild(resultDiv);
-
-                // Call server to delete the connection
-                fetch('/Settings/DeleteSqlServerConnection', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ ConnectionId: connectionId })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Remove loading message
-                    resultDiv.remove();
-
-                    if (data.success) {
-                        // Remove the tab and content from UI
-                        const tabElement = document.getElementById(`sqlconn-${connectionId}-tab`);
-                        const contentElement = document.getElementById(`sqlconn-${connectionId}`);
-
-                        if (tabElement) {
-                            tabElement.closest('.nav-item').remove();
-                        }
-                        if (contentElement) {
-                            contentElement.remove();
-                        }
-
-                        // If no active tab remains, activate the first available tab
-                        const remainingTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-link');
-                        if (remainingTabs.length > 0 && !document.querySelector('#sqlServerConnectionTabs .nav-link.active')) {
-                            const firstTab = remainingTabs[0];
-                            const tabInstance = new bootstrap.Tab(firstTab);
-                            tabInstance.show();
-
-                            // If a new default was set, update the badge
-                            if (data.newDefaultConnectionId) {
-                                updateDefaultBadge(data.newDefaultConnectionId);
-                            }
-                        }
-
-                        // Show success message
-                        showMessage('Connection deleted successfully!', 'success');
-                    } else {
-                        // Show error message
-                        showMessage('Error deleting connection: ' + data.error, 'danger');
-                    }
-                })
-                .catch(error => {
-                    // Remove loading message
-                    resultDiv.remove();
-
-                    console.error('Error deleting connection:', error);
-                    showMessage('Error deleting connection: ' + error.message, 'danger');
-                });
-            }
-        };
-
-               // Updated testConnection function - Replace the existing one in General.cshtml
-
-        window.testConnection = function(connectionId) {
-            console.log('Testing connection for ID:', connectionId);
-
-            // Find the form for this specific connection
-            const form = document.querySelector(`#sqlconn-${connectionId} form`);
-
-            if (!form) {
-                console.error('Form not found for connection ID:', connectionId);
-                showConnectionResult(connectionId, 'danger', 'Error: Could not find form for this connection');
-                return;
-            }
-
-            // Extract form data
-            const formData = new FormData(form);
-            const connectionData = {
-                connectionId: connectionId,
-                host: formData.get('Host') || '',
-                port: formData.get('Port') || '1433',
-                database: formData.get('Database') || '',
-                username: formData.get('Username') || '',
-                password: formData.get('Password') || '',
-                projectName: formData.get('ProjectName') || '',
-                connectionName: formData.get('ConnectionName') || ''
-            };
-
-            console.log('Connection data to test:', connectionData);
-
-            // Validate required fields
-            if (!connectionData.host || !connectionData.database || !connectionData.username) {
-                showConnectionResult(connectionId, 'warning', 'Please fill in all required fields (Host, Database, Username)');
-                return;
-            }
-
-            // Show testing status
-            showConnectionResult(connectionId, 'info', 'Testing connection...');
-
-            // Test connection via AJAX
-            fetch('/Settings/TestSqlServerConnection', {
+            // Call server to delete the connection
+            fetch('/Settings/DeleteSqlServerConnection', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value
                 },
-                body: JSON.stringify(connectionData)
+                body: JSON.stringify({ ConnectionId: connectionId })
             })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                console.log('Test result:', data);
+                // Remove loading message
+                resultDiv.remove();
+
                 if (data.success) {
-                    showConnectionResult(connectionId, 'success', 'Connection successful! ✓');
+                    // Remove the tab and content from UI
+                    const tabElement = document.getElementById(`sqlconn-${connectionId}-tab`);
+                    const contentElement = document.getElementById(`sqlconn-${connectionId}`);
+
+                    if (tabElement) {
+                        tabElement.closest('.nav-item').remove();
+                    }
+                    if (contentElement) {
+                        contentElement.remove();
+                    }
+
+                    // If no active tab remains, activate the first available tab
+                    const remainingTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-link');
+                    if (remainingTabs.length > 0 && !document.querySelector('#sqlServerConnectionTabs .nav-link.active')) {
+                        const firstTab = remainingTabs[0];
+                        const tabInstance = new bootstrap.Tab(firstTab);
+                        tabInstance.show();
+
+                        // If a new default was set, update the badge
+                        if (data.newDefaultConnectionId) {
+                            updateDefaultBadge(data.newDefaultConnectionId, 'sqlconn');
+                        }
+                    }
+
+                    // Show success message
+                    showMessage('Connection deleted successfully!', 'success');
                 } else {
-                    showConnectionResult(connectionId, 'danger', `Connection failed: ${data.errorMessage || 'Unknown error'}`);
+                    // Show error message
+                    showMessage('Error deleting connection: ' + data.error, 'danger');
                 }
             })
             .catch(error => {
-                console.error('Error testing connection:', error);
-                showConnectionResult(connectionId, 'danger', `Error testing connection: ${error.message}`);
+                // Remove loading message
+                resultDiv.remove();
+
+                console.error('Error deleting connection:', error);
+                showMessage('Error deleting connection: ' + error.message, 'danger');
             });
+        }
+    };
+
+    // Test SQL Server Connection
+    window.testConnection = function(connectionId) {
+        console.log('Testing connection for ID:', connectionId);
+
+        // Find the form for this specific connection
+        const form = document.querySelector(`#sqlconn-${connectionId} form`);
+
+        if (!form) {
+            console.error('Form not found for connection ID:', connectionId);
+            showConnectionResult(connectionId, 'danger', 'Error: Could not find form for this connection');
+            return;
+        }
+
+        // Extract form data
+        const formData = new FormData(form);
+        const connectionData = {
+            connectionId: connectionId,
+            host: formData.get('Host') || '',
+            port: formData.get('Port') || '1433',
+            database: formData.get('Database') || '',
+            username: formData.get('Username') || '',
+            password: formData.get('Password') || '',
+            projectName: formData.get('ProjectName') || '',
+            connectionName: formData.get('ConnectionName') || ''
         };
 
-        // Helper function to show connection test results
-        function showConnectionResult(connectionId, alertType, message) {
-            const resultElement = document.getElementById(`connectionResult-${connectionId}`);
-            if (resultElement) {
-                resultElement.style.display = 'block';
-                resultElement.className = `alert alert-${alertType} mt-3`;
-                resultElement.textContent = message;
+        console.log('Connection data to test:', connectionData);
 
-                // Auto-hide success messages after 5 seconds
-                if (alertType === 'success') {
-                    setTimeout(() => {
-                        resultElement.style.display = 'none';
-                    }, 5000);
-                }
-            } else {
-                console.error('Result element not found for connection:', connectionId);
-            }
+        // Validate required fields
+        if (!connectionData.host || !connectionData.database || !connectionData.username) {
+            showConnectionResult(connectionId, 'warning', 'Please fill in all required fields (Host, Database, Username)');
+            return;
         }
 
-        // Enhanced logging for debugging
-        function debugConnectionForm(connectionId) {
-            const form = document.querySelector(`#sqlconn-${connectionId} form`);
-            if (form) {
-                console.log('Form found for connection:', connectionId);
-                console.log('Form inputs:', form.querySelectorAll('input'));
-                const formData = new FormData(form);
-                for (let [key, value] of formData.entries()) {
-                    console.log(`${key}: ${value}`);
-                }
-            } else {
-                console.error('No form found for connection:', connectionId);
-                console.log('Available forms:', document.querySelectorAll('form'));
+        // Show testing status
+        showConnectionResult(connectionId, 'info', 'Testing connection...');
+
+        // Test connection via AJAX
+        fetch('/Settings/TestSqlServerConnection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value
+            },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Test result:', data);
+            if (data.success) {
+                showConnectionResult(connectionId, 'success', 'Connection successful! ✓');
+            } else {
+                showConnectionResult(connectionId, 'danger', `Connection failed: ${data.errorMessage || 'Unknown error'}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error testing connection:', error);
+            showConnectionResult(connectionId, 'danger', `Error testing connection: ${error.message}`);
+        });
+    };
+
+    // Helper function to show connection test results
+    function showConnectionResult(connectionId, alertType, message) {
+        const resultElement = document.getElementById(`connectionResult-${connectionId}`);
+        if (resultElement) {
+            resultElement.style.display = 'block';
+            resultElement.className = `alert alert-${alertType} mt-3`;
+            resultElement.textContent = message;
+
+            // Auto-hide success messages after 5 seconds
+            if (alertType === 'success') {
+                setTimeout(() => {
+                    resultElement.style.display = 'none';
+                }, 5000);
+            }
+        } else {
+            console.error('Result element not found for connection:', connectionId);
+        }
+    }
+
+    // Save All SQL Server Connections
+    document.getElementById('saveAllSqlConnections').addEventListener('click', function() {
+        const forms = document.querySelectorAll('.sql-connection-form');
+        const connections = [];
+
+        forms.forEach(form => {
+            const formData = new FormData(form);
+            const connectionData = Object.fromEntries(formData.entries());
+            connections.push(connectionData);
+        });
+
+        fetch('/Settings/SaveSqlServerConnections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connections: connections })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('SQL Server connections saved successfully!');
+                location.reload();
+            } else {
+                alert('Error saving connections: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error saving connections: ' + error);
+        });
+    });
+
+    // ================================
+    // WEB SERVICES CONNECTION FUNCTIONS
+    // ================================
+
+    // Web Services specific JavaScript functions
+    function toggleAuthFields(selectElement, connectionId) {
+        const authType = selectElement.value;
+
+        // Hide all auth field groups for this connection
+        document.querySelectorAll(`.oauth-fields-${connectionId}, .apikey-fields-${connectionId}, .basic-fields-${connectionId}`).forEach(field => {
+            field.style.display = 'none';
+        });
+
+        // Show relevant auth fields
+        switch(authType) {
+            case '0': // OAuth
+                const oauthFields = document.querySelector(`.oauth-fields-${connectionId}`);
+                if (oauthFields) oauthFields.style.display = 'block';
+                break;
+            case '1': // API Key
+                const apikeyFields = document.querySelector(`.apikey-fields-${connectionId}`);
+                if (apikeyFields) apikeyFields.style.display = 'block';
+                break;
+            case '2': // Basic Auth
+                const basicFields = document.querySelector(`.basic-fields-${connectionId}`);
+                if (basicFields) basicFields.style.display = 'block';
+                break;
+        }
+    }
+
+    let webServiceConnectionCounter = @(Model.WebServiceConnections != null && Model.WebServiceConnections.Count > 0 ? Model.WebServiceConnections.Count : 1);
+
+    document.getElementById('addNewWebServiceConnection').addEventListener('click', function() {
+        addNewWebServiceConnection();
+    });
+
+    function addNewWebServiceConnection() {
+        webServiceConnectionCounter++;
+        const newConnectionId = generateGuid();
+
+        // Add new tab
+        const tabsContainer = document.getElementById('webServiceConnectionTabs');
+        const newTabHtml = `
+            <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="webservice-${newConnectionId}-tab"
+                        data-bs-toggle="pill"
+                        data-bs-target="#webservice-${newConnectionId}"
+                        type="button"
+                        role="tab"
+                        aria-controls="webservice-${newConnectionId}"
+                        aria-selected="false"
+                        data-connection-id="${newConnectionId}">
+                    New Web Service Connection
+                    <button type="button" class="btn-close btn-close-sm ms-2" aria-label="Close"
+                            onclick="removeWebServiceConnection('${newConnectionId}')"
+                            style="font-size: 0.6em; margin-left: 8px !important;"></button>
+                </button>
+            </li>`;
+
+        tabsContainer.insertAdjacentHTML('beforeend', newTabHtml);
+
+        // Add new content panel
+        const contentContainer = document.getElementById('webServiceConnectionContent');
+        const newContentHtml = createWebServiceConnectionFormHtml(newConnectionId);
+        contentContainer.insertAdjacentHTML('beforeend', newContentHtml);
+
+        // Activate the new tab
+        const newTab = document.getElementById(`webservice-${newConnectionId}-tab`);
+        const newTabInstance = new bootstrap.Tab(newTab);
+        newTabInstance.show();
+    }
+
+    function createWebServiceConnectionFormHtml(connectionId) {
+        return `
+            <div class="tab-pane fade" id="webservice-${connectionId}" role="tabpanel">
+                <form class="webservice-connection-form" data-connection-id="${connectionId}">
+                    <input type="hidden" name="ConnectionId" value="${connectionId}" />
+
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Connection Name *</label>
+                            <input type="text" class="form-control" name="ConnectionName" placeholder="Enter connection name" required />
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" name="IsDefault" value="true" id="isDefaultWebService-${connectionId}" />
+                                <label class="form-check-label" for="isDefaultWebService-${connectionId}">
+                                    Set as default connection
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">PCVue Project Name</label>
+                            <input type="text" class="form-control" name="ProjectName" placeholder="Enter project name" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Timeout (seconds)</label>
+                            <input type="number" class="form-control" name="TimeoutSeconds" value="30" min="5" max="300" />
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Base URL *</label>
+                            <input type="url" class="form-control" name="BaseUrl" placeholder="https://pcvue-server:8080/api" required />
+                            <small class="form-text text-muted">Full URL to the PCVue Web Services API endpoint</small>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Authentication Type</label>
+                            <select class="form-select" name="AuthType" onchange="toggleAuthFields(this, '${connectionId}')">
+                                <option value="0">OAuth 2.0</option>
+                                <option value="1">API Key</option>
+                                <option value="2">Basic Auth</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- OAuth Fields (default visible) -->
+                    <div class="auth-fields oauth-fields-${connectionId}">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Client ID</label>
+                                <input type="text" class="form-control" name="ClientId" placeholder="Enter OAuth Client ID" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Client Secret</label>
+                                <input type="password" class="form-control" name="ClientSecret" placeholder="Enter OAuth Client Secret" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- API Key Fields (initially hidden) -->
+                    <div class="auth-fields apikey-fields-${connectionId}" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-control" name="ApiKey" placeholder="Enter API Key" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Basic Auth Fields (initially hidden) -->
+                    <div class="auth-fields basic-fields-${connectionId}" style="display: none;">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Username</label>
+                                <input type="text" class="form-control" name="BasicUsername" placeholder="Enter username" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Password</label>
+                                <input type="password" class="form-control" name="BasicPassword" placeholder="Enter password" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="row mt-4">
+                        <div class="col-md-8">
+                            <div id="webServiceConnectionResult-${connectionId}" class="mt-3" style="display: none;"></div>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button type="button" class="btn btn-outline-primary" onclick="testWebServiceConnection('${connectionId}')">
+                                <i class="bi bi-wifi"></i> Test Connection
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>`;
+    }
+
+    function testWebServiceConnection(connectionId) {
+        console.log('Testing Web Service connection:', connectionId);
+
+        const form = document.querySelector(`#webservice-${connectionId} form`);
+        if (!form) {
+            console.error('Form not found for web service connection ID:', connectionId);
+            showWebServiceConnectionResult(connectionId, 'danger', 'Error: Could not find form for this connection');
+            return;
         }
 
-        // Save All Connections
-        document.getElementById('saveAllSqlConnections').addEventListener('click', function() {
-            const forms = document.querySelectorAll('.sql-connection-form');
-            const connections = [];
+        // Extract form data
+        const formData = new FormData(form);
+        const connectionData = {
+            connectionId: connectionId,
+            connectionName: formData.get('ConnectionName') || '',
+            baseUrl: formData.get('BaseUrl') || '',
+            clientId: formData.get('ClientId') || '',
+            clientSecret: formData.get('ClientSecret') || '',
+            apiKey: formData.get('ApiKey') || '',
+            authType: parseInt(formData.get('AuthType') || '0'),
+            timeoutSeconds: parseInt(formData.get('TimeoutSeconds') || '30'),
+            projectName: formData.get('ProjectName') || ''
+        };
 
-            forms.forEach(form => {
-                const formData = new FormData(form);
-                const connectionData = Object.fromEntries(formData.entries());
-                connections.push(connectionData);
-            });
+        // Validate required fields
+        if (!connectionData.baseUrl) {
+            showWebServiceConnectionResult(connectionId, 'warning', 'Please fill in the Base URL field');
+            return;
+        }
 
-            fetch('/Settings/SaveSqlServerConnections', {
+        // Show testing status
+        showWebServiceConnectionResult(connectionId, 'info', 'Testing Web Service connection...');
+
+        // Test connection via AJAX
+        fetch('/Settings/TestWebServiceConnection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Web Service test result:', data);
+            if (data.success) {
+                showWebServiceConnectionResult(connectionId, 'success', 'Web Service connection successful! ✓');
+            } else {
+                showWebServiceConnectionResult(connectionId, 'danger', `Connection failed: ${data.errorMessage || 'Unknown error'}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error testing Web Service connection:', error);
+            showWebServiceConnectionResult(connectionId, 'danger', `Error testing connection: ${error.message}`);
+        });
+    }
+
+    function showWebServiceConnectionResult(connectionId, alertType, message) {
+        const resultElement = document.getElementById(`webServiceConnectionResult-${connectionId}`);
+        if (resultElement) {
+            resultElement.style.display = 'block';
+            resultElement.className = `alert alert-${alertType} mt-3`;
+            resultElement.textContent = message;
+
+            // Auto-hide success messages after 5 seconds
+            if (alertType === 'success') {
+                setTimeout(() => {
+                    resultElement.style.display = 'none';
+                }, 5000);
+            }
+        } else {
+            console.error('Web Service result element not found for connection:', connectionId);
+        }
+    }
+
+    function removeWebServiceConnection(connectionId) {
+        // Check if this is the last connection
+        const connectionTabs = document.querySelectorAll('#webServiceConnectionTabs .nav-item');
+        if (connectionTabs.length <= 1) {
+            alert('Cannot remove the last Web Service connection. At least one connection is required.');
+            return;
+        }
+
+        // Get connection name for confirmation
+        const tabButton = document.getElementById(`webservice-${connectionId}-tab`);
+        const connectionName = tabButton ? tabButton.textContent.replace('×', '').trim() : 'this connection';
+
+        if (confirm(`Are you sure you want to delete "${connectionName}"? This action cannot be undone.`)) {
+            // Show loading state
+            showMessage('Deleting Web Service connection...', 'info');
+
+            // Call server to delete the connection
+            fetch('/Settings/DeleteWebServiceConnection', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ connections: connections })
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ ConnectionId: connectionId })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('SQL Server connections saved successfully!');
-                    location.reload();
+                    // Remove the tab and content from UI
+                    const tabElement = document.getElementById(`webservice-${connectionId}-tab`);
+                    const contentElement = document.getElementById(`webservice-${connectionId}`);
+
+                    if (tabElement) {
+                        tabElement.closest('.nav-item').remove();
+                    }
+                    if (contentElement) {
+                        contentElement.remove();
+                    }
+
+                    // If no active tab remains, activate the first available tab
+                    const remainingTabs = document.querySelectorAll('#webServiceConnectionTabs .nav-link');
+                    if (remainingTabs.length > 0 && !document.querySelector('#webServiceConnectionTabs .nav-link.active')) {
+                        const firstTab = remainingTabs[0];
+                        const tabInstance = new bootstrap.Tab(firstTab);
+                        tabInstance.show();
+
+                        // If a new default was set, update the badge
+                        if (data.newDefaultConnectionId) {
+                            updateDefaultBadge(data.newDefaultConnectionId, 'webservice');
+                        }
+                    }
+
+                    // Show success message
+                    showMessage('Web Service connection deleted successfully!', 'success');
                 } else {
-                    alert('Error saving connections: ' + data.error);
+                    // Show error message
+                    showMessage('Error deleting Web Service connection: ' + data.error, 'danger');
                 }
             })
             .catch(error => {
-                alert('Error saving connections: ' + error);
+                console.error('Error deleting Web Service connection:', error);
+                showMessage('Error deleting Web Service connection: ' + error.message, 'danger');
             });
+        }
+    }
+
+    // Save All Web Service Connections
+    document.getElementById('saveAllWebServiceConnections').addEventListener('click', function() {
+        const forms = document.querySelectorAll('.webservice-connection-form');
+        const connections = [];
+
+        forms.forEach(form => {
+            const formData = new FormData(form);
+            const connectionData = Object.fromEntries(formData.entries());
+            connections.push(connectionData);
         });
+
+        fetch('/Settings/SaveWebServiceConnections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connections: connections })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Web Service connections saved successfully!');
+                location.reload();
+            } else {
+                alert('Error saving Web Service connections: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error saving Web Service connections: ' + error);
+        });
+    });
+
+    // ================================
+    // POSTGRESQL CONNECTION FUNCTIONS
+    // ================================
+
     document.addEventListener('DOMContentLoaded', function() {
         // PostgreSQL Connection Testing
         document.getElementById('testConnection').addEventListener('click', function() {
@@ -759,78 +1309,6 @@
                 resultElement.className = 'alert alert-danger mt-3';
                 resultElement.textContent = 'Error connecting to database: ' + error;
             });
-        });
-
-        // SQL Server Connection Testing
-        document.getElementById('testSqlServerConnection').addEventListener('click', function() {
-            // Get form values
-            const connectionData = {
-                host: document.getElementById('SqlServer_Host').value,
-                port: document.getElementById('SqlServer_Port').value,
-                database: document.getElementById('SqlServer_Database').value,
-                username: document.getElementById('SqlServer_Username').value,
-                password: document.getElementById('SqlServer_Password').value,
-                projectName: document.getElementById('SqlServer_ProjectName').value
-            };
-
-            // Test connection via AJAX
-            fetch('/Settings/TestSqlServerConnection', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(connectionData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                const resultElement = document.getElementById('connectionResult');
-                resultElement.style.display = 'block';
-
-                if (data.success) {
-                    resultElement.className = 'alert alert-success mt-3';
-                    resultElement.textContent = 'SQL Server connection successful!';
-                } else {
-                    resultElement.className = 'alert alert-danger mt-3';
-                    resultElement.textContent = 'SQL Server connection failed: ' + data.errorMessage;
-                }
-            })
-            .catch(error => {
-                const resultElement = document.getElementById('connectionResult');
-                resultElement.style.display = 'block';
-                resultElement.className = 'alert alert-danger mt-3';
-                resultElement.textContent = 'Error testing SQL Server connection: ' + error;
-            });
-        });
-
-        // Generate database name from project name
-        document.getElementById('generateDbName').addEventListener('click', function() {
-            const projectName = document.getElementById('SqlServer_ProjectName').value;
-            if (projectName) {
-                document.getElementById('SqlServer_Database').value = projectName + '_DB';
-            } else {
-                alert('Please enter a PCVue Project Name first');
-            }
-        });
-
-        // Save all settings
-        document.getElementById('saveAllSettings').addEventListener('click', function() {
-            // Transfer values from visible forms to hidden form fields
-            document.getElementById('hidden_PostgreSql_Host').value = document.getElementById('PostgreSql_Host').value;
-            document.getElementById('hidden_PostgreSql_Port').value = document.getElementById('PostgreSql_Port').value;
-            document.getElementById('hidden_PostgreSql_Database').value = document.getElementById('PostgreSql_Database').value;
-            document.getElementById('hidden_PostgreSql_Username').value = document.getElementById('PostgreSql_Username').value;
-            document.getElementById('hidden_PostgreSql_Password').value = document.getElementById('PostgreSql_Password').value;
-            document.getElementById('hidden_PostgreSql_SSLMode').value = document.getElementById('PostgreSql_SSLMode').value;
-
-            document.getElementById('hidden_SqlServer_Host').value = document.getElementById('SqlServer_Host').value;
-            document.getElementById('hidden_SqlServer_Port').value = document.getElementById('SqlServer_Port').value;
-            document.getElementById('hidden_SqlServer_Database').value = document.getElementById('SqlServer_Database').value;
-            document.getElementById('hidden_SqlServer_Username').value = document.getElementById('SqlServer_Username').value;
-            document.getElementById('hidden_SqlServer_Password').value = document.getElementById('SqlServer_Password').value;
-            document.getElementById('hidden_SqlServer_ProjectName').value = document.getElementById('SqlServer_ProjectName').value;
-
-            // Submit the form with all settings
-            document.getElementById('mainSettingsForm').submit();
         });
     });
 </script>
