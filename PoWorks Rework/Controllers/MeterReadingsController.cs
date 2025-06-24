@@ -25,7 +25,12 @@ namespace PoWorks_Rework.Controllers
         /// <summary>
         /// Main meter readings page - shows raw readings by default
         /// </summary>
-        public async Task<IActionResult> Index(int? meterId = null, string viewType = "raw", int page = 1, int pageSize = 50)
+        // UPDATE this method in your MeterReadingsController.cs
+
+        /// <summary>
+        /// Main meter readings page - UPDATED to support multiple meter IDs
+        /// </summary>
+        public async Task<IActionResult> Index(string meterIds = null, string viewType = "raw", int page = 1, int pageSize = 50)
         {
             // Check if database is initialized
             if (!_databaseService.IsInitialized)
@@ -36,19 +41,22 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Create view model - use fully qualified name to avoid ambiguity
+                // Parse meter IDs from comma-separated string
+                var selectedMeterIds = ParseMeterIds(meterIds);
+
+                // Create view model
                 var viewModel = new MeterReadingsViewModel
                 {
                     ViewType = viewType,
                     CurrentPage = page,
                     PageSize = pageSize,
-                    SelectedMeterId = meterId
+                    SelectedMeterIds = selectedMeterIds
                 };
 
-                // Load available meters for the dropdown
+                // Load available meters for the multi-select
                 viewModel.AvailableMeters = await GetAvailableMeters();
 
-                // Load readings based on view type and selected meter
+                // Load readings based on view type and selected meters
                 await LoadReadingsData(viewModel);
 
                 return View(viewModel);
@@ -59,6 +67,397 @@ namespace PoWorks_Rework.Controllers
                 TempData["ErrorMessage"] = $"Error loading meter readings: {ex.Message}";
                 return View(new MeterReadingsViewModel());
             }
+        }
+
+        /// <summary>
+        /// NEW: Parse meter IDs from comma-separated string
+        /// </summary>
+        private List<int> ParseMeterIds(string meterIds)
+        {
+            if (string.IsNullOrWhiteSpace(meterIds))
+                return new List<int>();
+
+            return meterIds.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                          .Select(id => int.TryParse(id.Trim(), out int parsed) ? parsed : 0)
+                          .Where(id => id > 0)
+                          .Distinct()
+                          .ToList();
+        }
+
+        /// <summary>
+        /// UPDATED: Load readings data with multi-meter support
+        /// </summary>
+        private async Task LoadReadingsData(MeterReadingsViewModel viewModel)
+        {
+            viewModel.Readings = await GetReadingsByType(
+                viewModel.SelectedMeterIds,
+                viewModel.ViewType,
+                viewModel.CurrentPage,
+                viewModel.PageSize,
+                viewModel.StartDate,
+                viewModel.EndDate
+            );
+
+            viewModel.TotalItems = await GetReadingsCount(
+                viewModel.SelectedMeterIds,
+                viewModel.ViewType,
+                viewModel.StartDate,
+                viewModel.EndDate
+            );
+
+            viewModel.TotalPages = (int)Math.Ceiling(viewModel.TotalItems / (double)viewModel.PageSize);
+
+            // Load meter statistics if meters are selected
+            if (viewModel.SelectedMeterIds.Any())
+            {
+                viewModel.MeterStats = await CalculateMultiMeterStats(
+                    viewModel.SelectedMeterIds,
+                    viewModel.StartDate,
+                    viewModel.EndDate
+                );
+            }
+        }
+
+        /// <summary>
+        /// UPDATED: Get readings from different tables with multi-meter support
+        /// </summary>
+        private async Task<List<MeterReading>> GetReadingsByType(List<int> meterIds, string viewType,
+            int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            var readings = new List<MeterReading>();
+
+            try
+            {
+                using var connection = GetDatabaseConnection();
+                await connection.OpenAsync();
+
+                string tableName = GetTableNameForViewType(viewType);
+                string query = BuildReadingsQuery(tableName, meterIds, startDate, endDate, page, pageSize);
+
+                using var command = new NpgsqlCommand(query, connection);
+                AddMeterIdsParameters(command, meterIds);
+                AddDateParameters(command, startDate, endDate);
+                AddPaginationParameters(command, page, pageSize);
+
+                using var reader = await command.ExecuteReaderAsync();
+                readings = await ReadMeterReadingsFromDataReader(reader, viewType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting {viewType} readings for meters {string.Join(",", meterIds)}");
+                throw;
+            }
+
+            return readings;
+        }
+
+        /// <summary>
+        /// UPDATED: Get total count with multi-meter support
+        /// </summary>
+        private async Task<int> GetReadingsCount(List<int> meterIds, string viewType,
+            DateTime? startDate = null, DateTime? endDate = null)
+        {
+            try
+            {
+                using var connection = GetDatabaseConnection();
+                await connection.OpenAsync();
+
+                string tableName = GetTableNameForViewType(viewType);
+                string query = BuildCountQuery(tableName, meterIds, startDate, endDate);
+
+                using var command = new NpgsqlCommand(query, connection);
+                AddMeterIdsParameters(command, meterIds);
+                AddDateParameters(command, startDate, endDate);
+
+                var result = await command.ExecuteScalarAsync();
+                return Convert.ToInt32(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting readings count for meters {string.Join(",", meterIds)}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// NEW: Calculate statistics for multiple meters
+        /// </summary>
+        private async Task<MeterStats> CalculateMultiMeterStats(List<int> meterIds,
+            DateTime? startDate = null, DateTime? endDate = null)
+        {
+            var stats = new MeterStats();
+
+            if (!meterIds.Any())
+                return stats;
+
+            try
+            {
+                using var connection = GetDatabaseConnection();
+                await connection.OpenAsync();
+
+                // Build query for multi-meter stats
+                var whereClause = meterIds.Any() ?
+                    $"WHERE mr.\"MeterId\" = ANY(@meterIds)" : "";
+
+                if (startDate.HasValue || endDate.HasValue)
+                {
+                    whereClause += meterIds.Any() ? " AND " : "WHERE ";
+                    if (startDate.HasValue && endDate.HasValue)
+                        whereClause += "mr.\"Timestamp\" BETWEEN @startDate AND @endDate";
+                    else if (startDate.HasValue)
+                        whereClause += "mr.\"Timestamp\" >= @startDate";
+                    else if (endDate.HasValue)
+                        whereClause += "mr.\"Timestamp\" <= @endDate";
+                }
+
+                string query = $@"
+            SELECT 
+                COUNT(*) as ReadingCount,
+                COALESCE(MIN(mr.""Value""), 0) as MinValue,
+                COALESCE(MAX(mr.""Value""), 0) as MaxValue,
+                COALESCE(AVG(mr.""Value""), 0) as AvgValue,
+                COALESCE(MIN(mr.""Timestamp""), '1900-01-01') as FirstReading,
+                COALESCE(MAX(mr.""Timestamp""), '1900-01-01') as LastReading,
+                COUNT(DISTINCT mr.""MeterId"") as MeterCount,
+                array_agg(DISTINCT m.""Name"") as MeterNames
+            FROM ""MeterReadings"" mr
+            LEFT JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+            {whereClause}";
+
+                using var command = new NpgsqlCommand(query, connection);
+
+                if (meterIds.Any())
+                    command.Parameters.AddWithValue("@meterIds", meterIds.ToArray());
+
+                AddDateParameters(command, startDate, endDate);
+
+                using var reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    stats.ReadingCount = reader.GetInt32("ReadingCount");
+                    stats.MinValue = reader.GetDecimal("MinValue");
+                    stats.MaxValue = reader.GetDecimal("MaxValue");
+                    stats.AvgValue = reader.GetDecimal("AvgValue");
+                    stats.FirstReading = reader.GetDateTime("FirstReading");
+                    stats.LastReading = reader.GetDateTime("LastReading");
+                    stats.MeterCount = reader.GetInt32("MeterCount");
+
+                    // Handle meter names array
+                    if (!reader.IsDBNull("MeterNames"))
+                    {
+                        var meterNamesArray = reader.GetValue("MeterNames") as string[];
+                        stats.MeterNames = meterNamesArray?.Where(name => !string.IsNullOrEmpty(name)).ToList()
+                                          ?? new List<string>();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error calculating stats for meters {string.Join(",", meterIds)}");
+            }
+
+            return stats;
+        }
+
+        /// <summary>
+        /// NEW: Build readings query with multi-meter support
+        /// </summary>
+        private string BuildReadingsQuery(string tableName, List<int> meterIds,
+            DateTime? startDate, DateTime? endDate, int page, int pageSize)
+        {
+            var whereClause = BuildWhereClause(meterIds, startDate, endDate);
+            var offset = (page - 1) * pageSize;
+
+            return $@"
+        SELECT 
+            mr.""ReadingId"",
+            mr.""MeterId"",
+            m.""Name"" as MeterName,
+            mr.""Timestamp"",
+            mr.""Value"",
+            mr.""Quality""
+        FROM ""{tableName}"" mr
+        LEFT JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+        {whereClause}
+        ORDER BY mr.""Timestamp"" DESC, mr.""MeterId""
+        LIMIT @pageSize OFFSET @offset";
+        }
+
+        /// <summary>
+        /// NEW: Build count query with multi-meter support
+        /// </summary>
+        private string BuildCountQuery(string tableName, List<int> meterIds,
+            DateTime? startDate, DateTime? endDate)
+        {
+            var whereClause = BuildWhereClause(meterIds, startDate, endDate);
+
+            return $@"
+        SELECT COUNT(*) 
+        FROM ""{tableName}"" mr
+        {whereClause}";
+        }
+
+        /// <summary>
+        /// NEW: Build WHERE clause for multi-meter queries
+        /// </summary>
+        private string BuildWhereClause(List<int> meterIds, DateTime? startDate, DateTime? endDate)
+        {
+            var conditions = new List<string>();
+
+            if (meterIds.Any())
+            {
+                conditions.Add("mr.\"MeterId\" = ANY(@meterIds)");
+            }
+
+            if (startDate.HasValue && endDate.HasValue)
+            {
+                conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
+            }
+            else if (startDate.HasValue)
+            {
+                conditions.Add("mr.\"Timestamp\" >= @startDate");
+            }
+            else if (endDate.HasValue)
+            {
+                conditions.Add("mr.\"Timestamp\" <= @endDate");
+            }
+
+            return conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
+        }
+
+        /// <summary>
+        /// NEW: Add meter IDs parameters to command
+        /// </summary>
+        private void AddMeterIdsParameters(NpgsqlCommand command, List<int> meterIds)
+        {
+            if (meterIds.Any())
+            {
+                command.Parameters.AddWithValue("@meterIds", meterIds.ToArray());
+            }
+        }
+
+        /// <summary>
+        /// Add date parameters to command
+        /// </summary>
+        private void AddDateParameters(NpgsqlCommand command, DateTime? startDate, DateTime? endDate)
+        {
+            if (startDate.HasValue)
+                command.Parameters.AddWithValue("@startDate", startDate.Value);
+
+            if (endDate.HasValue)
+                command.Parameters.AddWithValue("@endDate", endDate.Value);
+        }
+
+        /// <summary>
+        /// Add pagination parameters to command
+        /// </summary>
+        private void AddPaginationParameters(NpgsqlCommand command, int page, int pageSize)
+        {
+            command.Parameters.AddWithValue("@pageSize", pageSize);
+            command.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
+        }
+
+        /// <summary>
+        /// Get table name based on view type
+        /// </summary>
+        private string GetTableNameForViewType(string viewType)
+        {
+            return viewType.ToLower() switch
+            {
+                "daily" => "MeterReadingsDaily",
+                "monthly" => "MeterReadingsMonthly",
+                "yearly" => "MeterReadingsYearly",
+                _ => "MeterReadings"
+            };
+        }
+
+        /// <summary>
+        /// FIXED: Get ALL available meters for multi-select (no limit)
+        /// </summary>
+        private async Task<List<MeterOption>> GetAvailableMeters()
+        {
+            var meters = new List<MeterOption>();
+
+            try
+            {
+                using var connection = GetDatabaseConnection();
+                await connection.OpenAsync();
+
+                // FIXED: Remove any LIMIT clause to get ALL meters
+                string query = @"
+            SELECT 
+                m.""MeterId"", 
+                m.""Name"", 
+                COALESCE(m.""Unit"", '') as ""Unit"", 
+                COALESCE(m.""Type"", 'Unknown') as ""Type"",
+                m.""Active"",
+                CASE 
+                    WHEN m.""ParentId"" IS NULL THEN 'Main'
+                    ELSE 'Sub'
+                END as ""MeterType""
+            FROM ""Meters"" m
+            WHERE m.""Active"" = true
+            ORDER BY 
+                CASE WHEN m.""ParentId"" IS NULL THEN 0 ELSE 1 END,  -- Main meters first
+                m.""Name"" ASC"; 
+        
+        using var command = new NpgsqlCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                _logger.LogInformation("Loading ALL available meters for multi-select...");
+
+                while (await reader.ReadAsync())
+                {
+                    var meter = new MeterOption
+                    {
+                        MeterId = reader.GetInt32("MeterId"),
+                        Name = reader.GetString("Name"),
+                        Unit = reader.GetString("Unit"),
+                        Type = reader.GetString("MeterType")  // Use calculated type (Main/Sub)
+                    };
+
+                    meters.Add(meter);
+                }
+
+                _logger.LogInformation($"Loaded {meters.Count} meters for multi-select dropdown");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting ALL available meters");
+                throw;
+            }
+
+            return meters;
+        }
+
+        /// <summary>
+        /// Read meter readings from data reader
+        /// </summary>
+        private async Task<List<MeterReading>> ReadMeterReadingsFromDataReader(NpgsqlDataReader reader, string viewType)
+        {
+            var readings = new List<MeterReading>();
+
+            while (await reader.ReadAsync())
+            {
+                var reading = new MeterReading
+                {
+                    ReadingId = reader.GetInt32("ReadingId"),
+                    MeterId = reader.GetInt32("MeterId"),
+                    MeterName = reader.IsDBNull("MeterName") ? "Unknown" : reader.GetString("MeterName"),
+                    Timestamp = reader.GetDateTime("Timestamp"),
+                    Value = reader.GetDecimal("Value")
+                };
+
+                // Only raw readings have Quality column
+                if (viewType == "raw" && !reader.IsDBNull("Quality"))
+                {
+                    reading.Quality = reader.GetInt32("Quality");
+                }
+
+                readings.Add(reading);
+            }
+
+            return readings;
         }
 
         /// <summary>
@@ -123,39 +522,6 @@ namespace PoWorks_Rework.Controllers
 
         #region Private Helper Methods
 
-        /// <summary>
-        /// Load readings data based on view model settings
-        /// </summary>
-        private async Task LoadReadingsData(MeterReadingsViewModel viewModel)
-        {
-            viewModel.Readings = await GetReadingsByType(
-                viewModel.SelectedMeterId,
-                viewModel.ViewType,
-                viewModel.CurrentPage,
-                viewModel.PageSize,
-                viewModel.StartDate,
-                viewModel.EndDate
-            );
-
-            viewModel.TotalItems = await GetReadingsCount(
-                viewModel.SelectedMeterId,
-                viewModel.ViewType,
-                viewModel.StartDate,
-                viewModel.EndDate
-            );
-
-            viewModel.TotalPages = (int)Math.Ceiling(viewModel.TotalItems / (double)viewModel.PageSize);
-
-            // Load meter statistics if a meter is selected
-            if (viewModel.SelectedMeterId.HasValue)
-            {
-                viewModel.MeterStats = await CalculateMeterStats(
-                    viewModel.SelectedMeterId.Value,
-                    viewModel.StartDate,
-                    viewModel.EndDate
-                );
-            }
-        }
 
         /// <summary>
         /// Get readings from different tables based on view type
@@ -458,41 +824,6 @@ namespace PoWorks_Rework.Controllers
             return reading;
         }
 
-        /// <summary>
-        /// Get available meters for dropdown
-        /// </summary>
-        private async Task<List<MeterOption>> GetAvailableMeters()
-        {
-            var meters = new List<MeterOption>();
-
-            using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-            {
-                await connection.OpenAsync();
-
-                string sql = @"
-                    SELECT ""MeterId"", ""Name"", ""Unit"", ""Type""
-                    FROM ""Meters""
-                    WHERE ""Active"" = true
-                    ORDER BY ""Name""";
-
-                using (var command = new NpgsqlCommand(sql, connection))
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        meters.Add(new MeterOption
-                        {
-                            MeterId = reader.GetInt32("MeterId"),
-                            Name = reader.GetString("Name"),
-                            Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString("Unit"),
-                            Type = reader.GetString("Type")
-                        });
-                    }
-                }
-            }
-
-            return meters;
-        }
 
         /// <summary>
         /// Calculate statistics for a meter

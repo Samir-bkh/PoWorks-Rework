@@ -33,7 +33,17 @@
         </div>
     </div>
     <div class="card-body">
-        <!-- Tabs Navigation -->
+        <!-- Main Navigation Tabs -->
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link active" asp-controller="Meter" asp-action="Readings">Meter Readings</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" asp-controller="Meter" asp-action="Management">Meter Management</a>
+            </li>
+        </ul>
+
+        <!-- Sub-Tabs Navigation for Different Reading Views -->
         <ul class="nav nav-tabs mb-4" id="readingsTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link @(Model.ViewType == "raw" ? "active" : "")"
@@ -80,30 +90,82 @@
             </div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-3">
-                        <label for="meterSelect" class="form-label">Select Meter</label>
-                        <select class="form-select" id="meterSelect">
-                            <option value="">All Meters</option>
-                            @foreach (var meter in Model.AvailableMeters)
-                            {
-                                <option value="@meter.MeterId"
-                                        selected="@(Model.SelectedMeterId == meter.MeterId)">
-                                    @meter.FullDisplayName
-                                </option>
-                            }
-                        </select>
+                    <!-- UPDATED: Multi-Select Meter Component -->
+                    <div class="col-md-6">
+                        <label for="meterSelect" class="form-label">Select Meters</label>
+
+                        <!-- Multi-Select Meter Interface -->
+                        <div class="meter-multi-select">
+                            <!-- Selected Meters Display -->
+                            <div class="selected-meters-display" id="selectedMetersDisplay">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="meterDisplayInput"
+                                           placeholder="Click to select meters..." readonly
+                                           data-bs-toggle="dropdown" aria-expanded="false" style="cursor: pointer;">
+                                    <button class="btn btn-outline-secondary dropdown-toggle" type="button"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="bi bi-funnel"></i>
+                                    </button>
+
+                                    <!-- Dropdown Menu with Meter Selection -->
+                                    <div class="dropdown-menu meter-selection-dropdown" style="width: 100%; max-height: 400px; overflow-y: auto;">
+                                        <!-- Header with Select All/None -->
+                                        <div class="dropdown-header d-flex justify-content-between align-items-center">
+                                            <span><strong>Select Meters</strong></span>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-primary btn-sm" id="selectAllMeters">
+                                                    All
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" id="selectNoMeters">
+                                                    None
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="dropdown-divider"></div>
+
+                                        <!-- Search Filter -->
+                                        <div class="px-3 pb-2">
+                                            <input type="text" class="form-control form-control-sm"
+                                                   id="meterSearchInput" placeholder="Search meters..."
+                                                   onclick="event.stopPropagation();">
+                                        </div>
+
+                                        <!-- Meter List with Checkboxes -->
+                                        <div id="meterCheckboxList">
+                                            <!-- This will be populated by JavaScript -->
+                                            <div class="dropdown-item-text text-center">
+                                                <div class="spinner-border spinner-border-sm" role="status">
+                                                    <span class="visually-hidden">Loading meters...</span>
+                                                </div>
+                                                Loading meters...
+                                            </div>
+                                        </div>
+
+                                        <!-- Footer with selection count -->
+                                        <div class="dropdown-divider"></div>
+                                        <div class="dropdown-header">
+                                            <small class="text-muted" id="meterSelectionCount">0 meters selected</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Hidden input to store selected meter IDs -->
+                            <input type="hidden" id="selectedMeterIds" name="selectedMeterIds" value="@string.Join(",", Model.SelectedMeterIds)">
+                        </div>
                     </div>
-                    <div class="col-md-3">
+
+                    <div class="col-md-2">
                         <label for="startDate" class="form-label">Start Date</label>
                         <input type="datetime-local" class="form-control" id="startDate"
                                value="@(Model.StartDate?.ToString("yyyy-MM-ddTHH:mm"))">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="endDate" class="form-label">End Date</label>
                         <input type="datetime-local" class="form-control" id="endDate"
                                value="@(Model.EndDate?.ToString("yyyy-MM-ddTHH:mm"))">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="pageSize" class="form-label">Page Size</label>
                         <select class="form-select" id="pageSize">
                             <option value="25" selected="@(Model.PageSize == 25)">25</option>
@@ -126,14 +188,38 @@
             </div>
         </div>
 
-        <!-- Statistics Panel (shown when meter is selected) -->
-        <div id="statsPanel" class="card mb-4" style="@(Model.SelectedMeterId.HasValue ? "" : "display: none;")">
+        <!-- UPDATED: Statistics Panel for Multiple Meters -->
+        <div id="statsPanel" class="card mb-4" style="@(Model.HasAnyMeterSelected ? "" : "display: none;")">
             <div class="card-header bg-info text-white">
                 <h6 class="mb-0">
-                    <i class="bi bi-graph-up"></i> Statistics for @Model.SelectedMeterName
+                    <i class="bi bi-graph-up"></i>
+                    <span id="statsTitle">
+                        @if (Model.HasMultipleMetersSelected)
+                        {
+                            <span>Combined Statistics - @Model.SelectedMeterIds.Count Meters</span>
+                        }
+                        else
+                        {
+                            <span>Statistics for @Model.SelectedMeterNames</span>
+                        }
+                    </span>
                 </h6>
             </div>
             <div class="card-body">
+                <!-- UPDATED: Multi-meter info row -->
+                @if (Model.HasMultipleMetersSelected)
+                {
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <div class="alert alert-info mb-0">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Selected Meters:</strong>
+                                <span id="selectedMeterNames">@Model.SelectedMeterNames</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+
                 <div class="row">
                     <div class="col-md-2">
                         <div class="text-center">
@@ -245,20 +331,382 @@
     </div>
 </div>
 
-<!-- Remove the duplicate partial render at the bottom -->
 @section Scripts {
+    <!-- UPDATED: Include the multi-select CSS and updated JS -->
+    <style>
+        /* Multi-Select Meter Component CSS */
+        .meter-multi-select {
+            position: relative;
+        }
+
+        .meter-selection-dropdown {
+            min-width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        .meter-checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 0.375rem 1rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+            .meter-checkbox-item:hover {
+                background-color: #f8f9fa;
+            }
+
+            .meter-checkbox-item input[type="checkbox"] {
+                margin-right: 0.5rem;
+            }
+
+        .meter-info {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
+        .meter-name {
+            font-weight: 500;
+            color: #212529;
+        }
+
+        .meter-details {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+
+        .meter-type-badge {
+            margin-left: 0.5rem;
+        }
+
+        .selected-meters-display .form-control {
+            border-color: #ced4da;
+        }
+
+            .selected-meters-display .form-control:focus {
+                border-color: #86b7fe;
+                box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+            }
+
+        .meter-checkbox-item.filtered-out {
+            display: none;
+        }
+
+        .no-meters-message {
+            padding: 1rem;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        /* Prevent dropdown from closing when clicking inside */
+        .meter-selection-dropdown .dropdown-item-text,
+        .meter-selection-dropdown .dropdown-header {
+            white-space: normal;
+        }
+    </style>
+
     <script src="~/js/meter-readings.js" asp-append-version="true"></script>
     <script>
-        // Initialize the page
+        // UPDATED: Initialize with multi-select support
         document.addEventListener('DOMContentLoaded', function() {
+            // Pass available meters data to JavaScript
+            window.meterReadingsData = {
+                availableMeters: @Html.Raw(Json.Serialize(Model.AvailableMeters.Select(m => new
+            {
+                meterId = m.MeterId,
+                name = m.Name,
+                unit = m.Unit,
+                type = m.Type,
+                fullDisplayName = m.FullDisplayName
+            }))),
+                selectedMeterIds: @Html.Raw(Json.Serialize(Model.SelectedMeterIds)),
+                viewType: '@Model.ViewType'
+            };
+
+            // Initialize the meter readings module with multi-select support
             MeterReadings.init({
+                selectedMeterIds: @Html.Raw(Json.Serialize(Model.SelectedMeterIds)),
                 currentViewType: '@Model.ViewType',
-                selectedMeterId: @(Model.SelectedMeterId?.ToString() ?? "null"),
                 currentPage: @Model.CurrentPage,
                 pageSize: @Model.PageSize,
                 startDate: '@(Model.StartDate?.ToString("yyyy-MM-ddTHH:mm"))',
                 endDate: '@(Model.EndDate?.ToString("yyyy-MM-ddTHH:mm"))'
             });
+
+            // Initialize refresh button
+            document.getElementById('refreshBtn')?.addEventListener('click', function() {
+                MeterReadings.loadReadings();
+                MeterReadings.updateMeterStats();
+            });
+
+            // Initialize export button
+            document.getElementById('exportBtn')?.addEventListener('click', function() {
+                MeterReadings.showExportDialog();
+            });
         });
+
+        /**
+         * Multi-Select Meter Component JavaScript
+         */
+        class MeterMultiSelect {
+            constructor() {
+                this.selectedMeterIds = @Html.Raw(Json.Serialize(Model.SelectedMeterIds));
+                this.availableMeters = [];
+                this.isInitialized = false;
+
+                this.initializeComponent();
+            }
+
+            async initializeComponent() {
+                // Load available meters from the server
+                await this.loadAvailableMeters();
+
+                // Set up event listeners
+                this.setupEventListeners();
+
+                // Populate the meter list
+                this.populateMeterList();
+
+                // Update display
+                this.updateDisplay();
+
+                this.isInitialized = true;
+                console.log('MeterMultiSelect initialized with', this.availableMeters.length, 'meters');
+            }
+
+            async loadAvailableMeters() {
+                try {
+                    if (window.meterReadingsData && window.meterReadingsData.availableMeters) {
+                        this.availableMeters = window.meterReadingsData.availableMeters;
+                    }
+                    console.log('Loaded', this.availableMeters.length, 'available meters');
+                } catch (error) {
+                    console.error('Error loading available meters:', error);
+                    this.availableMeters = [];
+                }
+            }
+
+            setupEventListeners() {
+                // Select All button
+                document.getElementById('selectAllMeters')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectAllMeters();
+                });
+
+                // Select None button
+                document.getElementById('selectNoMeters')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectNoMeters();
+                });
+
+                // Search input
+                document.getElementById('meterSearchInput')?.addEventListener('input', (e) => {
+                    this.filterMeterList(e.target.value);
+                });
+
+                // Prevent dropdown from closing when clicking inside
+                document.querySelector('.meter-selection-dropdown')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+
+            populateMeterList() {
+                const container = document.getElementById('meterCheckboxList');
+                if (!container) return;
+
+                if (this.availableMeters.length === 0) {
+                    container.innerHTML = '<div class="no-meters-message">No meters available</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                this.availableMeters.forEach(meter => {
+                    const item = document.createElement('div');
+                    item.className = 'meter-checkbox-item';
+                    item.dataset.meterId = meter.meterId;
+                    item.dataset.meterName = meter.name.toLowerCase();
+
+                    item.innerHTML = `
+                        <input type="checkbox" class="form-check-input"
+                               value="${meter.meterId}"
+                               id="meter_${meter.meterId}"
+                               ${this.selectedMeterIds.includes(meter.meterId) ? 'checked' : ''}>
+                        <div class="meter-info">
+                            <div class="meter-name">${meter.name}</div>
+                            <div class="meter-details">
+                                ${meter.unit ? `Unit: ${meter.unit}` : 'No unit'}
+                                <span class="badge bg-secondary meter-type-badge">${meter.type}</span>
+                            </div>
+                        </div>
+                    `;
+
+                    // Add click event listener
+                    item.addEventListener('click', (e) => {
+                        if (e.target.type !== 'checkbox') {
+                            const checkbox = item.querySelector('input[type="checkbox"]');
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event('change'));
+                        }
+                    });
+
+                    // Add checkbox change listener
+                    const checkbox = item.querySelector('input[type="checkbox"]');
+                    checkbox.addEventListener('change', (e) => {
+                        e.stopPropagation();
+                        this.toggleMeter(meter.meterId, e.target.checked);
+                    });
+
+                    container.appendChild(item);
+                });
+            }
+
+            toggleMeter(meterId, isSelected) {
+                if (isSelected) {
+                    if (!this.selectedMeterIds.includes(meterId)) {
+                        this.selectedMeterIds.push(meterId);
+                    }
+                } else {
+                    this.selectedMeterIds = this.selectedMeterIds.filter(id => id !== meterId);
+                }
+
+                this.updateDisplay();
+                this.updateSelectionCount();
+                this.triggerChangeEvent();
+            }
+
+            selectAllMeters() {
+                const visibleMeters = this.availableMeters.filter(meter => {
+                    const item = document.querySelector(`[data-meter-id="${meter.meterId}"]`);
+                    return item && !item.classList.contains('filtered-out');
+                });
+
+                visibleMeters.forEach(meter => {
+                    if (!this.selectedMeterIds.includes(meter.meterId)) {
+                        this.selectedMeterIds.push(meter.meterId);
+                    }
+                });
+
+                this.updateCheckboxes();
+                this.updateDisplay();
+                this.updateSelectionCount();
+                this.triggerChangeEvent();
+            }
+
+            selectNoMeters() {
+                this.selectedMeterIds = [];
+                this.updateCheckboxes();
+                this.updateDisplay();
+                this.updateSelectionCount();
+                this.triggerChangeEvent();
+            }
+
+            updateCheckboxes() {
+                this.availableMeters.forEach(meter => {
+                    const checkbox = document.getElementById(`meter_${meter.meterId}`);
+                    if (checkbox) {
+                        checkbox.checked = this.selectedMeterIds.includes(meter.meterId);
+                    }
+                });
+            }
+
+            updateDisplay() {
+                const displayInput = document.getElementById('meterDisplayInput');
+                const hiddenInput = document.getElementById('selectedMeterIds');
+
+                if (!displayInput || !hiddenInput) return;
+
+                // Update hidden input value
+                hiddenInput.value = this.selectedMeterIds.join(',');
+
+                // Update display input
+                if (this.selectedMeterIds.length === 0) {
+                    displayInput.value = '';
+                    displayInput.placeholder = 'Click to select meters...';
+                } else if (this.selectedMeterIds.length === 1) {
+                    const meter = this.availableMeters.find(m => m.meterId === this.selectedMeterIds[0]);
+                    displayInput.value = meter ? meter.name : 'Unknown Meter';
+                    displayInput.placeholder = '';
+                } else {
+                    displayInput.value = `${this.selectedMeterIds.length} meters selected`;
+                    displayInput.placeholder = '';
+                }
+            }
+
+            updateSelectionCount() {
+                const countElement = document.getElementById('meterSelectionCount');
+                if (countElement) {
+                    const count = this.selectedMeterIds.length;
+                    const total = this.availableMeters.length;
+                    countElement.textContent = `${count} of ${total} meters selected`;
+                }
+            }
+
+            filterMeterList(searchTerm) {
+                const items = document.querySelectorAll('.meter-checkbox-item');
+                const normalizedSearch = searchTerm.toLowerCase().trim();
+
+                items.forEach(item => {
+                    const meterName = item.dataset.meterName || '';
+                    const meterId = item.dataset.meterId || '';
+
+                    const matches = meterName.includes(normalizedSearch) ||
+                                  meterId.includes(normalizedSearch);
+
+                    if (matches || normalizedSearch === '') {
+                        item.classList.remove('filtered-out');
+                        item.style.display = '';
+                    } else {
+                        item.classList.add('filtered-out');
+                        item.style.display = 'none';
+                    }
+                });
+            }
+
+            triggerChangeEvent() {
+                const event = new CustomEvent('metersSelectionChanged', {
+                    detail: {
+                        selectedMeterIds: [...this.selectedMeterIds],
+                        selectedMeters: this.availableMeters.filter(m => this.selectedMeterIds.includes(m.meterId))
+                    }
+                });
+
+                document.dispatchEvent(event);
+            }
+
+            getSelectedMeterIds() {
+                return [...this.selectedMeterIds];
+            }
+
+            setSelectedMeterIds(meterIds) {
+                this.selectedMeterIds = Array.isArray(meterIds) ? [...meterIds] : [];
+                this.updateCheckboxes();
+                this.updateDisplay();
+                this.updateSelectionCount();
+            }
+
+            clearSelection() {
+                this.selectNoMeters();
+            }
+        }
+
+        // Initialize the multi-select component after DOM is loaded
+        setTimeout(() => {
+            window.meterMultiSelect = new MeterMultiSelect();
+
+            // Listen for selection changes
+            document.addEventListener('metersSelectionChanged', function(e) {
+                console.log('Meters selection changed:', e.detail.selectedMeterIds);
+
+                // Update the MeterReadings module configuration
+                if (window.MeterReadings) {
+                    window.MeterReadings.config.selectedMeterIds = e.detail.selectedMeterIds;
+                }
+            });
+        }, 200);
     </script>
 }

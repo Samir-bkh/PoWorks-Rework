@@ -42,39 +42,17 @@
 
                                 <!-- Table Selection -->
                                 <div class="mb-3">
-                                    <label for="hdsTable" class="form-label">Select HDS Table</label>
+                                    <label for="hdsTable" class="form-label">HDS Table</label>
                                     <select class="form-select" id="hdsTable" disabled>
                                         <option value="">Select a table...</option>
                                     </select>
-                                    <div class="form-text">Choose a connection first to load available tables</div>
-                                </div>
-
-                                <!-- Date Range -->
-                                <div class="mb-3">
-                                    <label class="form-label">Date Range</label>
-                                    <div class="row g-2">
-                                        <div class="col-6">
-                                            <input type="date" class="form-control" id="startDate" placeholder="Start Date">
-                                        </div>
-                                        <div class="col-6">
-                                            <input type="date" class="form-control" id="endDate" placeholder="End Date">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Limit -->
-                                <div class="mb-3">
-                                    <label for="limit" class="form-label">Limit Results</label>
-                                    <input type="number" class="form-control" id="limit" value="1000" min="1">
-                                    <div class="form-text">Maximum number of meters to retrieve</div>
+                                    <div class="form-text">Available when connected</div>
                                 </div>
 
                                 <!-- Load Meters Button -->
-                                <div class="d-grid">
-                                    <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
-                                        <i class="bi bi-cloud-download"></i> Load Meters
-                                    </button>
-                                </div>
+                                <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
+                                    <i class="bi bi-search"></i> Load Meters
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -82,28 +60,7 @@
                     <div class="col-md-6">
                         <div class="card h-100">
                             <div class="card-body">
-                                <h5 class="card-title mb-3">Import from CSV / VAREXP.DAT</h5>
-
-                                <!-- CSV Section -->
-                                <div class="mb-3">
-                                    <label for="csvFile" class="form-label">CSV File</label>
-                                    <input class="form-control" type="file" id="csvFile" accept=".csv">
-                                </div>
-                                <div class="mb-3">
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="checkbox" id="hasHeaders" checked>
-                                        <label class="form-check-label" for="hasHeaders">Has headers</label>
-                                    </div>
-                                    <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="checkbox" id="skipExistingCsv" checked>
-                                        <label class="form-check-label" for="skipExistingCsv">Skip existing meters</label>
-                                    </div>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-primary me-2" id="parseCsvBtn">
-                                    <i class="bi bi-filetype-csv"></i> Parse CSV
-                                </button>
-
-                                <hr />
+                                <h5 class="card-title mb-3">VAREXP.DAT</h5>
 
                                 <!-- VAREXP Section -->
                                 <div class="mb-3">
@@ -122,43 +79,50 @@
                 <div id="varexpRecordsContainer" class="mt-4"></div>
 
                 <!-- Meter Selection Table (initially hidden) -->
-                <div id="meterSelectionSection" class="d-none">
-                    <div class="card mb-4">
-                        <div class="card-header bg-light">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0" id="meterSelectionTitle">Meter Selection</h5>
-                                <div>
-                                    <button type="button" class="btn btn-sm btn-outline-primary me-2" id="selectAllMetersBtn">
-                                        <i class="bi bi-check-all"></i> Select All
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllMetersBtn">
-                                        <i class="bi bi-x-lg"></i> Deselect All
-                                    </button>
-                                </div>
+                <div id="meterSelectionSection" class="mt-4 d-none">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="bi bi-speedometer2"></i> Select Meters to Import
+                            </h5>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="selectAllMetersBtn">
+                                    <i class="bi bi-check-all"></i> Select All
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="deselectAllMetersBtn">
+                                    <i class="bi bi-x-circle"></i> Deselect All
+                                </button>
                             </div>
                         </div>
+
                         <div class="card-body">
-                            <!-- Filter -->
-                            <div class="input-group mb-3">
-                                <span class="input-group-text">
-                                    <i class="bi bi-search"></i>
-                                </span>
-                                <input type="text" class="form-control" id="meterFilterInput" placeholder="Filter meters by name...">
-                                <span class="input-group-text" id="meterFilterStatus">
-                                    Loading meters...
-                                </span>
+                            <!-- Filter Input -->
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="input-group">
+                                        <span class="input-group-text">
+                                            <i class="bi bi-search"></i>
+                                        </span>
+                                        <input type="text" class="form-control" id="meterFilterInput" placeholder="Filter meters...">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center h-100">
+                                        <small class="text-muted" id="meterFilterStatus">Ready to filter meters</small>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- Meters Table -->
-                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                                <table class="table table-bordered table-hover" id="metersTable">
-                                    <thead class="sticky-top bg-light">
+                            <!-- Meters Table Container -->
+                            <div class="table-responsive" style="max-height: 400px;">
+                                <table class="table table-hover table-sm">
+                                    <thead class="table-light sticky-top">
                                         <tr>
-                                            <th style="width: 50px;" class="text-center">Import</th>
+                                            <th style="width: 50px;">Import</th>
                                             <th>Meter Name</th>
-                                            <th>Unit</th>
-                                            <th>Parent Meter</th>
-                                            <th style="width: 80px;">Type</th>
+                                            <th style="width: 120px;">Unit</th>
+                                            <th style="width: 100px;">Type</th>
+                                            <th style="width: 120px;">Last Reading</th>
                                             <th style="width: 80px;">Active</th>
                                         </tr>
                                     </thead>
@@ -172,8 +136,6 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <!-- 🎯 SEPARATE PRINT BUTTONS - Only one will be visible at a time -->
                                 <div>
-                                  
-
                                     <!-- VAREXP Print Button (shown by default, hidden when HDS is active) -->
                                     <button type="button" class="btn btn-info" id="printSelectedBtn">
                                         <i class="bi bi-printer"></i> Print Selected
@@ -249,42 +211,31 @@
                             <div class="mb-3">
                                 <label class="form-label">Export Filters</label>
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="exportAllMeters" checked>
-                                    <label class="form-check-label" for="exportAllMeters">
-                                        Export all meters
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="exportActiveOnly">
+                                    <input class="form-check-input" type="checkbox" id="exportActiveOnly" checked>
                                     <label class="form-check-label" for="exportActiveOnly">
-                                        Export active meters only
+                                        Active meters only
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="includeReadings">
-                                    <label class="form-check-label" for="includeReadings">
-                                        Include historical readings
+                                    <input class="form-check-input" type="checkbox" id="exportWithReadings">
+                                    <label class="form-check-label" for="exportWithReadings">
+                                        Include latest readings
                                     </label>
                                 </div>
                             </div>
 
                             <!-- Export Button -->
-                            <div class="d-grid">
-                                <button type="button" class="btn btn-primary" id="exportBtn">
-                                    <i class="bi bi-download"></i> Export Meters
-                                </button>
-                            </div>
+                            <button type="button" class="btn btn-success" id="exportBtn">
+                                <i class="bi bi-download"></i> Export Meters
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div id="hdsMeterSelectionContainer">
-            <!-- Modal content will be dynamically loaded here -->
-        </div>
     </div>
 </div>
+
 
 @section Scripts {
     <script src="~/js/hdsMeterImport.js"></script>

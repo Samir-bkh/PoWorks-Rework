@@ -1,4 +1,4 @@
-﻿// Models/MeterReadingsModels.cs - FIXED VERSION with simplified quality
+﻿// Models/MeterReadingsModels.cs - COMPLETE FIXED VERSION
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -7,7 +7,7 @@ using System.Linq;
 namespace PoWorks_Rework.Models
 {
     /// <summary>
-    /// Main view model for the meter readings page
+    /// Main view model for the meter readings page - COMPLETE multi-select support
     /// </summary>
     public class MeterReadingsViewModel
     {
@@ -15,6 +15,7 @@ namespace PoWorks_Rework.Models
         {
             Readings = new List<MeterReading>();
             AvailableMeters = new List<MeterOption>();
+            SelectedMeterIds = new List<int>(); // ADDED: Multi-select support
             MeterStats = new MeterStats();
             ViewType = "raw";
             PageSize = 50;
@@ -27,7 +28,26 @@ namespace PoWorks_Rework.Models
 
         // View Configuration
         public string ViewType { get; set; } = "raw"; // raw, daily, monthly, yearly
-        public int? SelectedMeterId { get; set; }
+
+        // ADDED: Multiple meter selection support
+        public List<int> SelectedMeterIds { get; set; } = new List<int>();
+
+        // ADDED: Backward compatibility - returns first selected meter or null
+        public int? SelectedMeterId
+        {
+            get => SelectedMeterIds.FirstOrDefault() == 0 ? null : SelectedMeterIds.FirstOrDefault();
+            set
+            {
+                if (value.HasValue && value.Value > 0)
+                {
+                    SelectedMeterIds = new List<int> { value.Value };
+                }
+                else
+                {
+                    SelectedMeterIds = new List<int>();
+                }
+            }
+        }
 
         // Date Filtering
         public DateTime? StartDate { get; set; }
@@ -65,15 +85,100 @@ namespace PoWorks_Rework.Models
             _ => "Unknown View"
         };
 
-        // Get selected meter name
-        public string SelectedMeterName
+        // ADDED: Multi-select helper properties
+        public bool HasAnyMeterSelected => SelectedMeterIds.Any();
+        public bool HasMultipleMetersSelected => SelectedMeterIds.Count > 1;
+
+        // ADDED: Get selected meter names for multi-select display
+        public string SelectedMeterNames
         {
             get
             {
-                if (!SelectedMeterId.HasValue) return "All Meters";
-                var meter = AvailableMeters.FirstOrDefault(m => m.MeterId == SelectedMeterId.Value);
-                return meter?.Name ?? "Unknown Meter";
+                if (!SelectedMeterIds.Any()) return "All Meters";
+
+                if (SelectedMeterIds.Count == 1)
+                {
+                    var meter = AvailableMeters.FirstOrDefault(m => m.MeterId == SelectedMeterIds.First());
+                    return meter?.Name ?? "Unknown Meter";
+                }
+
+                var selectedMeters = AvailableMeters.Where(m => SelectedMeterIds.Contains(m.MeterId)).ToList();
+                if (selectedMeters.Count <= 3)
+                {
+                    return string.Join(", ", selectedMeters.Select(m => m.Name));
+                }
+                else
+                {
+                    return $"{selectedMeters.First().Name} and {selectedMeters.Count - 1} others";
+                }
             }
+        }
+
+        // ADDED: Get selected meter details
+        public List<MeterOption> GetSelectedMeters()
+        {
+            return AvailableMeters.Where(m => SelectedMeterIds.Contains(m.MeterId)).ToList();
+        }
+
+        // ADDED: Backward compatibility
+        public string SelectedMeterName => SelectedMeterNames;
+    }
+
+    /// <summary>
+    /// UPDATED: Request model for filtering readings with multi-meter support
+    /// </summary>
+    public class MeterReadingsFilter
+    {
+        public List<int> MeterIds { get; set; } = new List<int>(); // CHANGED: Now supports multiple IDs
+        public string ViewType { get; set; } = "raw";
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 50;
+
+        // Backward compatibility
+        public int? MeterId
+        {
+            get => MeterIds.FirstOrDefault() == 0 ? null : MeterIds.FirstOrDefault();
+            set
+            {
+                if (value.HasValue && value.Value > 0)
+                {
+                    MeterIds = new List<int> { value.Value };
+                }
+                else
+                {
+                    MeterIds = new List<int>();
+                }
+            }
+        }
+
+        // Validation
+        public bool IsValid()
+        {
+            if (Page < 1) return false;
+            if (PageSize < 1 || PageSize > 1000) return false;
+            if (StartDate.HasValue && EndDate.HasValue && StartDate > EndDate) return false;
+
+            var validViewTypes = new[] { "raw", "daily", "monthly", "yearly" };
+            if (!validViewTypes.Contains(ViewType.ToLower())) return false;
+
+            return true;
+        }
+
+        public string GetValidationError()
+        {
+            if (Page < 1) return "Page number must be greater than 0";
+            if (PageSize < 1) return "Page size must be greater than 0";
+            if (PageSize > 1000) return "Page size cannot exceed 1000";
+            if (StartDate.HasValue && EndDate.HasValue && StartDate > EndDate)
+                return "Start date cannot be after end date";
+
+            var validViewTypes = new[] { "raw", "daily", "monthly", "yearly" };
+            if (!validViewTypes.Contains(ViewType.ToLower()))
+                return "Invalid view type. Valid types are: " + string.Join(", ", validViewTypes);
+
+            return null;
         }
     }
 
@@ -103,9 +208,7 @@ namespace PoWorks_Rework.Models
 
         // Helper properties
         public bool IsAggregated => MinValue.HasValue || MaxValue.HasValue || ReadingCount.HasValue;
-
         public string FormattedTimestamp => Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
-
         public string FormattedValue => Value.ToString("N2");
 
         // SIMPLIFIED: Just show the quality number
@@ -150,7 +253,7 @@ namespace PoWorks_Rework.Models
     }
 
     /// <summary>
-    /// Meter option for dropdown selection
+    /// Meter option for dropdown/multi-select selection
     /// </summary>
     public class MeterOption
     {
@@ -167,7 +270,7 @@ namespace PoWorks_Rework.Models
     }
 
     /// <summary>
-    /// Statistics for a meter
+    /// UPDATED: Statistics for meters (now handles multiple meters)
     /// </summary>
     public class MeterStats
     {
@@ -177,6 +280,10 @@ namespace PoWorks_Rework.Models
         public decimal AvgValue { get; set; }
         public DateTime FirstReading { get; set; }
         public DateTime LastReading { get; set; }
+
+        // ADDED: Multi-meter support
+        public int MeterCount { get; set; } = 1;
+        public List<string> MeterNames { get; set; } = new List<string>();
 
         // Calculated properties
         public decimal Range => MaxValue - MinValue;
@@ -213,118 +320,16 @@ namespace PoWorks_Rework.Models
 
         public string DataStatusClass => IsRecentData ? "text-success" : "text-warning";
         public string DataStatusText => IsRecentData ? "Recent data available" : "Data may be outdated";
-    }
 
-    /// <summary>
-    /// Request model for filtering readings
-    /// </summary>
-    public class MeterReadingsFilter
-    {
-        public int? MeterId { get; set; }
-        public string ViewType { get; set; } = "raw";
-        public DateTime? StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
-        public int Page { get; set; } = 1;
-        public int PageSize { get; set; } = 50;
-
-        // Validation
-        public bool IsValid()
+        // ADDED: Multi-meter display helpers
+        public string MeterSummary
         {
-            if (Page < 1) return false;
-            if (PageSize < 1 || PageSize > 1000) return false;
-            if (StartDate.HasValue && EndDate.HasValue && StartDate > EndDate) return false;
-
-            var validViewTypes = new[] { "raw", "daily", "monthly", "yearly" };
-            if (!validViewTypes.Contains(ViewType.ToLower())) return false;
-
-            return true;
-        }
-
-        public string GetValidationError()
-        {
-            if (Page < 1) return "Page number must be greater than 0";
-            if (PageSize < 1) return "Page size must be greater than 0";
-            if (PageSize > 1000) return "Page size cannot exceed 1000";
-            if (StartDate.HasValue && EndDate.HasValue && StartDate > EndDate)
-                return "Start date cannot be after end date";
-
-            var validViewTypes = new[] { "raw", "daily", "monthly", "yearly" };
-            if (!validViewTypes.Contains(ViewType.ToLower()))
-                return "Invalid view type. Must be: raw, daily, monthly, or yearly";
-
-            return "";
-        }
-    }
-
-    /// <summary>
-    /// Response model for AJAX requests
-    /// </summary>
-    public class MeterReadingsResponse
-    {
-        public bool Success { get; set; }
-        public string Error { get; set; } = "";
-        public List<MeterReading> Data { get; set; } = new List<MeterReading>();
-        public MeterReadingsPagination Pagination { get; set; } = new MeterReadingsPagination();
-        public MeterStats Stats { get; set; } = new MeterStats();
-    }
-
-    /// <summary>
-    /// Pagination information for AJAX responses
-    /// </summary>
-    public class MeterReadingsPagination
-    {
-        public int CurrentPage { get; set; }
-        public int TotalPages { get; set; }
-        public int TotalCount { get; set; }
-        public int PageSize { get; set; }
-        public bool HasPreviousPage => CurrentPage > 1;
-        public bool HasNextPage => CurrentPage < TotalPages;
-    }
-
-    /// <summary>
-    /// Chart data for visualizations
-    /// </summary>
-    public class MeterReadingsChartData
-    {
-        public List<ChartDataPoint> DataPoints { get; set; } = new List<ChartDataPoint>();
-        public string Label { get; set; } = "";
-        public string Unit { get; set; } = "";
-        public string ViewType { get; set; } = "";
-    }
-
-    /// <summary>
-    /// Individual chart data point
-    /// </summary>
-    public class ChartDataPoint
-    {
-        public DateTime Timestamp { get; set; }
-        public decimal Value { get; set; }
-        public string Label => Timestamp.ToString("yyyy-MM-dd HH:mm");
-        public string FormattedValue => Value.ToString("N2");
-    }
-
-    /// <summary>
-    /// Export options for meter readings
-    /// </summary>
-    public class MeterReadingsExportOptions
-    {
-        public string Format { get; set; } = "csv"; // csv, excel, json
-        public int? MeterId { get; set; }
-        public string ViewType { get; set; } = "raw";
-        public DateTime? StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
-        public bool IncludeStats { get; set; } = true;
-        public bool IncludeChartData { get; set; } = false;
-
-        public string GetFileName()
-        {
-            var meterName = MeterId.HasValue ? $"meter_{MeterId}" : "all_meters";
-            var dateRange = StartDate.HasValue && EndDate.HasValue
-                ? $"_{StartDate:yyyyMMdd}_{EndDate:yyyyMMdd}"
-                : "";
-            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-
-            return $"meter_readings_{ViewType}_{meterName}{dateRange}_{timestamp}.{Format}";
+            get
+            {
+                if (MeterCount <= 1) return MeterNames.FirstOrDefault() ?? "Single Meter";
+                if (MeterCount <= 3) return string.Join(", ", MeterNames);
+                return $"{MeterNames.FirstOrDefault()} and {MeterCount - 1} others";
+            }
         }
     }
 }
