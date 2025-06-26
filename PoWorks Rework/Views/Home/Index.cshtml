@@ -1,13 +1,155 @@
-﻿// Views/Home/Index.cshtml
-@{
-    ViewData["Title"] = "Dashboard";
+﻿@{
+    ViewData["Title"] = "Energy Consumption Dashboard";
+    Layout = "_Layout";
 }
 
-<div class="card">
-    <div class="card-header">
-        <h4>Dashboard</h4>
+<div class="container-fluid mt-4">
+    <!-- Warning Message -->
+    @if (TempData["WarningMessage"] != null)
+    {
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            @TempData["WarningMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-12">
+            <h2>Energy Consumption Analytics</h2>
+        </div>
     </div>
-    <div class="card-body">
-        <p>Welcome to PoWorks dashboard.</p>
+
+    <!-- Filters Section -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Filters</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Date Filter -->
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="dateFilter">Date Range</label>
+                                <select id="dateFilter" class="form-control">
+                                    <option value="daily">Daily</option>
+                                    <option value="monthly" selected>Monthly</option>
+                                    <option value="yearly">Yearly</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Tenant Filter -->
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="tenantFilter">Tenant</label>
+                                <select id="tenantFilter" class="form-control">
+                                    <option value="">All Tenants</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Meter Filter -->
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="meterFilter">Meter</label>
+                                <select id="meterFilter" class="form-control" disabled>
+                                    <option value="">Select Tenant First</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Chart Type -->
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="chartType">Chart Type</label>
+                                <select id="chartType" class="form-control">
+                                    <option value="bar">Bar Chart</option>
+                                    <option value="line">Line Chart</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="dateRange">Date Range</label>
+                                <div class="input-group">
+                                    <input type="date" id="startDate" class="form-control" />
+                                    <div class="input-group-text">to</div>
+                                    <input type="date" id="endDate" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <button id="applyFilters" class="btn btn-primary mr-2">Apply Filters</button>
+                            <button id="resetFilters" class="btn btn-secondary">Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Energy Consumption Chart</h5>
+                </div>
+                <div class="card-body">
+                    <div id="loadingSpinner" class="text-center d-none">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <canvas id="consumptionChart" style="max-height: 400px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Total Consumption</h5>
+                    <h3 id="totalConsumption">0 kWh</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Average Daily</h5>
+                    <h3 id="avgDaily">0 kWh</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h5 class="card-title">Peak Usage</h5>
+                    <h3 id="peakUsage">0 kWh</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Active Meters</h5>
+                    <h3 id="activeMeters">0</h3>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="~/js/energy-dashboard.js"></script>
+}

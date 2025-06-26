@@ -1,17 +1,33 @@
-﻿// Controllers/HomeController.cs
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using PoWorks_Rework.Models;
+using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
-    public class HomeController : Controller
+    public class HomeController : BaseController
     {
+        private readonly ILogger<HomeController> _logger;
+
+        public HomeController(DatabaseService databaseService, ILogger<HomeController> logger)
+            : base(databaseService)
+        {
+            _logger = logger;
+        }
+
         public IActionResult Index()
         {
+            // Check if database is initialized
+            if (!_databaseService.IsInitialized)
+            {
+                TempData["WarningMessage"] = "Database not configured. Dashboard functionality will be limited.";
+            }
+
             return View();
         }
 
-        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult Error()
+        public IActionResult Privacy()
         {
             return View();
         }
