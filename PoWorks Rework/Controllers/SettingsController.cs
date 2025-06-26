@@ -563,6 +563,8 @@ namespace PoWorks_Rework.Controllers
                     ClientId = request.ClientId,
                     ClientSecret = request.ClientSecret,
                     ApiKey = request.ApiKey,
+                    Username = request.Username,  // NEW
+                    Password = request.Password,  // NEW
                     AuthType = (AuthenticationType)request.AuthType,
                     TimeoutSeconds = request.TimeoutSeconds,
                     ProjectName = request.ProjectName
@@ -587,8 +589,12 @@ namespace PoWorks_Rework.Controllers
                             httpClient.DefaultRequestHeaders.Add("X-API-Key", settings.ApiKey);
                         }
                         break;
-                    case AuthenticationType.Basic:
-                        // Basic auth would use username/password - we'd need to add those fields
+                    case AuthenticationType.Basic:  // UPDATED IMPLEMENTATION
+                        if (!string.IsNullOrEmpty(settings.Username) && !string.IsNullOrEmpty(settings.Password))
+                        {
+                            var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{settings.Username}:{settings.Password}"));
+                            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authString);
+                        }
                         break;
                 }
 
@@ -639,6 +645,8 @@ namespace PoWorks_Rework.Controllers
                         ClientId = connData.ContainsKey("ClientId") ? connData["ClientId"] : "",
                         ClientSecret = connData.ContainsKey("ClientSecret") ? connData["ClientSecret"] : "",
                         ApiKey = connData.ContainsKey("ApiKey") ? connData["ApiKey"] : "",
+                        Username = connData.ContainsKey("BasicUsername") ? connData["BasicUsername"] : "",  // NEW (note: form uses "BasicUsername")
+                        Password = connData.ContainsKey("BasicPassword") ? connData["BasicPassword"] : "",  // NEW (note: form uses "BasicPassword")
                         AuthType = connData.ContainsKey("AuthType") ? Enum.Parse<AuthenticationType>(connData["AuthType"]) : AuthenticationType.OAuth,
                         TimeoutSeconds = connData.ContainsKey("TimeoutSeconds") ? int.Parse(connData["TimeoutSeconds"]) : 30,
                         ProjectName = connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "",
@@ -647,30 +655,14 @@ namespace PoWorks_Rework.Controllers
                     connections.Add(connection);
                 }
 
-                // Ensure only one default connection
-                var defaultConnections = connections.Where(c => c.IsDefault).ToList();
-                if (defaultConnections.Count > 1)
-                {
-                    // Keep only the first one as default
-                    for (int i = 1; i < defaultConnections.Count; i++)
-                    {
-                        defaultConnections[i].IsDefault = false;
-                    }
-                }
-                else if (!defaultConnections.Any() && connections.Any())
-                {
-                    // If no default is set, make the first one default
-                    connections.First().IsDefault = true;
-                }
-
-                // Save to appsettings.json
-                UpdateWebServiceConnections(connections);
+                // Update appsettings.json
+                UpdateWebServiceSettings(connections);
 
                 return Json(new { success = true, message = "Web Service connections saved successfully!" });
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, errorMessage = ex.Message });
+                return Json(new { success = false, error = ex.Message });
             }
         }
 
@@ -721,6 +713,92 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, error = ex.Message });
             }
         }
+
+        private void UpdateWebServiceSettings(List<PCVueWebServiceSettings> connections)
+        {
+            var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
+            var json = System.IO.File.ReadAllText(appSettingsPath);
+            var jsonSettings = JsonDocument.Parse(json);
+
+            // Create a new dictionary with updated values
+            var updatedSettings = new Dictionary<string, object>();
+
+            // Copy existing settings
+            foreach (var element in jsonSettings.RootElement.EnumerateObject())
+            {
+                updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
+            }
+
+            // Update Web Service settings
+            var webServiceSettings = connections.Select(conn => new Dictionary<string, object>
+    {
+        { "ConnectionId", conn.ConnectionId },
+        { "ConnectionName", conn.ConnectionName },
+        { "BaseUrl", conn.BaseUrl },
+        { "ClientId", conn.ClientId },
+        { "ClientSecret", conn.ClientSecret },
+        { "ApiKey", conn.ApiKey },
+        { "Username", conn.Username },  // NEW
+        { "Password", conn.Password },  // NEW
+        { "AuthType", (int)conn.AuthType },
+        { "TimeoutSeconds", conn.TimeoutSeconds },
+        { "ProjectName", conn.ProjectName },
+        { "IsDefault", conn.IsDefault }
+    }).ToList();
+
+            // Add or update the WebServiceConnections section
+            updatedSettings["WebServiceConnections"] = webServiceSettings;
+
+            // Save back to file
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
+            System.IO.File.WriteAllText(appSettingsPath, updatedJson);
+        }
+
+        private List<PCVueWebServiceSettings> GetWebServiceConnections()
+        {
+            var connections = new List<PCVueWebServiceSettings>();
+            var webServiceSection = _configuration.GetSection("WebServiceConnections");
+
+            if (webServiceSection.Exists())
+            {
+                foreach (var connectionSection in webServiceSection.GetChildren())
+                {
+                    var connection = new PCVueWebServiceSettings
+                    {
+                        ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
+                        ConnectionName = connectionSection["ConnectionName"] ?? "",
+                        BaseUrl = connectionSection["BaseUrl"] ?? "",
+                        ClientId = connectionSection["ClientId"] ?? "",
+                        ClientSecret = connectionSection["ClientSecret"] ?? "",
+                        ApiKey = connectionSection["ApiKey"] ?? "",
+                        Username = connectionSection["Username"] ?? "",  // NEW
+                        Password = connectionSection["Password"] ?? "",  // NEW
+                        AuthType = Enum.Parse<AuthenticationType>(connectionSection["AuthType"] ?? "0"),
+                        TimeoutSeconds = int.Parse(connectionSection["TimeoutSeconds"] ?? "30"),
+                        ProjectName = connectionSection["ProjectName"] ?? "",
+                        IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                    };
+                    connections.Add(connection);
+                }
+            }
+
+            // If no connections exist, create a default empty one
+            if (!connections.Any())
+            {
+                connections.Add(new PCVueWebServiceSettings
+                {
+                    ConnectionId = Guid.NewGuid().ToString(),
+                    ConnectionName = "Default Web Service Connection",
+                    BaseUrl = "",
+                    TimeoutSeconds = 30,
+                    IsDefault = true
+                });
+            }
+
+            return connections;
+        }
+
 
         /// <summary>
         /// Update Web Service connections in appsettings.json
@@ -890,6 +968,8 @@ namespace PoWorks_Rework.Controllers
         public string ClientId { get; set; } = "";
         public string ClientSecret { get; set; } = "";
         public string ApiKey { get; set; } = "";
+        public string Username { get; set; } = "";  // NEW
+        public string Password { get; set; } = "";  // NEW
         public int AuthType { get; set; } = 0;
         public int TimeoutSeconds { get; set; } = 30;
         public string ProjectName { get; set; } = "";

@@ -392,64 +392,35 @@
                                         </div>
                                     </div>
 
-                                    <!-- Authentication Type - FIXED SYNTAX -->
+                                    <!-- Client ID and Client Secret Fields - Always Visible -->
                                     <div class="row mb-3">
-                                        <div class="col-md-12">
-                                            <label class="form-label">Authentication Type</label>
-                                            <select class="form-select" name="AuthType" onchange="toggleAuthFields(this, '@connection.ConnectionId')">
-                                                @{
-                                                    var isOAuth = connection.AuthType == PoWorks_Rework.Models.AuthenticationType.OAuth;
-                                                    var isApiKey = connection.AuthType == PoWorks_Rework.Models.AuthenticationType.ApiKey;
-                                                    var isBasic = connection.AuthType == PoWorks_Rework.Models.AuthenticationType.Basic;
-                                                }
-                                                <option value="0" selected="@isOAuth">OAuth 2.0</option>
-                                                <option value="1" selected="@isApiKey">API Key</option>
-                                                <option value="2" selected="@isBasic">Basic Auth</option>
-                                            </select>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Client ID</label>
+                                            <input type="text" class="form-control" name="ClientId"
+                                                   value="@connection.ClientId"
+                                                   placeholder="Enter OAuth Client ID" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Client Secret</label>
+                                            <input type="password" class="form-control" name="ClientSecret"
+                                                   value="@connection.ClientSecret"
+                                                   placeholder="Enter OAuth Client Secret" />
                                         </div>
                                     </div>
 
-                                    <!-- OAuth Fields -->
-                                    <div class="auth-fields oauth-fields-@connection.ConnectionId" style="display: @(connection.AuthType == PoWorks_Rework.Models.AuthenticationType.OAuth ? "block" : "none")">
-                                        <div class="row mb-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Client ID</label>
-                                                <input type="text" class="form-control" name="ClientId"
-                                                       value="@connection.ClientId"
-                                                       placeholder="Enter OAuth Client ID" />
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Client Secret</label>
-                                                <input type="password" class="form-control" name="ClientSecret"
-                                                       value="@connection.ClientSecret"
-                                                       placeholder="Enter OAuth Client Secret" />
-                                            </div>
+                                    <!-- Username and Password Fields - Always Visible -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Username</label>
+                                            <input type="text" class="form-control" name="Username"
+                                                   value="@connection.Username"
+                                                   placeholder="Enter username" />
                                         </div>
-                                    </div>
-
-                                    <!-- API Key Fields -->
-                                    <div class="auth-fields apikey-fields-@connection.ConnectionId" style="display: @(connection.AuthType == PoWorks_Rework.Models.AuthenticationType.ApiKey ? "block" : "none")">
-                                        <div class="row mb-3">
-                                            <div class="col-md-12">
-                                                <label class="form-label">API Key</label>
-                                                <input type="password" class="form-control" name="ApiKey"
-                                                       value="@connection.ApiKey"
-                                                       placeholder="Enter API Key" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Basic Auth Fields -->
-                                    <div class="auth-fields basic-fields-@connection.ConnectionId" style="display: @(connection.AuthType == PoWorks_Rework.Models.AuthenticationType.Basic ? "block" : "none")">
-                                        <div class="row mb-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Username</label>
-                                                <input type="text" class="form-control" name="BasicUsername" placeholder="Enter username" />
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label">Password</label>
-                                                <input type="password" class="form-control" name="BasicPassword" placeholder="Enter password" />
-                                            </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Password</label>
+                                            <input type="password" class="form-control" name="Password"
+                                                   value="@connection.Password"
+                                                   placeholder="Enter password" />
                                         </div>
                                     </div>
 
@@ -883,32 +854,6 @@
     // WEB SERVICES CONNECTION FUNCTIONS
     // ================================
 
-    // Web Services specific JavaScript functions
-    function toggleAuthFields(selectElement, connectionId) {
-        const authType = selectElement.value;
-
-        // Hide all auth field groups for this connection
-        document.querySelectorAll(`.oauth-fields-${connectionId}, .apikey-fields-${connectionId}, .basic-fields-${connectionId}`).forEach(field => {
-            field.style.display = 'none';
-        });
-
-        // Show relevant auth fields
-        switch(authType) {
-            case '0': // OAuth
-                const oauthFields = document.querySelector(`.oauth-fields-${connectionId}`);
-                if (oauthFields) oauthFields.style.display = 'block';
-                break;
-            case '1': // API Key
-                const apikeyFields = document.querySelector(`.apikey-fields-${connectionId}`);
-                if (apikeyFields) apikeyFields.style.display = 'block';
-                break;
-            case '2': // Basic Auth
-                const basicFields = document.querySelector(`.basic-fields-${connectionId}`);
-                if (basicFields) basicFields.style.display = 'block';
-                break;
-        }
-    }
-
     let webServiceConnectionCounter = @(Model.WebServiceConnections != null && Model.WebServiceConnections.Count > 0 ? Model.WebServiceConnections.Count : 1);
 
     document.getElementById('addNewWebServiceConnection').addEventListener('click', function() {
@@ -992,52 +937,27 @@
                         </div>
                     </div>
 
+                    <!-- Client ID and Client Secret Fields - Always Visible -->
                     <div class="row mb-3">
-                        <div class="col-md-12">
-                            <label class="form-label">Authentication Type</label>
-                            <select class="form-select" name="AuthType" onchange="toggleAuthFields(this, '${connectionId}')">
-                                <option value="0">OAuth 2.0</option>
-                                <option value="1">API Key</option>
-                                <option value="2">Basic Auth</option>
-                            </select>
+                        <div class="col-md-6">
+                            <label class="form-label">Client ID</label>
+                            <input type="text" class="form-control" name="ClientId" placeholder="Enter OAuth Client ID" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Client Secret</label>
+                            <input type="password" class="form-control" name="ClientSecret" placeholder="Enter OAuth Client Secret" />
                         </div>
                     </div>
 
-                    <!-- OAuth Fields (default visible) -->
-                    <div class="auth-fields oauth-fields-${connectionId}">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Client ID</label>
-                                <input type="text" class="form-control" name="ClientId" placeholder="Enter OAuth Client ID" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Client Secret</label>
-                                <input type="password" class="form-control" name="ClientSecret" placeholder="Enter OAuth Client Secret" />
-                            </div>
+                    <!-- Username and Password Fields - Always Visible -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="Username" placeholder="Enter username" />
                         </div>
-                    </div>
-
-                    <!-- API Key Fields (initially hidden) -->
-                    <div class="auth-fields apikey-fields-${connectionId}" style="display: none;">
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label class="form-label">API Key</label>
-                                <input type="password" class="form-control" name="ApiKey" placeholder="Enter API Key" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Basic Auth Fields (initially hidden) -->
-                    <div class="auth-fields basic-fields-${connectionId}" style="display: none;">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Username</label>
-                                <input type="text" class="form-control" name="BasicUsername" placeholder="Enter username" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Password</label>
-                                <input type="password" class="form-control" name="BasicPassword" placeholder="Enter password" />
-                            </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="Password" placeholder="Enter password" />
                         </div>
                     </div>
 
@@ -1072,10 +992,10 @@
             connectionId: connectionId,
             connectionName: formData.get('ConnectionName') || '',
             baseUrl: formData.get('BaseUrl') || '',
-            clientId: formData.get('ClientId') || '',
-            clientSecret: formData.get('ClientSecret') || '',
-            apiKey: formData.get('ApiKey') || '',
-            authType: parseInt(formData.get('AuthType') || '0'),
+            clientId: formData.get('ClientId') || '',        // Added back
+            clientSecret: formData.get('ClientSecret') || '', // Added back
+            username: formData.get('Username') || '',  // Direct username
+            password: formData.get('Password') || '',  // Direct password
             timeoutSeconds: parseInt(formData.get('TimeoutSeconds') || '30'),
             projectName: formData.get('ProjectName') || ''
         };
@@ -1195,14 +1115,25 @@
         }
     }
 
-    // Save All Web Service Connections
+    // Save All Web Service Connections - SIMPLIFIED
     document.getElementById('saveAllWebServiceConnections').addEventListener('click', function() {
         const forms = document.querySelectorAll('.webservice-connection-form');
         const connections = [];
 
         forms.forEach(form => {
             const formData = new FormData(form);
-            const connectionData = Object.fromEntries(formData.entries());
+            const connectionData = {
+                ConnectionId: formData.get('ConnectionId') || '',
+                ConnectionName: formData.get('ConnectionName') || '',
+                BaseUrl: formData.get('BaseUrl') || '',
+                ClientId: formData.get('ClientId') || '',     // Added back
+                ClientSecret: formData.get('ClientSecret') || '', // Added back
+                Username: formData.get('Username') || '',     // Direct field names
+                Password: formData.get('Password') || '',     // Direct field names
+                TimeoutSeconds: formData.get('TimeoutSeconds') || '30',
+                ProjectName: formData.get('ProjectName') || '',
+                IsDefault: formData.get('IsDefault') === 'on' ? 'true' : 'false'
+            };
             connections.push(connectionData);
         });
 

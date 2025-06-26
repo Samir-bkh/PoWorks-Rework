@@ -23,6 +23,13 @@ namespace PoWorks_Rework.Models
         [Display(Name = "API Key")]
         public string ApiKey { get; set; } = ""; // Alternative to OAuth
 
+        // NEW: Basic Auth fields
+        [Display(Name = "Username")]
+        public string Username { get; set; } = "";
+
+        [Display(Name = "Password")]
+        public string Password { get; set; } = "";
+
         [Display(Name = "Authentication Type")]
         public AuthenticationType AuthType { get; set; } = AuthenticationType.OAuth;
 
@@ -42,6 +49,7 @@ namespace PoWorks_Rework.Models
             {
                 AuthenticationType.OAuth => $"Bearer {ClientId}:{ClientSecret}",
                 AuthenticationType.ApiKey => $"ApiKey {ApiKey}",
+                AuthenticationType.Basic => $"Basic {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{Username}:{Password}"))}",
                 _ => ""
             };
         }
