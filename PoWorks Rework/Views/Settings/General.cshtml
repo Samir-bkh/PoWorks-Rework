@@ -431,8 +431,11 @@
                                             <div id="webServiceConnectionResult-@connection.ConnectionId" class="mt-3" style="display: none;"></div>
                                         </div>
                                         <div class="col-md-4 text-end">
-                                            <button type="button" class="btn btn-outline-primary" onclick="testWebServiceConnection('@connection.ConnectionId')">
-                                                <i class="bi bi-wifi"></i> Test Connection
+                                            <button type="button" class="btn btn-success" onclick="getWebServiceToken('@connection.ConnectionId')">
+                                                <i class="bi bi-key"></i> Get Token
+                                            </button>
+                                            <button type="button" class="btn btn-warning ms-2" onclick="refreshWebServiceToken('@connection.ConnectionId')">
+                                                <i class="bi bi-arrow-clockwise"></i> Refresh Token
                                             </button>
                                         </div>
                                     </div>
@@ -976,8 +979,8 @@
             </div>`;
     }
 
-    function testWebServiceConnection(connectionId) {
-        console.log('Testing Web Service connection:', connectionId);
+     function getWebServiceToken(connectionId) {
+        console.log('Getting OAuth token for connection:', connectionId);
 
         const form = document.querySelector(`#webservice-${connectionId} form`);
         if (!form) {
@@ -992,25 +995,26 @@
             connectionId: connectionId,
             connectionName: formData.get('ConnectionName') || '',
             baseUrl: formData.get('BaseUrl') || '',
-            clientId: formData.get('ClientId') || '',        // Added back
-            clientSecret: formData.get('ClientSecret') || '', // Added back
-            username: formData.get('Username') || '',  // Direct username
-            password: formData.get('Password') || '',  // Direct password
+            clientId: formData.get('ClientId') || '',
+            clientSecret: formData.get('ClientSecret') || '',
+            username: formData.get('Username') || '',
+            password: formData.get('Password') || '',
             timeoutSeconds: parseInt(formData.get('TimeoutSeconds') || '30'),
             projectName: formData.get('ProjectName') || ''
         };
 
         // Validate required fields
-        if (!connectionData.baseUrl) {
-            showWebServiceConnectionResult(connectionId, 'warning', 'Please fill in the Base URL field');
+        if (!connectionData.baseUrl || !connectionData.username || !connectionData.password ||
+            !connectionData.clientId || !connectionData.clientSecret) {
+            showWebServiceConnectionResult(connectionId, 'warning', 'Please fill in all required fields');
             return;
         }
 
-        // Show testing status
-        showWebServiceConnectionResult(connectionId, 'info', 'Testing Web Service connection...');
+        // Show getting token status
+        showWebServiceConnectionResult(connectionId, 'info', 'Getting OAuth token...');
 
-        // Test connection via AJAX
-        fetch('/Settings/TestWebServiceConnection', {
+        // Get token via AJAX
+        fetch('/Settings/GetWebServiceToken', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1019,16 +1023,68 @@
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Web Service test result:', data);
+            console.log('Get token result:', data);
             if (data.success) {
-                showWebServiceConnectionResult(connectionId, 'success', 'Web Service connection successful! ✓');
+                showWebServiceConnectionResult(connectionId, 'success',
+                    `Token acquired successfully! Check server terminal for tokens. Expires in: ${data.expiresIn} seconds`);
             } else {
-                showWebServiceConnectionResult(connectionId, 'danger', `Connection failed: ${data.errorMessage || 'Unknown error'}`);
+                showWebServiceConnectionResult(connectionId, 'danger', 'Failed to get token: ' + data.errorMessage);
             }
         })
         .catch(error => {
-            console.error('Error testing Web Service connection:', error);
-            showWebServiceConnectionResult(connectionId, 'danger', `Error testing connection: ${error.message}`);
+            console.error('Error getting token:', error);
+            showWebServiceConnectionResult(connectionId, 'danger', 'Error getting token: ' + error.message);
+        });
+    }
+
+    function refreshWebServiceToken(connectionId) {
+        console.log('Refreshing OAuth token for connection:', connectionId);
+
+        const form = document.querySelector(`#webservice-${connectionId} form`);
+        if (!form) {
+            console.error('Form not found for web service connection ID:', connectionId);
+            showWebServiceConnectionResult(connectionId, 'danger', 'Error: Could not find form for this connection');
+            return;
+        }
+
+        // Extract form data
+        const formData = new FormData(form);
+        const connectionData = {
+            connectionId: connectionId,
+            connectionName: formData.get('ConnectionName') || '',
+            baseUrl: formData.get('BaseUrl') || '',
+            clientId: formData.get('ClientId') || '',
+            clientSecret: formData.get('ClientSecret') || '',
+            username: formData.get('Username') || '',
+            password: formData.get('Password') || '',
+            timeoutSeconds: parseInt(formData.get('TimeoutSeconds') || '30'),
+            projectName: formData.get('ProjectName') || ''
+        };
+
+        // Show refreshing status
+        showWebServiceConnectionResult(connectionId, 'info', 'Refreshing OAuth token...');
+
+        // Refresh token via AJAX
+        fetch('/Settings/RefreshWebServiceToken', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Refresh token result:', data);
+            if (data.success) {
+                showWebServiceConnectionResult(connectionId, 'success',
+                    `Token refreshed successfully! Check server terminal for new tokens. Expires in: ${data.expiresIn} seconds`);
+            } else {
+                showWebServiceConnectionResult(connectionId, 'danger', 'Failed to refresh token: ' + data.errorMessage);
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing token:', error);
+            showWebServiceConnectionResult(connectionId, 'danger', 'Error refreshing token: ' + error.message);
         });
     }
 

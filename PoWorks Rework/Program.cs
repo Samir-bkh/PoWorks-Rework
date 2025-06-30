@@ -11,6 +11,21 @@ builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<SqlServerService>();
 builder.Services.AddScoped<VarexpParserService>();
 
+// Register HttpClient and PCVueWebService
+builder.Services.AddHttpClient<PCVueWebService>(client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(2);
+})
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler();
+
+    // BYPASS SSL CERTIFICATE VALIDATION (DEVELOPMENT ONLY!)
+    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+    return handler;
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

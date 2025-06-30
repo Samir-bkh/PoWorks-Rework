@@ -1,6 +1,6 @@
-﻿// Services/PCVueWebService.cs
-using System.Text;
+﻿// Services/WebServices.cs
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
@@ -9,7 +9,10 @@ namespace PoWorks_Rework.Services
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<PCVueWebService> _logger;
+
+        // Token storage
         private string? _accessToken;
+        private string? _refreshToken;  // FIXED: Added missing refresh token storage
         private DateTime _tokenExpiry;
 
         public PCVueWebService(HttpClient httpClient, ILogger<PCVueWebService> logger)
@@ -19,70 +22,185 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// Get OAuth access token from PCVue Web Services
+        /// Get a valid access token (refreshes automatically if needed)
+        /// This is the MAIN function you should call for all API requests
+        /// </summary>
+        /// <param name="settings">PCVue connection settings</param>
+        /// <returns>Valid access token or null if authentication fails</returns>
+        public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings)
+        {
+            // If we have a valid token, return it
+            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
+            {
+                return _accessToken;
+            }
+
+            // If we have a refresh token, try to refresh first
+            if (!string.IsNullOrEmpty(_refreshToken))
+            {
+                _logger.LogDebug("Attempting token refresh");
+                var refreshedToken = await RefreshTokenAsync(settings);
+                if (!string.IsNullOrEmpty(refreshedToken))
+                {
+                    return refreshedToken;
+                }
+            }
+
+            // No valid token and refresh failed, get a new token
+            _logger.LogDebug("Getting new access token");
+            var tokenResponse = await RequestNewTokenAsync(settings);
+            return tokenResponse.Success ? tokenResponse.AccessToken : null;
+        }
+
+        /// <summary>
+        /// Get OAuth access token from PCVue Web Services (for backward compatibility)
+        /// Prefer using GetValidAccessTokenAsync instead
         /// </summary>
         /// <param name="settings">PCVue connection settings</param>
         /// <returns>OAuth token response</returns>
         public async Task<OAuthTokenResponse> GetAccessTokenAsync(PCVueWebServiceSettings settings)
         {
+            return await RequestNewTokenAsync(settings);
+        }
+
+        // UPDATE YOUR RequestNewTokenAsync method in WebServices.cs with this version that includes detailed logging:
+
+        /// <summary>
+        /// Request a new OAuth token (initial login or when refresh fails)
+        /// </summary>
+        private async Task<OAuthTokenResponse> RequestNewTokenAsync(PCVueWebServiceSettings settings)
+        {
             try
             {
-                _logger.LogInformation("Attempting to get OAuth token from PCVue Web Services");
+                _logger.LogInformation("Requesting new OAuth token for PCVue Web Services");
 
                 // Configure HttpClient
                 _httpClient.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
 
                 // Prepare token endpoint URL
                 var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/Token";
-                _logger.LogDebug("Token endpoint: {TokenEndpoint}", tokenEndpoint);
+                _logger.LogInformation("=== API CALL DEBUG ===");
+                _logger.LogInformation("Token endpoint: {TokenEndpoint}", tokenEndpoint);
 
                 // Prepare form data for OAuth Password Grant Flow
                 var formParams = new Dictionary<string, string>
-                {
-                    {"username", settings.Username},
-                    {"password", settings.Password},
-                    {"grant_type", "password"},
-                    {"client_id", settings.ClientId},
-                    {"client_secret", settings.ClientSecret}
-                };
+        {
+            {"username", settings.Username},
+            {"password", settings.Password},
+            {"grant_type", "password"},
+            {"client_id", settings.ClientId},
+            {"client_secret", settings.ClientSecret}
+        };
+
+                // LOG THE REQUEST PARAMETERS (without sensitive data)
+                _logger.LogInformation("Request parameters:");
+                _logger.LogInformation("  username: {Username}", settings.Username);
+                _logger.LogInformation("  password: [HIDDEN]");
+                _logger.LogInformation("  grant_type: password");
+                _logger.LogInformation("  client_id: {ClientId}", settings.ClientId);
+                _logger.LogInformation("  client_secret: [HIDDEN]");
 
                 // Create form-encoded content
                 var formContent = new FormUrlEncodedContent(formParams);
 
+                // LOG THE ACTUAL FORM CONTENT
+                var formContentString = await formContent.ReadAsStringAsync();
+                _logger.LogInformation("Form content: {FormContent}", formContentString);
+
                 // Make the token request
-                _logger.LogDebug("Sending OAuth token request...");
+                _logger.LogInformation("Sending OAuth token request...");
                 var response = await _httpClient.PostAsync(tokenEndpoint, formContent);
 
                 // Read response content
                 var responseContent = await response.Content.ReadAsStringAsync();
-                _logger.LogDebug("Token response status: {StatusCode}", response.StatusCode);
+
+                // LOG THE RAW RESPONSE
+                _logger.LogInformation("=== RAW RESPONSE ===");
+                _logger.LogInformation("Status Code: {StatusCode}", response.StatusCode);
+                _logger.LogInformation("Response Headers:");
+                foreach (var header in response.Headers)
+                {
+                    _logger.LogInformation("  {HeaderName}: {HeaderValue}", header.Key, string.Join(", ", header.Value));
+                }
+                foreach (var header in response.Content.Headers)
+                {
+                    _logger.LogInformation("  {HeaderName}: {HeaderValue}", header.Key, string.Join(", ", header.Value));
+                }
+                _logger.LogInformation("Raw Response Body: {ResponseContent}", responseContent);
+                _logger.LogInformation("Response Length: {Length} characters", responseContent?.Length ?? 0);
+                _logger.LogInformation("====================");
 
                 if (response.IsSuccessStatusCode)
                 {
-                    // Parse successful token response
-                    var tokenResponse = JsonSerializer.Deserialize<OAuthTokenResponse>(responseContent, new JsonSerializerOptions
+                    // Check if response is empty or null
+                    if (string.IsNullOrWhiteSpace(responseContent))
                     {
-                        PropertyNameCaseInsensitive = true
-                    });
-
-                    if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.AccessToken))
-                    {
-                        // Store token and calculate expiry
-                        _accessToken = tokenResponse.AccessToken;
-                        _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 60 second buffer
-
-                        _logger.LogInformation("OAuth token acquired successfully. Expires in {ExpiresIn} seconds", tokenResponse.ExpiresIn);
-
-                        tokenResponse.Success = true;
-                        return tokenResponse;
-                    }
-                    else
-                    {
-                        _logger.LogError("Invalid token response: missing access_token");
+                        _logger.LogError("Response content is empty or null");
                         return new OAuthTokenResponse
                         {
                             Success = false,
-                            ErrorMessage = "Invalid token response: missing access_token"
+                            ErrorMessage = "Empty response from server"
+                        };
+                    }
+
+                    try
+                    {
+                        // Parse successful token response
+                        _logger.LogInformation("Attempting to parse JSON response...");
+                        var tokenResponse = JsonSerializer.Deserialize<OAuthTokenResponse>(responseContent, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        _logger.LogInformation("JSON parsing completed. TokenResponse is null: {IsNull}", tokenResponse == null);
+
+                        if (tokenResponse != null)
+                        {
+                            _logger.LogInformation("Parsed token response:");
+                            _logger.LogInformation("  AccessToken: {HasToken}", !string.IsNullOrEmpty(tokenResponse.AccessToken) ? "PRESENT" : "MISSING");
+                            _logger.LogInformation("  RefreshToken: {HasRefreshToken}", !string.IsNullOrEmpty(tokenResponse.RefreshToken) ? "PRESENT" : "MISSING");
+                            _logger.LogInformation("  TokenType: {TokenType}", tokenResponse.TokenType);
+                            _logger.LogInformation("  ExpiresIn: {ExpiresIn}", tokenResponse.ExpiresIn);
+                        }
+
+                        if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.AccessToken))
+                        {
+                            // Store ALL token information
+                            _accessToken = tokenResponse.AccessToken;
+                            _refreshToken = tokenResponse.RefreshToken;  // IMPORTANT: Store refresh token
+                            _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 60 second buffer
+
+                            _logger.LogInformation("OAuth token acquired successfully. Expires in {ExpiresIn} seconds", tokenResponse.ExpiresIn);
+
+                            tokenResponse.Success = true;
+                            return tokenResponse;
+                        }
+                        else
+                        {
+                            _logger.LogError("Invalid token response: missing access_token");
+                            _logger.LogError("TokenResponse null: {IsNull}", tokenResponse == null);
+                            if (tokenResponse != null)
+                            {
+                                _logger.LogError("AccessToken null or empty: {IsEmpty}", string.IsNullOrEmpty(tokenResponse.AccessToken));
+                                _logger.LogError("AccessToken value: '{AccessToken}'", tokenResponse.AccessToken ?? "NULL");
+                            }
+
+                            return new OAuthTokenResponse
+                            {
+                                Success = false,
+                                ErrorMessage = "Invalid token response: missing access_token"
+                            };
+                        }
+                    }
+                    catch (JsonException jsonEx)
+                    {
+                        _logger.LogError(jsonEx, "Failed to parse JSON response");
+                        _logger.LogError("Response that failed to parse: {ResponseContent}", responseContent);
+
+                        return new OAuthTokenResponse
+                        {
+                            Success = false,
+                            ErrorMessage = $"JSON parsing error: {jsonEx.Message}"
                         };
                     }
                 }
@@ -147,22 +265,60 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// Get current access token (refresh if needed)
+        /// Refresh the access token using the refresh token
         /// </summary>
-        /// <param name="settings">PCVue connection settings</param>
-        /// <returns>Valid access token</returns>
-        public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings)
+        private async Task<string?> RefreshTokenAsync(PCVueWebServiceSettings settings)
         {
-            // Check if we have a valid token
-            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
+            try
             {
-                return _accessToken;
+                _logger.LogInformation("Refreshing OAuth token");
+
+                var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/Token";
+
+                var formParams = new Dictionary<string, string>
+                {
+                    {"grant_type", "refresh_token"},
+                    {"refresh_token", _refreshToken!},
+                    {"client_id", settings.ClientId},
+                    {"client_secret", settings.ClientSecret}
+                };
+
+                var formContent = new FormUrlEncodedContent(formParams);
+                var response = await _httpClient.PostAsync(tokenEndpoint, formContent);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var tokenData = JsonSerializer.Deserialize<JsonElement>(responseContent);
+
+                    if (tokenData.TryGetProperty("access_token", out var accessElement))
+                    {
+                        _accessToken = accessElement.GetString();
+
+                        // Update refresh token if provided (some servers return new refresh token)
+                        if (tokenData.TryGetProperty("refresh_token", out var refreshElement))
+                        {
+                            _refreshToken = refreshElement.GetString();
+                        }
+
+                        // Update expiry
+                        var expiresIn = tokenData.TryGetProperty("expires_in", out var expiresElement) ?
+                            expiresElement.GetInt32() : 3600;
+                        _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
+
+                        _logger.LogInformation("Token refreshed successfully. Expires in {ExpiresIn} seconds", expiresIn);
+                        return _accessToken;
+                    }
+                }
+
+                _logger.LogWarning("Token refresh failed: {StatusCode}", response.StatusCode);
+                return null;
             }
-
-            // Token is expired or missing, get a new one
-            var tokenResponse = await GetAccessTokenAsync(settings);
-
-            return tokenResponse.Success ? tokenResponse.AccessToken : null;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing token");
+                return null;
+            }
         }
 
         /// <summary>
@@ -188,7 +344,7 @@ namespace PoWorks_Rework.Services
                 }
 
                 // Attempt to get access token
-                var tokenResponse = await GetAccessTokenAsync(settings);
+                var tokenResponse = await RequestNewTokenAsync(settings);
 
                 if (tokenResponse.Success)
                 {
@@ -262,13 +418,22 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// Clear stored token (for logout or connection changes)
+        /// Clear stored tokens (for logout or connection changes)
+        /// </summary>
+        public void ClearTokens()
+        {
+            _accessToken = null;
+            _refreshToken = null;
+            _tokenExpiry = DateTime.MinValue;
+            _logger.LogDebug("All tokens cleared");
+        }
+
+        /// <summary>
+        /// Clear stored token (for backward compatibility)
         /// </summary>
         public void ClearToken()
         {
-            _accessToken = null;
-            _tokenExpiry = DateTime.MinValue;
-            _logger.LogDebug("Access token cleared");
+            ClearTokens();
         }
     }
 
@@ -282,12 +447,22 @@ namespace PoWorks_Rework.Services
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
 
+        [JsonPropertyName("access_token")]
         public string AccessToken { get; set; } = "";
+
+        [JsonPropertyName("token_type")]
         public string TokenType { get; set; } = "Bearer";
+
+        [JsonPropertyName("expires_in")]
         public int ExpiresIn { get; set; }
+
+        [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; set; }
+
+        [JsonPropertyName("scope")]
         public string? Scope { get; set; }
     }
+
 
     /// <summary>
     /// OAuth error response

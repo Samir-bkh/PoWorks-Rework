@@ -66,6 +66,171 @@ namespace PoWorks_Rework.Controllers
             return View(viewModel);
         }
 
+        /// <summary>
+        /// Get OAuth token for Web Service connection
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> GetWebServiceToken([FromBody] WebServiceConnectionTestRequest request)
+        {
+            try
+            {
+                // Validate input
+                if (string.IsNullOrWhiteSpace(request.BaseUrl))
+                    return Json(new { success = false, errorMessage = "Base URL is required" });
+
+                if (string.IsNullOrWhiteSpace(request.Username))
+                    return Json(new { success = false, errorMessage = "Username is required" });
+
+                if (string.IsNullOrWhiteSpace(request.Password))
+                    return Json(new { success = false, errorMessage = "Password is required" });
+
+                if (string.IsNullOrWhiteSpace(request.ClientId))
+                    return Json(new { success = false, errorMessage = "Client ID is required" });
+
+                if (string.IsNullOrWhiteSpace(request.ClientSecret))
+                    return Json(new { success = false, errorMessage = "Client Secret is required" });
+
+                // Create settings from request
+                var settings = new PCVueWebServiceSettings
+                {
+                    ConnectionId = request.ConnectionId,
+                    ConnectionName = request.ConnectionName,
+                    BaseUrl = request.BaseUrl,
+                    ClientId = request.ClientId,
+                    ClientSecret = request.ClientSecret,
+                    Username = request.Username,
+                    Password = request.Password,
+                    AuthType = AuthenticationType.OAuth,
+                    TimeoutSeconds = request.TimeoutSeconds,
+                    ProjectName = request.ProjectName
+                };
+
+                // CREATE HTTPCLIENT WITH SSL BYPASS
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                using var httpClient = new HttpClient(handler);
+                httpClient.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<PCVueWebService>>();
+                var webService = new PCVueWebService(httpClient, logger);
+
+                // Get the OAuth token
+                var tokenResponse = await webService.GetAccessTokenAsync(settings);
+
+                if (tokenResponse.Success)
+                {
+                    // Log tokens to SERVER TERMINAL (not browser console!)
+                    var controllerLogger = HttpContext.RequestServices.GetRequiredService<ILogger<SettingsController>>();
+                    controllerLogger.LogInformation("=== OAUTH TOKEN ACQUIRED ===");
+                    controllerLogger.LogInformation("Connection: {ConnectionName}", settings.ConnectionName);
+                    controllerLogger.LogInformation("Access Token: {AccessToken}", tokenResponse.AccessToken);
+                    controllerLogger.LogInformation("Refresh Token: {RefreshToken}", tokenResponse.RefreshToken ?? "Not provided");
+                    controllerLogger.LogInformation("Token Type: {TokenType}", tokenResponse.TokenType);
+                    controllerLogger.LogInformation("Expires In: {ExpiresIn} seconds", tokenResponse.ExpiresIn);
+                    controllerLogger.LogInformation("=============================");
+
+                    return Json(new
+                    {
+                        success = true,
+                        message = "OAuth token acquired successfully! Check server terminal for token details.",
+                        expiresIn = tokenResponse.ExpiresIn,
+                        tokenType = tokenResponse.TokenType
+                    });
+                }
+                else
+                {
+                    var controllerLogger = HttpContext.RequestServices.GetRequiredService<ILogger<SettingsController>>();
+                    controllerLogger.LogError("Failed to get OAuth token for connection {ConnectionName}: {ErrorMessage}",
+                        settings.ConnectionName, tokenResponse.ErrorMessage);
+
+                    return Json(new
+                    {
+                        success = false,
+                        errorMessage = tokenResponse.ErrorMessage
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<SettingsController>>();
+                logger.LogError(ex, "Error getting OAuth token");
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Refresh OAuth token for Web Service connection
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> RefreshWebServiceToken([FromBody] WebServiceConnectionTestRequest request)
+        {
+            try
+            {
+                // Create settings from request
+                var settings = new PCVueWebServiceSettings
+                {
+                    ConnectionId = request.ConnectionId,
+                    ConnectionName = request.ConnectionName,
+                    BaseUrl = request.BaseUrl,
+                    ClientId = request.ClientId,
+                    ClientSecret = request.ClientSecret,
+                    Username = request.Username,
+                    Password = request.Password,
+                    AuthType = AuthenticationType.OAuth,
+                    TimeoutSeconds = request.TimeoutSeconds,
+                    ProjectName = request.ProjectName
+                };
+
+                // CREATE HTTPCLIENT WITH SSL BYPASS
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                using var httpClient = new HttpClient(handler);
+                httpClient.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<PCVueWebService>>();
+                var webService = new PCVueWebService(httpClient, logger);
+
+                // Try to get a valid token (this will use refresh logic if available)
+                var token = await webService.GetValidAccessTokenAsync(settings);
+
+                if (!string.IsNullOrEmpty(token))
+                {
+                    // Log successful refresh to SERVER TERMINAL
+                    var controllerLogger = HttpContext.RequestServices.GetRequiredService<ILogger<SettingsController>>();
+                    controllerLogger.LogInformation("=== TOKEN REFRESH ATTEMPT ===");
+                    controllerLogger.LogInformation("Connection: {ConnectionName}", settings.ConnectionName);
+                    controllerLogger.LogInformation("Valid Token Retrieved: {Token}", token);
+                    controllerLogger.LogInformation("=============================");
+
+                    return Json(new
+                    {
+                        success = true,
+                        message = "Token retrieved successfully! Check server terminal for token details.",
+                        expiresIn = 3600 // Default, since we don't have exact expiry from GetValidAccessTokenAsync
+                    });
+                }
+                else
+                {
+                    var controllerLogger = HttpContext.RequestServices.GetRequiredService<ILogger<SettingsController>>();
+                    controllerLogger.LogError("Failed to refresh/get token for connection {ConnectionName}", settings.ConnectionName);
+
+                    return Json(new
+                    {
+                        success = false,
+                        errorMessage = "Failed to get valid token. Check server logs for details."
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<SettingsController>>();
+                logger.LogError(ex, "Error refreshing OAuth token");
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
+        }
+
         [HttpPost]
         public IActionResult Connect([FromBody] DatabaseSettings settings)
         {
