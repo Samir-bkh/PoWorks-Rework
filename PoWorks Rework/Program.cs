@@ -11,6 +11,8 @@ builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<SqlServerService>();
 builder.Services.AddScoped<VarexpParserService>();
 
+builder.Services.AddScoped<VariableBrowseParsingService>();
+
 // Register HttpClient and PCVueWebService
 builder.Services.AddHttpClient<PCVueWebService>(client =>
 {

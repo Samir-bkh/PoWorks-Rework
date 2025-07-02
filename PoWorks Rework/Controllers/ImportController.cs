@@ -19,17 +19,20 @@ namespace PoWorks_Rework.Controllers
         private readonly SqlServerService _sqlServerService;
         private readonly DatabaseService _databaseService;
         private readonly VarexpParserService _varexpParserService;
+        private readonly VariableBrowseParsingService _variableBrowseParsingService;
 
         public ImportController(
-            ILogger<ImportController> logger,
-            SqlServerService sqlServerService,
-            DatabaseService databaseService,
-            VarexpParserService varexpParserService)
+     ILogger<ImportController> logger,
+     SqlServerService sqlServerService,
+     DatabaseService databaseService,
+     VarexpParserService varexpParserService,
+     VariableBrowseParsingService variableBrowseParsingService)
         {
             _logger = logger;
             _sqlServerService = sqlServerService;
             _databaseService = databaseService;
             _varexpParserService = varexpParserService;
+            _variableBrowseParsingService = variableBrowseParsingService;
         }
 
         public IActionResult Index()
@@ -974,23 +977,56 @@ namespace PoWorks_Rework.Controllers
                         }
 
                         Console.WriteLine("==========================\n");
+
+                        // 🔥 NEW: ADD PARSING LOGIC RIGHT HERE AFTER RAW RESPONSE ANALYSIS
+                        Console.WriteLine("=== STARTING VARIABLE PARSING ===");
+
+                        // Parse the response using our parsing service
+                        var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData);
+
+                        // Print parsed results to console automatically
+                        var connectionName = connection.ConnectionName ?? request.ConnectionId;
+                        _variableBrowseParsingService.PrintParsedVariablesToConsole(parseResult, connectionName);
+
+                        Console.WriteLine($"✅ Raw response printed and parsed successfully");
+                        Console.WriteLine($"✅ Found {parseResult.TotalCount} parsed variables");
+                        Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                        Console.WriteLine("=====================================================\n");
+
+                        // Return enhanced response with both raw and parsed data
+                        return Json(new
+                        {
+                            success = true,
+                            message = $"Variables browse completed! Found {parseResult.TotalCount} variables. Check terminal for detailed parsed results.",
+                            responseLength = responseContent?.Length ?? 0,
+                            totalVariables = parseResult.TotalCount,
+                            parsedVariables = parseResult.Variables.Select(v => new
+                            {
+                                fullPath = v.FullPath,
+                                branches = v.Branches,
+                                variableName = v.VariableName,
+                                variableType = v.VariableType,
+                                isReadOnly = v.IsReadOnly,
+                                isLeaf = v.IsLeaf
+                            }).ToList(),
+                            parseSuccess = parseResult.Success,
+                            parseError = parseResult.Success ? null : parseResult.ErrorMessage
+                        });
                     }
                     catch (JsonException parseEx)
                     {
                         Console.WriteLine($"❌ JSON PARSING ERROR: {parseEx.Message}");
                         Console.WriteLine("This might not be valid JSON!\n");
+                        Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                        Console.WriteLine("=====================================================\n");
+
+                        return Json(new
+                        {
+                            success = false,
+                            message = $"Variables browse got response but JSON parsing failed: {parseEx.Message}",
+                            responseLength = responseContent?.Length ?? 0
+                        });
                     }
-
-                    Console.WriteLine($"✅ Raw response printed above");
-                    Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                    Console.WriteLine("=====================================================\n");
-
-                    return Json(new
-                    {
-                        success = true,
-                        message = $"Variables browse completed! Response length: {responseContent?.Length ?? 0} characters. Check terminal for RAW RESPONSE.",
-                        responseLength = responseContent?.Length ?? 0
-                    });
                 }
                 else
                 {

@@ -395,7 +395,7 @@
 
         console.log('Browsing variables with parameters:', requestData);
 
-        // Make API call to the NEW endpoint
+        // Make API call to the endpoint
         fetch('/Import/BrowseVariablesWebService', {
             method: 'POST',
             headers: {
@@ -413,13 +413,43 @@
             console.log('Variables browse response:', data);
 
             if (data.success) {
+                // AUTOMATIC PARSING RESULTS - The parsing happens automatically on the server
+                // and the parsed data is included in the response
+
+                console.log('=== PARSED VARIABLES (Client-side) ===');
+                if (data.parsedVariables && data.parsedVariables.length > 0) {
+                    console.log(`Found ${data.parsedVariables.length} parsed variables:`);
+
+                    // Log first 10 parsed variables as examples
+                    const sampleCount = Math.min(10, data.parsedVariables.length);
+                    for (let i = 0; i < sampleCount; i++) {
+                        const variable = data.parsedVariables[i];
+                        console.log(`${i + 1}. ${variable.fullPath}`);
+                        console.log(`   Type: ${variable.variableType}, ReadOnly: ${variable.isReadOnly}`);
+                    }
+
+                    if (data.parsedVariables.length > 10) {
+                        console.log(`... and ${data.parsedVariables.length - 10} more variables`);
+                    }
+
+                    console.log('=== See server terminal for complete parsed output ===');
+                } else {
+                    console.log('No parsed variables received');
+                }
+
+                // Show success message
                 const message = data.totalVariables !== undefined
-                    ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables. Check server terminal for detailed results.`
+                    ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables. Check server terminal for detailed parsed results.`
                     : 'Variables browse completed! Check server terminal for detailed results.';
 
                 showWebServiceStatus('success', message);
             } else {
-                showWebServiceStatus('danger', 'Variables browse failed: ' + (data.message || data.errorMessage || 'Unknown error'));
+                // Handle parsing errors
+                const errorMsg = data.parseError
+                    ? `Variables browse failed. Parsing error: ${data.parseError}`
+                    : `Variables browse failed: ${data.errorMessage || 'Unknown error'}`;
+
+                showWebServiceStatus('danger', errorMsg);
             }
         })
         .catch(error => {
