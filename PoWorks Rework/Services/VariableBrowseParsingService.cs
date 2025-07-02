@@ -33,7 +33,9 @@ namespace PoWorks_Rework.Services
         /// <summary>
         /// Parse PCVue browse variables response and extract variable paths
         /// </summary>
-        public ParseResult ParseBrowseVariablesResponse(object responseData)
+        /// <param name="responseData">The raw PCVue API response</param>
+        /// <param name="includeSystemVariables">Whether to include variables with 'System' branches</param>
+        public ParseResult ParseBrowseVariablesResponse(object responseData, bool includeSystemVariables = false)
         {
             var result = new ParseResult();
 
@@ -97,6 +99,16 @@ namespace PoWorks_Rework.Services
                         parsedVar.FullPath = parsedVar.VariableName;
                     }
 
+                    // Filter out System variables unless explicitly requested
+                    bool hasSystemBranch = parsedVar.Branches.Any(branch =>
+                        branch.Equals("System", StringComparison.OrdinalIgnoreCase));
+
+                    if (hasSystemBranch && !includeSystemVariables)
+                    {
+                        // Skip this variable - it has a System branch and we're not including them
+                        continue;
+                    }
+
                     // Only add variables with valid paths
                     if (!string.IsNullOrEmpty(parsedVar.FullPath))
                     {
@@ -121,13 +133,14 @@ namespace PoWorks_Rework.Services
         /// <summary>
         /// Print parsed variables to console in structured format
         /// </summary>
-        public void PrintParsedVariablesToConsole(ParseResult parseResult, string connectionInfo)
+        public void PrintParsedVariablesToConsole(ParseResult parseResult, string connectionInfo, bool includeSystemVariables = false)
         {
             Console.WriteLine("\n=====================================================");
             Console.WriteLine("PCVue VARIABLES BROWSE - PARSED RESULTS");
             Console.WriteLine("=====================================================");
             Console.WriteLine($"Connection: {connectionInfo}");
             Console.WriteLine($"Total Variables Found: {parseResult.TotalCount:N0}");
+            Console.WriteLine($"System Variables: {(includeSystemVariables ? "INCLUDED" : "FILTERED OUT")}");
             Console.WriteLine($"Parsing Status: {(parseResult.Success ? "SUCCESS" : "FAILED")}");
 
             if (!parseResult.Success)

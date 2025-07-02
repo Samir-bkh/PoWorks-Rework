@@ -859,11 +859,12 @@ namespace PoWorks_Rework.Controllers
             try
             {
                 Console.WriteLine("\n=====================================================");
-                Console.WriteLine("PCVue VARIABLES BROWSE - RAW RESPONSE DEBUG");
+                Console.WriteLine("PCVue VARIABLES BROWSE");
                 Console.WriteLine("=====================================================");
                 Console.WriteLine($"Connection ID: {request.ConnectionId}");
                 Console.WriteLine($"Max Variables: {request.MaxVariables}");
                 Console.WriteLine($"Branch Filter: {request.BranchFilter ?? "None"}");
+                Console.WriteLine($"Include System Variables: {request.IncludeSystemVariables}");
                 Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 
                 // Get the connection settings
@@ -876,7 +877,6 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 Console.WriteLine($"Connection Name: {connection.ConnectionName}");
-                Console.WriteLine($"Base URL: {connection.BaseUrl}");
 
                 // Create HttpClient with SSL bypass
                 var handler = new HttpClientHandler();
@@ -915,8 +915,6 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
-
-                Console.WriteLine("\n--- VARIABLES REQUEST ---");
                 Console.WriteLine($"Endpoint: {fullUrl}");
 
                 // Create and send request
@@ -932,74 +930,36 @@ namespace PoWorks_Rework.Controllers
 
                 if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("\n🎉 VARIABLES BROWSE SUCCESS!");
+                    Console.WriteLine("✅ API call successful");
 
-                    // ✅ PRINT THE COMPLETE RAW RESPONSE
-                    Console.WriteLine("\n=== RAW RESPONSE START ===");
-                    Console.WriteLine(responseContent);
-                    Console.WriteLine("=== RAW RESPONSE END ===\n");
-
-                    // Also try to pretty-print the JSON structure
                     try
                     {
+                        // Parse JSON response
                         var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                        Console.WriteLine("\n=== JSON STRUCTURE ANALYSIS ===");
-                        Console.WriteLine($"Root element type: {jsonData.ValueKind}");
 
-                        if (jsonData.ValueKind == JsonValueKind.Object)
-                        {
-                            Console.WriteLine("Root properties found:");
-                            foreach (var property in jsonData.EnumerateObject())
-                            {
-                                Console.WriteLine($"  - {property.Name}: {property.Value.ValueKind}");
+                        // Parse the response using our parsing service with System variable filtering
+                        var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(
+                            jsonData,
+                            request.IncludeSystemVariables);
 
-                                // If it's an array, show how many items
-                                if (property.Value.ValueKind == JsonValueKind.Array)
-                                {
-                                    Console.WriteLine($"    Array length: {property.Value.GetArrayLength()}");
-
-                                    // Show first array item structure if it exists
-                                    if (property.Value.GetArrayLength() > 0)
-                                    {
-                                        var firstItem = property.Value[0];
-                                        Console.WriteLine($"    First item type: {firstItem.ValueKind}");
-                                        if (firstItem.ValueKind == JsonValueKind.Object)
-                                        {
-                                            Console.WriteLine("    First item properties:");
-                                            foreach (var subProp in firstItem.EnumerateObject())
-                                            {
-                                                Console.WriteLine($"      - {subProp.Name}: {subProp.Value.ValueKind}");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Console.WriteLine("==========================\n");
-
-                        // 🔥 NEW: ADD PARSING LOGIC RIGHT HERE AFTER RAW RESPONSE ANALYSIS
-                        Console.WriteLine("=== STARTING VARIABLE PARSING ===");
-
-                        // Parse the response using our parsing service
-                        var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData);
-
-                        // Print parsed results to console automatically
+                        // Print ONLY the parsed results to console
                         var connectionName = connection.ConnectionName ?? request.ConnectionId;
-                        _variableBrowseParsingService.PrintParsedVariablesToConsole(parseResult, connectionName);
+                        _variableBrowseParsingService.PrintParsedVariablesToConsole(
+                            parseResult,
+                            connectionName,
+                            request.IncludeSystemVariables);
 
-                        Console.WriteLine($"✅ Raw response printed and parsed successfully");
-                        Console.WriteLine($"✅ Found {parseResult.TotalCount} parsed variables");
+                        Console.WriteLine($"✅ Parsing completed successfully");
                         Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                         Console.WriteLine("=====================================================\n");
 
-                        // Return enhanced response with both raw and parsed data
+                        // Return enhanced response with parsed data
                         return Json(new
                         {
                             success = true,
-                            message = $"Variables browse completed! Found {parseResult.TotalCount} variables. Check terminal for detailed parsed results.",
-                            responseLength = responseContent?.Length ?? 0,
+                            message = $"Variables browse completed! Found {parseResult.TotalCount} variables (System variables {(request.IncludeSystemVariables ? "included" : "filtered out")}). Check terminal for detailed results.",
                             totalVariables = parseResult.TotalCount,
+                            systemVariablesIncluded = request.IncludeSystemVariables,
                             parsedVariables = parseResult.Variables.Select(v => new
                             {
                                 fullPath = v.FullPath,
@@ -1016,15 +976,12 @@ namespace PoWorks_Rework.Controllers
                     catch (JsonException parseEx)
                     {
                         Console.WriteLine($"❌ JSON PARSING ERROR: {parseEx.Message}");
-                        Console.WriteLine("This might not be valid JSON!\n");
-                        Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                         Console.WriteLine("=====================================================\n");
 
                         return Json(new
                         {
                             success = false,
-                            message = $"Variables browse got response but JSON parsing failed: {parseEx.Message}",
-                            responseLength = responseContent?.Length ?? 0
+                            message = $"API call succeeded but JSON parsing failed: {parseEx.Message}"
                         });
                     }
                 }
@@ -1032,7 +989,6 @@ namespace PoWorks_Rework.Controllers
                 {
                     Console.WriteLine($"❌ ERROR: Variables browse failed");
                     Console.WriteLine($"Status Code: {response.StatusCode}");
-                    Console.WriteLine($"Response: {responseContent}");
                     Console.WriteLine("=====================================================\n");
 
                     return Json(new
@@ -1045,7 +1001,6 @@ namespace PoWorks_Rework.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ EXCEPTION: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 Console.WriteLine("=====================================================\n");
 
                 return Json(new
@@ -1382,9 +1337,10 @@ namespace PoWorks_Rework.Controllers
         {
             public string ConnectionId { get; set; } = "";
             public int MaxVariables { get; set; } = 100000;
-            public string? BranchFilter { get; set; }
+            public string? BranchFilter { get; set; } = "";
             public string VariableType { get; set; } = "Any";
             public int Depth { get; set; } = 0;
+            public bool IncludeSystemVariables { get; set; } = false;
         }
 
         // Enhanced method to get parent meter options with better error handling

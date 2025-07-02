@@ -109,6 +109,15 @@
                                     <div class="form-text">Filter by specific branch/area</div>
                                 </div>
 
+                                <!-- NEW: Include System Variables Checkbox -->
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="includeSystemVariables" value="true">
+                                    <label class="form-check-label" for="includeSystemVariables">
+                                        <strong>Include System Variables</strong>
+                                        <small class="text-muted d-block">By default, variables with 'System' branches are filtered out</small>
+                                    </label>
+                                </div>
+
                                 <!-- Browse Variables Button -->
                                 <div class="d-grid gap-2">
                                     <button type="button" class="btn btn-primary" id="browseVariablesBtn" disabled>
@@ -372,13 +381,16 @@
             });
     }
 
+    // UPDATED: Browse Variables Function with System Variables Support
     function browseVariables(connectionId) {
         // Get parameters
         const maxVariables = parseInt(document.getElementById('maxVariables').value) || 100000;
         const branchFilter = document.getElementById('branchFilter').value.trim();
+        const includeSystemVariables = document.getElementById('includeSystemVariables').checked;
 
-        // Show loading status
-        showWebServiceStatus('info', `Starting variables browse... (Max: ${maxVariables.toLocaleString()}, Filter: ${branchFilter || 'None'})`);
+        // Show loading status with system variables info
+        const systemMsg = includeSystemVariables ? " (including System variables)" : " (System variables filtered out)";
+        showWebServiceStatus('info', `Starting variables browse... (Max: ${maxVariables.toLocaleString()}, Filter: ${branchFilter || 'None'})${systemMsg}`);
 
         const browseBtn = document.getElementById('browseVariablesBtn');
         browseBtn.disabled = true;
@@ -390,7 +402,8 @@
             maxVariables: maxVariables,
             branchFilter: branchFilter,
             variableType: 'Any',
-            depth: 0
+            depth: 0,
+            includeSystemVariables: includeSystemVariables  // NEW: Include the system variables option
         };
 
         console.log('Browsing variables with parameters:', requestData);
@@ -419,6 +432,7 @@
                 console.log('=== PARSED VARIABLES (Client-side) ===');
                 if (data.parsedVariables && data.parsedVariables.length > 0) {
                     console.log(`Found ${data.parsedVariables.length} parsed variables:`);
+                    console.log(`System variables: ${data.systemVariablesIncluded ? 'INCLUDED' : 'FILTERED OUT'}`);
 
                     // Log first 10 parsed variables as examples
                     const sampleCount = Math.min(10, data.parsedVariables.length);
@@ -437,9 +451,10 @@
                     console.log('No parsed variables received');
                 }
 
-                // Show success message
+                // Show success message with system variables status
+                const systemStatus = data.systemVariablesIncluded ? "included" : "filtered out";
                 const message = data.totalVariables !== undefined
-                    ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables. Check server terminal for detailed parsed results.`
+                    ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables (System variables ${systemStatus}). Check server terminal for detailed parsed results.`
                     : 'Variables browse completed! Check server terminal for detailed results.';
 
                 showWebServiceStatus('success', message);
