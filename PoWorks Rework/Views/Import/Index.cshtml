@@ -22,7 +22,7 @@
             <!-- Import Tab -->
             <div class="tab-pane fade show active" id="import-tab-pane" role="tabpanel" aria-labelledby="import-tab" tabindex="0">
                 <div class="row mb-4">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title mb-3">Import from PCVue HDS</h5>
@@ -57,7 +57,7 @@
                         </div>
                     </div>
 
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title mb-3">VAREXP.DAT</h5>
@@ -73,7 +73,60 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- UPDATED: Web Services Card -->
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title mb-3">
+                                    <i class="bi bi-cloud-download"></i> PCVue Variables Browse
+                                </h5>
+
+                                <!-- Web Service Connection Selection -->
+                                <div class="mb-3">
+                                    <label for="webServiceConnection" class="form-label">Web Service Connection</label>
+                                    <select class="form-select" id="webServiceConnection">
+                                        <option value="">Select a connection...</option>
+                                    </select>
+                                    <div class="form-text">
+                                        <span id="webServiceConnectionStatus" class="text-muted">
+                                            <i class="bi bi-info-circle"></i> Select a web service connection
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- Max Variables Input -->
+                                <div class="mb-3">
+                                    <label for="maxVariables" class="form-label">Max Variables</label>
+                                    <input type="number" class="form-control" id="maxVariables" value="100000" min="1" max="1000000">
+                                    <div class="form-text">Maximum variables to retrieve (default: 100,000)</div>
+                                </div>
+
+                                <!-- Branch Filter Input -->
+                                <div class="mb-3">
+                                    <label for="branchFilter" class="form-label">Branch Filter (Optional)</label>
+                                    <input type="text" class="form-control" id="branchFilter" placeholder="e.g., Production.Line1">
+                                    <div class="form-text">Filter by specific branch/area</div>
+                                </div>
+
+                                <!-- Browse Variables Button -->
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-primary" id="browseVariablesBtn" disabled>
+                                        <i class="bi bi-search"></i> Browse Variables
+                                    </button>
+                                </div>
+
+                                <div class="alert alert-info mt-3 mb-0">
+                                    <i class="bi bi-info-circle"></i>
+                                    <small><strong>Note:</strong> Results are displayed in the server terminal/console for detailed analysis.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Status Display for Web Services -->
+                <div id="webServiceStatus" class="mt-3" style="display: none;"></div>
 
                 <!-- Placeholder for the meter-selection table -->
                 <div id="varexpRecordsContainer" class="mt-4"></div>
@@ -134,9 +187,8 @@
                         </div>
                         <div class="card-footer">
                             <div class="d-flex justify-content-between align-items-center">
-                                <!-- 🎯 SEPARATE PRINT BUTTONS - Only one will be visible at a time -->
+                                <!-- Print Button -->
                                 <div>
-                                    <!-- VAREXP Print Button (shown by default, hidden when HDS is active) -->
                                     <button type="button" class="btn btn-info" id="printSelectedBtn">
                                         <i class="bi bi-printer"></i> Print Selected
                                     </button>
@@ -158,7 +210,6 @@
                         </div>
                     </div>
 
-                    <!-- Import Progress -->
                     <!-- Import Result Modal -->
                     <div class="modal fade" id="importResultModal" tabindex="-1" aria-labelledby="importResultModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-lg">
@@ -177,58 +228,58 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Export Tab -->
-                <div class="tab-pane fade" id="export-tab-pane" role="tabpanel" aria-labelledby="export-tab" tabindex="0">
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <h5 class="card-title mb-3">Export Meters</h5>
+            <!-- Export Tab -->
+            <div class="tab-pane fade" id="export-tab-pane" role="tabpanel" aria-labelledby="export-tab" tabindex="0">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Export Meters</h5>
 
-                            <!-- Export Options -->
-                            <div class="mb-3">
-                                <label class="form-label">Export Format</label>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
-                                    <label class="form-check-label" for="exportFormatCsv">
-                                        CSV
-                                    </label>
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatExcel" value="excel">
-                                    <label class="form-check-label" for="exportFormatExcel">
-                                        Excel
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
-                                    <label class="form-check-label" for="exportFormatJson">
-                                        JSON
-                                    </label>
-                                </div>
+                        <!-- Export Options -->
+                        <div class="mb-3">
+                            <label class="form-label">Export Format</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
+                                <label class="form-check-label" for="exportFormatCsv">
+                                    CSV
+                                </label>
                             </div>
-
-                            <!-- Export Filters -->
-                            <div class="mb-3">
-                                <label class="form-label">Export Filters</label>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="exportActiveOnly" checked>
-                                    <label class="form-check-label" for="exportActiveOnly">
-                                        Active meters only
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="exportWithReadings">
-                                    <label class="form-check-label" for="exportWithReadings">
-                                        Include latest readings
-                                    </label>
-                                </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatExcel" value="excel">
+                                <label class="form-check-label" for="exportFormatExcel">
+                                    Excel
+                                </label>
                             </div>
-
-                            <!-- Export Button -->
-                            <button type="button" class="btn btn-success" id="exportBtn">
-                                <i class="bi bi-download"></i> Export Meters
-                            </button>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
+                                <label class="form-check-label" for="exportFormatJson">
+                                    JSON
+                                </label>
+                            </div>
                         </div>
+
+                        <!-- Export Filters -->
+                        <div class="mb-3">
+                            <label class="form-label">Export Filters</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="exportActiveOnly" checked>
+                                <label class="form-check-label" for="exportActiveOnly">
+                                    Active meters only
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="exportWithReadings">
+                                <label class="form-check-label" for="exportWithReadings">
+                                    Include latest readings
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Export Button -->
+                        <button type="button" class="btn btn-success" id="exportBtn">
+                            <i class="bi bi-download"></i> Export Meters
+                        </button>
                     </div>
                 </div>
             </div>
@@ -236,9 +287,178 @@
     </div>
 </div>
 
-
 @section Scripts {
     <script src="~/js/hdsMeterImport.js"></script>
     <script src="~/js/hdsMeterSelection.js"></script>
     <script src="~/js/import.js"></script>
 }
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load web service connections when page loads
+        loadWebServiceConnections();
+
+        // Handle web service connection change
+        document.getElementById('webServiceConnection').addEventListener('change', function() {
+            const selectedConnection = this.value;
+            const browseBtn = document.getElementById('browseVariablesBtn');
+            const statusSpan = document.getElementById('webServiceConnectionStatus');
+
+            if (selectedConnection) {
+                browseBtn.disabled = false;
+                statusSpan.innerHTML = '<i class="bi bi-check-circle text-success"></i> Connection selected - ready to browse variables';
+            } else {
+                browseBtn.disabled = true;
+                statusSpan.innerHTML = '<i class="bi bi-info-circle"></i> Select a web service connection';
+            }
+        });
+
+        // Handle browse variables button click
+        document.getElementById('browseVariablesBtn').addEventListener('click', function() {
+            const selectedConnection = document.getElementById('webServiceConnection').value;
+            if (!selectedConnection) {
+                showWebServiceStatus('warning', 'Please select a web service connection first');
+                return;
+            }
+
+            browseVariables(selectedConnection);
+        });
+
+        // Handle input validation for max variables
+        document.getElementById('maxVariables').addEventListener('input', function() {
+            const value = parseInt(this.value);
+            if (value < 1) {
+                this.value = 1;
+            } else if (value > 1000000) {
+                this.value = 1000000;
+            }
+        });
+    });
+
+    function loadWebServiceConnections() {
+        fetch('/Import/GetWebServiceConnections')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('webServiceConnection');
+                select.innerHTML = '<option value="">Select a connection...</option>';
+
+                if (data.success && data.connections) {
+                    data.connections.forEach(conn => {
+                        const option = document.createElement('option');
+                        option.value = conn.connectionId;
+                        option.textContent = `${conn.connectionName} (${conn.baseUrl})`;
+                        if (conn.isDefault) {
+                            option.textContent += ' - Default';
+                        }
+                        select.appendChild(option);
+                    });
+
+                    // Auto-select default connection if available
+                    const defaultConnection = data.connections.find(c => c.isDefault);
+                    if (defaultConnection) {
+                        select.value = defaultConnection.connectionId;
+                        select.dispatchEvent(new Event('change'));
+                    }
+
+                    console.log(`Loaded ${data.connections.length} web service connections`);
+                } else {
+                    console.error('Failed to load web service connections:', data.error);
+                    showWebServiceStatus('danger', 'Failed to load web service connections. Please check your settings.');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading web service connections:', error);
+                showWebServiceStatus('danger', 'Error loading web service connections: ' + error.message);
+            });
+    }
+
+    function browseVariables(connectionId) {
+        // Get parameters
+        const maxVariables = parseInt(document.getElementById('maxVariables').value) || 100000;
+        const branchFilter = document.getElementById('branchFilter').value.trim();
+
+        // Show loading status
+        showWebServiceStatus('info', `Starting variables browse... (Max: ${maxVariables.toLocaleString()}, Filter: ${branchFilter || 'None'})`);
+
+        const browseBtn = document.getElementById('browseVariablesBtn');
+        browseBtn.disabled = true;
+        browseBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Browsing...';
+
+        // Prepare request data
+        const requestData = {
+            connectionId: connectionId,
+            maxVariables: maxVariables,
+            branchFilter: branchFilter,
+            variableType: 'Any',
+            depth: 0
+        };
+
+        console.log('Browsing variables with parameters:', requestData);
+
+        // Make API call to the NEW endpoint
+        fetch('/Import/BrowseVariablesWebService', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Variables browse response:', data);
+
+            if (data.success) {
+                const message = data.totalVariables !== undefined
+                    ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables. Check server terminal for detailed results.`
+                    : 'Variables browse completed! Check server terminal for detailed results.';
+
+                showWebServiceStatus('success', message);
+            } else {
+                showWebServiceStatus('danger', 'Variables browse failed: ' + (data.message || data.errorMessage || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error during variables browse:', error);
+            showWebServiceStatus('danger', 'Error during variables browse: ' + error.message);
+        })
+        .finally(() => {
+            // Reset button
+            browseBtn.disabled = false;
+            browseBtn.innerHTML = '<i class="bi bi-search"></i> Browse Variables';
+        });
+    }
+
+    function showWebServiceStatus(type, message) {
+        const statusDiv = document.getElementById('webServiceStatus');
+        const alertClass = `alert-${type}`;
+
+        statusDiv.className = `alert ${alertClass}`;
+        statusDiv.innerHTML = message;
+        statusDiv.style.display = 'block';
+
+        // Auto-hide success messages after 8 seconds
+        if (type === 'success') {
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 8000);
+        }
+    }
+
+    // Helper function for debugging
+    function testVariablesBrowse() {
+        const select = document.getElementById('webServiceConnection');
+        if (select.value) {
+            browseVariables(select.value);
+        } else {
+            showWebServiceStatus('warning', 'Please select a connection first');
+        }
+    }
+
+    // Make function available globally for debugging
+    window.testVariablesBrowse = testVariablesBrowse;
+</script>

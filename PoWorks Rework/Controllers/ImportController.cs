@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using static PoWorks_Rework.Controllers.HdsImportController;
+using System.Net.Http;
+using System.Text.Json;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -255,7 +257,7 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-     
+
         [HttpPost]
         public async Task<IActionResult> ImportMeterReadings([FromBody] ImportReadingsRequest request)
         {
@@ -810,6 +812,243 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        [HttpGet]
+        public IActionResult GetWebServiceConnections()
+        {
+            try
+            {
+                _logger.LogInformation("Getting Web Service connections...");
+
+                // Get webservice connections from configuration
+                var connections = new List<dynamic>();
+                var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
+
+                if (webServiceSection.Exists())
+                {
+                    foreach (var connectionSection in webServiceSection.GetChildren())
+                    {
+                        connections.Add(new
+                        {
+                            connectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
+                            connectionName = connectionSection["ConnectionName"] ?? "",
+                            baseUrl = connectionSection["BaseUrl"] ?? "",
+                            projectName = connectionSection["ProjectName"] ?? "",
+                            isDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                        });
+                    }
+                }
+
+                _logger.LogInformation($"Found {connections.Count} Web Service connections");
+                return Json(new { success = true, connections = connections });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting Web Service connections");
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        // Replace the BrowseVariablesWebService method in ImportController.cs with this debug version
+
+        [HttpPost]
+        public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
+        {
+            try
+            {
+                Console.WriteLine("\n=====================================================");
+                Console.WriteLine("PCVue VARIABLES BROWSE - RAW RESPONSE DEBUG");
+                Console.WriteLine("=====================================================");
+                Console.WriteLine($"Connection ID: {request.ConnectionId}");
+                Console.WriteLine($"Max Variables: {request.MaxVariables}");
+                Console.WriteLine($"Branch Filter: {request.BranchFilter ?? "None"}");
+                Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+
+                // Get the connection settings
+                var connection = GetWebServiceConnectionById(request.ConnectionId);
+                if (connection == null)
+                {
+                    Console.WriteLine("❌ ERROR: Web Service connection not found");
+                    Console.WriteLine("=====================================================\n");
+                    return Json(new { success = false, message = "Web Service connection not found" });
+                }
+
+                Console.WriteLine($"Connection Name: {connection.ConnectionName}");
+                Console.WriteLine($"Base URL: {connection.BaseUrl}");
+
+                // Create HttpClient with SSL bypass
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                using var httpClient = new HttpClient(handler);
+                httpClient.Timeout = TimeSpan.FromSeconds(connection.TimeoutSeconds);
+
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<PCVueWebService>>();
+                var webService = new PCVueWebService(httpClient, logger);
+
+                // Get authentication token
+                Console.WriteLine("\n--- AUTHENTICATION ---");
+                var token = await webService.GetValidAccessTokenAsync(connection);
+                if (string.IsNullOrEmpty(token))
+                {
+                    Console.WriteLine("❌ ERROR: Failed to get authentication token");
+                    Console.WriteLine("=====================================================\n");
+                    return Json(new { success = false, message = "Failed to authenticate" });
+                }
+
+                Console.WriteLine("✅ Authentication successful");
+
+                // Build the Variables endpoint URL
+                var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
+                var queryParams = new List<string>
+        {
+            "Depth=0",
+            "Type=Any",
+            $"Size={request.MaxVariables}"
+        };
+
+                if (!string.IsNullOrEmpty(request.BranchFilter))
+                {
+                    queryParams.Add($"Id={Uri.EscapeDataString(request.BranchFilter)}");
+                }
+
+                var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
+
+                Console.WriteLine("\n--- VARIABLES REQUEST ---");
+                Console.WriteLine($"Endpoint: {fullUrl}");
+
+                // Create and send request
+                var httpRequest = new HttpRequestMessage(HttpMethod.Get, fullUrl);
+                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+                var response = await httpClient.SendAsync(httpRequest);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                Console.WriteLine($"Response Status: {response.StatusCode}");
+                Console.WriteLine($"Response Length: {responseContent?.Length ?? 0} characters");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine("\n🎉 VARIABLES BROWSE SUCCESS!");
+
+                    // ✅ PRINT THE COMPLETE RAW RESPONSE
+                    Console.WriteLine("\n=== RAW RESPONSE START ===");
+                    Console.WriteLine(responseContent);
+                    Console.WriteLine("=== RAW RESPONSE END ===\n");
+
+                    // Also try to pretty-print the JSON structure
+                    try
+                    {
+                        var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                        Console.WriteLine("\n=== JSON STRUCTURE ANALYSIS ===");
+                        Console.WriteLine($"Root element type: {jsonData.ValueKind}");
+
+                        if (jsonData.ValueKind == JsonValueKind.Object)
+                        {
+                            Console.WriteLine("Root properties found:");
+                            foreach (var property in jsonData.EnumerateObject())
+                            {
+                                Console.WriteLine($"  - {property.Name}: {property.Value.ValueKind}");
+
+                                // If it's an array, show how many items
+                                if (property.Value.ValueKind == JsonValueKind.Array)
+                                {
+                                    Console.WriteLine($"    Array length: {property.Value.GetArrayLength()}");
+
+                                    // Show first array item structure if it exists
+                                    if (property.Value.GetArrayLength() > 0)
+                                    {
+                                        var firstItem = property.Value[0];
+                                        Console.WriteLine($"    First item type: {firstItem.ValueKind}");
+                                        if (firstItem.ValueKind == JsonValueKind.Object)
+                                        {
+                                            Console.WriteLine("    First item properties:");
+                                            foreach (var subProp in firstItem.EnumerateObject())
+                                            {
+                                                Console.WriteLine($"      - {subProp.Name}: {subProp.Value.ValueKind}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Console.WriteLine("==========================\n");
+                    }
+                    catch (JsonException parseEx)
+                    {
+                        Console.WriteLine($"❌ JSON PARSING ERROR: {parseEx.Message}");
+                        Console.WriteLine("This might not be valid JSON!\n");
+                    }
+
+                    Console.WriteLine($"✅ Raw response printed above");
+                    Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    Console.WriteLine("=====================================================\n");
+
+                    return Json(new
+                    {
+                        success = true,
+                        message = $"Variables browse completed! Response length: {responseContent?.Length ?? 0} characters. Check terminal for RAW RESPONSE.",
+                        responseLength = responseContent?.Length ?? 0
+                    });
+                }
+                else
+                {
+                    Console.WriteLine($"❌ ERROR: Variables browse failed");
+                    Console.WriteLine($"Status Code: {response.StatusCode}");
+                    Console.WriteLine($"Response: {responseContent}");
+                    Console.WriteLine("=====================================================\n");
+
+                    return Json(new
+                    {
+                        success = false,
+                        message = $"Variables browse failed: {response.StatusCode}"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ EXCEPTION: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                Console.WriteLine("=====================================================\n");
+
+                return Json(new
+                {
+                    success = false,
+                    message = "Error during variables browse. Check terminal for details."
+                });
+            }
+        }
+
+        // Helper method to get web service connection by ID
+        private PCVueWebServiceSettings? GetWebServiceConnectionById(string connectionId)
+        {
+            var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
+
+            foreach (var connectionSection in webServiceSection.GetChildren())
+            {
+                if (connectionSection["ConnectionId"] == connectionId)
+                {
+                    return new PCVueWebServiceSettings
+                    {
+                        ConnectionId = connectionSection["ConnectionId"] ?? "",
+                        ConnectionName = connectionSection["ConnectionName"] ?? "",
+                        BaseUrl = connectionSection["BaseUrl"] ?? "",
+                        ClientId = connectionSection["ClientId"] ?? "",
+                        ClientSecret = connectionSection["ClientSecret"] ?? "",
+                        Username = connectionSection["Username"] ?? "",
+                        Password = connectionSection["Password"] ?? "",
+                        AuthType = Enum.Parse<AuthenticationType>(connectionSection["AuthType"] ?? "0"),
+                        TimeoutSeconds = int.Parse(connectionSection["TimeoutSeconds"] ?? "30"),
+                        ProjectName = connectionSection["ProjectName"] ?? "",
+                        IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                    };
+                }
+            }
+
+            return null;
+        }
+
         [HttpPost]
         public async Task<IActionResult> ImportVarexpMeters([FromBody] ImportVarexpMetersRequest request)
         {
@@ -1100,6 +1339,16 @@ namespace PoWorks_Rework.Controllers
             public List<string> SelectedMeterNames { get; set; }
             public List<string> SelectedMeterTypes { get; set; }
             public List<string> SelectedMeterUnits { get; set; }
+        }
+
+        // Updated request model for Variables browsing
+        public class BrowseVariablesRequest
+        {
+            public string ConnectionId { get; set; } = "";
+            public int MaxVariables { get; set; } = 100000;
+            public string? BranchFilter { get; set; }
+            public string VariableType { get; set; } = "Any";
+            public int Depth { get; set; } = 0;
         }
 
         // Enhanced method to get parent meter options with better error handling

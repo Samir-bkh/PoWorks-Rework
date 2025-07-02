@@ -810,8 +810,11 @@ namespace PoWorks_Rework.Controllers
                         ClientId = connData.ContainsKey("ClientId") ? connData["ClientId"] : "",
                         ClientSecret = connData.ContainsKey("ClientSecret") ? connData["ClientSecret"] : "",
                         ApiKey = connData.ContainsKey("ApiKey") ? connData["ApiKey"] : "",
-                        Username = connData.ContainsKey("BasicUsername") ? connData["BasicUsername"] : "",  // NEW (note: form uses "BasicUsername")
-                        Password = connData.ContainsKey("BasicPassword") ? connData["BasicPassword"] : "",  // NEW (note: form uses "BasicPassword")
+
+                        // FIXED: Use correct field names
+                        Username = connData.ContainsKey("Username") ? connData["Username"] : "",  // FIXED: was "BasicUsername"
+                        Password = connData.ContainsKey("Password") ? connData["Password"] : "",  // FIXED: was "BasicPassword"
+
                         AuthType = connData.ContainsKey("AuthType") ? Enum.Parse<AuthenticationType>(connData["AuthType"]) : AuthenticationType.OAuth,
                         TimeoutSeconds = connData.ContainsKey("TimeoutSeconds") ? int.Parse(connData["TimeoutSeconds"]) : 30,
                         ProjectName = connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "",
@@ -988,21 +991,24 @@ namespace PoWorks_Rework.Controllers
 
             // Update Web Service connections
             var connectionsList = connections.Select(c => new Dictionary<string, object>
-            {
-                { "ConnectionId", c.ConnectionId },
-                { "ConnectionName", c.ConnectionName },
-                { "BaseUrl", c.BaseUrl },
-                { "ClientId", c.ClientId },
-                { "ClientSecret", c.ClientSecret },
-                { "ApiKey", c.ApiKey },
-                { "AuthType", (int)c.AuthType },
-                { "TimeoutSeconds", c.TimeoutSeconds },
-                { "ProjectName", c.ProjectName },
-                { "IsDefault", c.IsDefault }
-            }).ToList();
+    {
+        { "ConnectionId", c.ConnectionId },
+        { "ConnectionName", c.ConnectionName },
+        { "BaseUrl", c.BaseUrl },
+        { "ClientId", c.ClientId },
+        { "ClientSecret", c.ClientSecret },
+        { "ApiKey", c.ApiKey },
+        { "Username", c.Username },        // FIXED: Added Username
+        { "Password", c.Password },        // FIXED: Added Password
+        { "AuthType", (int)c.AuthType },
+        { "TimeoutSeconds", c.TimeoutSeconds },
+        { "ProjectName", c.ProjectName },
+        { "IsDefault", c.IsDefault }
+    }).ToList();
 
             updatedSettings["WebServiceConnections"] = connectionsList;
 
+            // Save back to file
             var options = new JsonSerializerOptions { WriteIndented = true };
             var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);

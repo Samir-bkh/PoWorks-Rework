@@ -68,6 +68,9 @@ namespace PoWorks_Rework.Services
         /// <summary>
         /// Request a new OAuth token (initial login or when refresh fails)
         /// </summary>
+        /// <summary>
+        /// Request a new OAuth token (initial login or when refresh fails)
+        /// </summary>
         private async Task<OAuthTokenResponse> RequestNewTokenAsync(PCVueWebServiceSettings settings)
         {
             try
@@ -89,7 +92,8 @@ namespace PoWorks_Rework.Services
             {"password", settings.Password},
             {"grant_type", "password"},
             {"client_id", settings.ClientId},
-            {"client_secret", settings.ClientSecret}
+            {"client_secret", settings.ClientSecret},
+            {"scope", "RealtimeData RealtimeAlarm HistoricalData GraphicalData"} // ✅ ADDED SCOPE
         };
 
                 // LOG THE REQUEST PARAMETERS (without sensitive data)
@@ -99,6 +103,7 @@ namespace PoWorks_Rework.Services
                 _logger.LogInformation("  grant_type: password");
                 _logger.LogInformation("  client_id: {ClientId}", settings.ClientId);
                 _logger.LogInformation("  client_secret: [HIDDEN]");
+                _logger.LogInformation("  scope: RealtimeData RealtimeAlarm HistoricalData GraphicalData"); // ✅ LOG SCOPE
 
                 // Create form-encoded content
                 var formContent = new FormUrlEncodedContent(formParams);
@@ -178,13 +183,6 @@ namespace PoWorks_Rework.Services
                         else
                         {
                             _logger.LogError("Invalid token response: missing access_token");
-                            _logger.LogError("TokenResponse null: {IsNull}", tokenResponse == null);
-                            if (tokenResponse != null)
-                            {
-                                _logger.LogError("AccessToken null or empty: {IsEmpty}", string.IsNullOrEmpty(tokenResponse.AccessToken));
-                                _logger.LogError("AccessToken value: '{AccessToken}'", tokenResponse.AccessToken ?? "NULL");
-                            }
-
                             return new OAuthTokenResponse
                             {
                                 Success = false,
@@ -192,47 +190,42 @@ namespace PoWorks_Rework.Services
                             };
                         }
                     }
-                    catch (JsonException jsonEx)
+                    catch (JsonException ex)
                     {
-                        _logger.LogError(jsonEx, "Failed to parse JSON response");
-                        _logger.LogError("Response that failed to parse: {ResponseContent}", responseContent);
-
+                        _logger.LogError(ex, "Error parsing token response JSON. Raw response: {ResponseContent}", responseContent);
                         return new OAuthTokenResponse
                         {
                             Success = false,
-                            ErrorMessage = $"JSON parsing error: {jsonEx.Message}"
+                            ErrorMessage = $"Error parsing token response: {ex.Message}"
                         };
                     }
                 }
                 else
                 {
-                    // Handle error response
-                    _logger.LogError("OAuth token request failed. Status: {StatusCode}, Response: {Response}",
-                        response.StatusCode, responseContent);
+                    _logger.LogError("OAuth token request failed: {StatusCode} - {ResponseContent}", response.StatusCode, responseContent);
 
                     // Try to parse error response
-                    OAuthErrorResponse? errorResponse = null;
                     try
                     {
-                        errorResponse = JsonSerializer.Deserialize<OAuthErrorResponse>(responseContent, new JsonSerializerOptions
+                        var errorResponse = JsonSerializer.Deserialize<OAuthErrorResponse>(responseContent, new JsonSerializerOptions
                         {
                             PropertyNameCaseInsensitive = true
                         });
-                    }
-                    catch (JsonException)
-                    {
-                        // If JSON parsing fails, use raw response
-                    }
 
-                    var errorMessage = errorResponse?.ErrorDescription ??
-                                     errorResponse?.Error ??
-                                     $"HTTP {response.StatusCode}: {response.ReasonPhrase}";
-
-                    return new OAuthTokenResponse
+                        return new OAuthTokenResponse
+                        {
+                            Success = false,
+                            ErrorMessage = $"OAuth error: {errorResponse?.Error} - {errorResponse?.ErrorDescription}"
+                        };
+                    }
+                    catch
                     {
-                        Success = false,
-                        ErrorMessage = errorMessage
-                    };
+                        return new OAuthTokenResponse
+                        {
+                            Success = false,
+                            ErrorMessage = $"Token request failed: {response.StatusCode} - {responseContent}"
+                        };
+                    }
                 }
             }
             catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
