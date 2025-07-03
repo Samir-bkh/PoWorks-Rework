@@ -428,7 +428,78 @@ namespace PoWorks_Rework.Services
         {
             ClearTokens();
         }
+
+        public async Task<string> BulkReadVariablesAsync(PCVueWebServiceSettings settings, string[] variables, string[] properties = null)
+        {
+            try
+            {
+                _logger.LogInformation("Starting BulkRead operation for {VariableCount} variables", variables.Length);
+
+                // Get valid access token
+                var token = await GetValidAccessTokenAsync(settings);
+                if (string.IsNullOrEmpty(token))
+                {
+                    throw new Exception("Failed to get valid access token for BulkRead operation");
+                }
+
+                // Build BulkRead endpoint URL
+                var bulkReadEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/RealTimeData/v2/BulkRead";
+                _logger.LogInformation("BulkRead endpoint: {Endpoint}", bulkReadEndpoint);
+
+                // Set default properties if none provided
+                if (properties == null || properties.Length == 0)
+                {
+                    properties = new[] { "VariableName", "Description", "Unit" };
+                }
+
+                // Create request payload
+                var requestPayload = new
+                {
+                    Variables = variables,
+                    Properties = properties
+                };
+
+                // Serialize to JSON
+                var jsonContent = JsonSerializer.Serialize(requestPayload, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+                _logger.LogInformation("BulkRead request payload:");
+                _logger.LogInformation("{JsonPayload}", jsonContent);
+
+                // Create HTTP request
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, bulkReadEndpoint);
+                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                httpRequest.Content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
+
+                // Send request
+                var response = await _httpClient.SendAsync(httpRequest);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                _logger.LogInformation("BulkRead response status: {StatusCode}", response.StatusCode);
+                _logger.LogInformation("BulkRead response length: {Length} characters", responseContent?.Length ?? 0);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("BulkRead operation completed successfully");
+                    return responseContent;
+                }
+                else
+                {
+                    throw new Exception($"BulkRead API call failed with status: {response.StatusCode}. Response: {responseContent}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during BulkRead operation");
+                throw;
+            }
+        }
     }
+
+
 
     #region Response Models
 

@@ -950,10 +950,124 @@ namespace PoWorks_Rework.Controllers
                             request.IncludeSystemVariables);
 
                         Console.WriteLine($"✅ Parsing completed successfully");
+
+                        // NEW: BulkRead Integration
+                        string bulkReadResponse = null;
+                        if (parseResult.Success && parseResult.Variables.Any())
+                        {
+                            Console.WriteLine("\n--- BULK READ OPERATION ---");
+
+                            try
+                            {
+                                // Extract variable names from parsed results, filtering out system variables
+                                var variableNames = parseResult.Variables
+                                    .Select(v => v.FullPath)
+                                    .Where(path => !string.IsNullOrEmpty(path))
+                                    .Where(path => !path.StartsWith(".")) // Filter out system variables like .Date, .Time, .User
+                                    .Where(path => path.Contains(".")) // Only include variables with proper branch structure
+                                    .Where(path => path.Length > 3) // Filter out very short names
+                                    .Take(20) // Increased limit for testing
+                                    .ToArray();
+
+                                Console.WriteLine($"Selected {variableNames.Length} variables for BulkRead:");
+                                foreach (var varName in variableNames)
+                                {
+                                    Console.WriteLine($"  - {varName}");
+                                }
+
+                                if (variableNames.Length > 0)
+                                {
+                                    // Call BulkRead API
+                                    bulkReadResponse = await webService.BulkReadVariablesAsync(
+                                        connection,
+                                        variableNames,
+                                        new[] { "VariableName", "Description", "Unit" });
+
+                                    Console.WriteLine("\n=== BULK READ RAW RESPONSE ===");
+
+                                    try
+                                    {
+                                        // Pretty print the JSON response
+                                        var jsonDoc = JsonDocument.Parse(bulkReadResponse);
+                                        var prettyJson = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions
+                                        {
+                                            WriteIndented = true
+                                        });
+                                        Console.WriteLine(prettyJson);
+
+                                        // Also create a cleaner table format
+                                        Console.WriteLine("\n=== BULK READ DATA SUMMARY ===");
+
+                                        if (jsonDoc.RootElement.ValueKind == JsonValueKind.Object)
+                                        {
+                                            Console.WriteLine("┌─────────────────────────────────────────────────┬───────────┬─────────────────────┬─────────────┐");
+                                            Console.WriteLine("│ Variable Name                                   │ Value     │ Timestamp           │ Quality     │");
+                                            Console.WriteLine("├─────────────────────────────────────────────────┼───────────┼─────────────────────┼─────────────┤");
+
+                                            foreach (var property in jsonDoc.RootElement.EnumerateObject())
+                                            {
+                                                var varName = property.Name;
+                                                var varData = property.Value;
+
+                                                var value = "N/A";
+                                                var timestamp = "N/A";
+                                                var quality = "N/A";
+
+                                                if (varData.TryGetProperty("value", out var valueElement))
+                                                    value = valueElement.ToString();
+
+                                                if (varData.TryGetProperty("Timestamp", out var timestampElement))
+                                                    timestamp = timestampElement.GetString()?.Substring(0, Math.Min(19, timestampElement.GetString()?.Length ?? 0)) ?? "N/A";
+
+                                                if (varData.TryGetProperty("quality", out var qualityElement))
+                                                    quality = qualityElement.GetString() ?? "N/A";
+
+                                                // Truncate variable name if too long
+                                                var displayName = varName.Length > 47 ? varName.Substring(0, 44) + "..." : varName;
+
+                                                Console.WriteLine($"│ {displayName,-47} │ {value,-9} │ {timestamp,-19} │ {quality,-11} │");
+                                            }
+                                            Console.WriteLine("└─────────────────────────────────────────────────┴───────────┴─────────────────────┴─────────────┘");
+                                        }
+                                        else if (jsonDoc.RootElement.ValueKind == JsonValueKind.Array)
+                                        {
+                                            // Handle error responses (array format)
+                                            Console.WriteLine("ERROR RESPONSES:");
+                                            foreach (var item in jsonDoc.RootElement.EnumerateArray())
+                                            {
+                                                if (item.TryGetProperty("code", out var code) &&
+                                                    item.TryGetProperty("Description", out var desc))
+                                                {
+                                                    var codeLabel = code.TryGetProperty("label", out var label) ? label.GetString() : "Unknown";
+                                                    Console.WriteLine($"❌ {desc.GetString()}: {codeLabel}");
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        // Fallback to raw response if JSON parsing fails
+                                        Console.WriteLine(bulkReadResponse);
+                                    }
+
+                                    Console.WriteLine("===============================");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("⚠️ No valid variable names found for BulkRead");
+                                }
+                            }
+                            catch (Exception bulkReadEx)
+                            {
+                                Console.WriteLine($"❌ BULK READ ERROR: {bulkReadEx.Message}");
+                                // Don't fail the entire operation if BulkRead fails
+                            }
+                        }
+
                         Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                         Console.WriteLine("=====================================================\n");
 
-                        // Return enhanced response with parsed data
+                        // Return enhanced response with parsed data and BulkRead response
                         return Json(new
                         {
                             success = true,
@@ -970,7 +1084,9 @@ namespace PoWorks_Rework.Controllers
                                 isLeaf = v.IsLeaf
                             }).ToList(),
                             parseSuccess = parseResult.Success,
-                            parseError = parseResult.Success ? null : parseResult.ErrorMessage
+                            parseError = parseResult.Success ? null : parseResult.ErrorMessage,
+                            bulkReadExecuted = !string.IsNullOrEmpty(bulkReadResponse),
+                            bulkReadResponse = bulkReadResponse // Include raw response for debugging
                         });
                     }
                     catch (JsonException parseEx)
