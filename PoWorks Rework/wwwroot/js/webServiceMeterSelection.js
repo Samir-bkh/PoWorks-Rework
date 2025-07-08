@@ -343,12 +343,12 @@ function printWebServiceVariables() {
         return;
     }
 
-    // Get connection info (you'll need to store this when browsing variables)
+    // Get connection info using the new utility function
     const connectionInfo = getStoredWebServiceConnectionInfo();
 
     const requestData = {
-        connectionId: connectionInfo?.connectionId || '',
-        connectionName: connectionInfo?.connectionName || '',
+        connectionId: connectionInfo.connectionId,
+        connectionName: connectionInfo.connectionName,
         selectedVariables: selectedVariables
     };
 
@@ -465,13 +465,25 @@ function collectSelectedWebServiceVariables() {
         const row = checkbox.closest('.web-service-variable-row');
 
         if (row) {
-            const variableName = row.querySelector('td:nth-child(3) small')?.textContent?.trim() || '';
+            const cells = row.cells;
+
+            // Extract variable name from the cell (now in cells[1])
+            const nameCell = cells[1];
+            const strongElement = nameCell?.querySelector('strong');
+            const variableName = strongElement ? strongElement.textContent.trim() : '';
+
+            // Get other values using the data-variable-index
             const unit = document.querySelector(`.web-service-unit-input[data-variable-index="${index}"]`)?.value || '';
             const type = document.querySelector(`.web-service-type-select[data-variable-index="${index}"]`)?.value || 'main';
             const parentMeterId = document.querySelector(`.web-service-parent-select[data-variable-index="${index}"]`)?.value || '';
             const active = document.querySelector(`.web-service-active-checkbox[data-variable-index="${index}"]`)?.checked || false;
-            const variableType = row.querySelector('td:nth-child(8) small')?.textContent?.trim() || '';
-            const isReadOnly = row.querySelector('td:nth-child(9) small')?.textContent?.trim() === 'Yes';
+
+            // Extract PCVue type and read-only status from badge elements
+            const variableTypeBadge = cells[6]?.querySelector('.badge');
+            const variableType = variableTypeBadge ? variableTypeBadge.textContent.trim() : '';
+
+            const readOnlyBadge = cells[7]?.querySelector('.badge');
+            const isReadOnly = readOnlyBadge ? readOnlyBadge.textContent.trim() === 'Yes' : false;
 
             selectedVariables.push({
                 variableName: variableName,
