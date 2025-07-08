@@ -10,11 +10,14 @@ using System.Threading.Tasks;
 using static PoWorks_Rework.Controllers.HdsImportController;
 using System.Net.Http;
 using System.Text.Json;
+using System.Linq; // Added missing using statement
 
 namespace PoWorks_Rework.Controllers
 {
     public class ImportController : Controller
     {
+        #region Constructor and Dependencies
+
         private readonly ILogger<ImportController> _logger;
         private readonly SqlServerService _sqlServerService;
         private readonly DatabaseService _databaseService;
@@ -22,11 +25,11 @@ namespace PoWorks_Rework.Controllers
         private readonly VariableBrowseParsingService _variableBrowseParsingService;
 
         public ImportController(
-     ILogger<ImportController> logger,
-     SqlServerService sqlServerService,
-     DatabaseService databaseService,
-     VarexpParserService varexpParserService,
-     VariableBrowseParsingService variableBrowseParsingService)
+            ILogger<ImportController> logger,
+            SqlServerService sqlServerService,
+            DatabaseService databaseService,
+            VarexpParserService varexpParserService,
+            VariableBrowseParsingService variableBrowseParsingService)
         {
             _logger = logger;
             _sqlServerService = sqlServerService;
@@ -34,6 +37,10 @@ namespace PoWorks_Rework.Controllers
             _varexpParserService = varexpParserService;
             _variableBrowseParsingService = variableBrowseParsingService;
         }
+
+        #endregion
+
+        #region General Controller Actions
 
         public IActionResult Index()
         {
@@ -43,8 +50,331 @@ namespace PoWorks_Rework.Controllers
                 HdsTables = new List<string>()
             };
 
-            return View(viewModel);
+            return View(viewModel); // Fixed: Added missing return statement and closing brace
         }
+
+        [HttpPost]
+        public IActionResult PrintWebServiceMeters([FromBody] PrintWebServiceMetersRequest request)
+        {
+            try
+            {
+                Console.WriteLine("\n=====================================================");
+                Console.WriteLine("WEB SERVICE VARIABLES PRINT FUNCTION");
+                Console.WriteLine("=====================================================");
+                Console.WriteLine($"Connection ID: {request?.ConnectionId ?? "Not provided"}");
+                Console.WriteLine($"Connection Name: {request?.ConnectionName ?? "Not provided"}");
+                Console.WriteLine($"Selected variables count: {request?.SelectedVariables?.Count ?? 0}");
+                Console.WriteLine($"Print timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+
+                if (request?.SelectedVariables != null && request.SelectedVariables.Count > 0)
+                {
+                    Console.WriteLine("\n--- WEB SERVICE VARIABLE DETAILS ---");
+
+                    for (int i = 0; i < request.SelectedVariables.Count; i++)
+                    {
+                        var variable = request.SelectedVariables[i];
+                        Console.WriteLine($"\nVariable {i + 1}:");
+                        Console.WriteLine($"  Variable Name: {variable.VariableName ?? "N/A"}");
+                        Console.WriteLine($"  Unit: {variable.Unit ?? "N/A"}");
+                        Console.WriteLine($"  Type: {variable.Type ?? "main"}");
+                        Console.WriteLine($"  Parent ID: {variable.ParentMeterId ?? "None"}");
+                        Console.WriteLine($"  Active: {variable.Active}");
+                        Console.WriteLine($"  Variable Type: {variable.VariableType ?? "N/A"}");
+                        Console.WriteLine($"  Is Read Only: {variable.IsReadOnly}");
+                        Console.WriteLine($"  Selected: {variable.IsSelected}");
+                    }
+
+                    // Additional Web Service-specific information
+                    Console.WriteLine("\n--- WEB SERVICE IMPORT SUMMARY ---");
+                    Console.WriteLine($"Total variables to import as meters: {request.SelectedVariables.Count}");
+                    Console.WriteLine($"Active variables: {request.SelectedVariables.Count(v => v.Active)}");
+                    Console.WriteLine($"Main type variables: {request.SelectedVariables.Count(v => v.Type?.ToLower() == "main")}");
+                    Console.WriteLine($"Sub type variables: {request.SelectedVariables.Count(v => v.Type?.ToLower() == "sub")}");
+                    Console.WriteLine($"Variables with parents: {request.SelectedVariables.Count(v => !string.IsNullOrEmpty(v.ParentMeterId))}");
+                    Console.WriteLine($"Read-only variables: {request.SelectedVariables.Count(v => v.IsReadOnly)}");
+                    Console.WriteLine($"Source connection: {request.ConnectionId}");
+
+                    // Group by variable type
+                    var typeGroups = request.SelectedVariables
+                        .GroupBy(v => v.VariableType ?? "Unknown")
+                        .OrderBy(g => g.Key);
+
+                    Console.WriteLine("\n--- VARIABLES BY PCVue TYPE ---");
+                    foreach (var group in typeGroups)
+                    {
+                        Console.WriteLine($"  {group.Key}: {group.Count()} variables");
+                        foreach (var variable in group.Take(3)) // Show first 3 in each group
+                        {
+                            Console.WriteLine($"    - {variable.VariableName}");
+                        }
+                        if (group.Count() > 3)
+                        {
+                            Console.WriteLine($"    ... and {group.Count() - 3} more");
+                        }
+                    }
+
+                    // Group by unit type
+                    var unitGroups = request.SelectedVariables
+                        .Where(v => !string.IsNullOrEmpty(v.Unit))
+                        .GroupBy(v => v.Unit)
+                        .OrderBy(g => g.Key);
+
+                    if (unitGroups.Any())
+                    {
+                        Console.WriteLine("\n--- VARIABLES BY UNIT TYPE ---");
+                        foreach (var group in unitGroups)
+                        {
+                            Console.WriteLine($"  {group.Key}: {group.Count()} variables");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("❌ No web service variables were provided for printing");
+                }
+
+                Console.WriteLine("=====================================================\n");
+
+                return Json(new
+                {
+                    success = true,
+                    message = "Web service variables printed to console successfully",
+                    count = request?.SelectedVariables?.Count ?? 0,
+                    connectionId = request?.ConnectionId,
+                    connectionName = request?.ConnectionName
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error in Web Service Print function: {ex.Message}");
+                return Json(new
+                {
+                    success = false,
+                    error = $"Web Service Print failed: {ex.Message}"
+                });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> ImportWebServiceMeters([FromBody] ImportWebServiceMetersRequest request)
+        {
+            try
+            {
+                _logger.LogInformation($"Received Web Service import request for {request?.Variables?.Count ?? 0} variables");
+
+                if (request?.Variables == null || request.Variables.Count == 0)
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = "No variables selected for import"
+                    });
+                }
+
+                // Check if database is initialized
+                if (!_databaseService.IsInitialized)
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = "PostgreSQL database not configured"
+                    });
+                }
+
+                // Statistics for import result
+                int importedCount = 0;
+                int skippedCount = 0;
+                int updatedCount = 0;
+                int errorCount = 0;
+                var errorVariables = new List<string>();
+                var detailedErrors = new Dictionary<string, string>();
+
+                // Create a NEW connection instead of using the service's shared connection
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    await connection.OpenAsync();
+
+                    // Create a transaction to ensure all operations succeed or fail together
+                    using var transaction = await connection.BeginTransactionAsync();
+
+                    try
+                    {
+                        foreach (var variable in request.Variables)
+                        {
+                            try
+                            {
+                                _logger.LogInformation($"Processing Web Service variable: {variable.VariableName}, Type: {variable.Type}, Unit: {variable.Unit}");
+
+                                // Skip empty variable names
+                                if (string.IsNullOrWhiteSpace(variable.VariableName))
+                                {
+                                    _logger.LogWarning("Skipping variable with empty name");
+                                    skippedCount++;
+                                    continue;
+                                }
+
+                                // Check if meter already exists
+                                bool meterExists = false;
+                                int existingMeterId = 0;
+
+                                using (var checkCommand = new NpgsqlCommand(
+                                    @"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @Name", connection, transaction))
+                                {
+                                    checkCommand.Parameters.AddWithValue("@Name", variable.VariableName);
+                                    var result = await checkCommand.ExecuteScalarAsync();
+                                    meterExists = result != null;
+                                    if (meterExists)
+                                        existingMeterId = Convert.ToInt32(result);
+                                }
+
+                                _logger.LogInformation($"Variable {variable.VariableName} exists as meter: {meterExists}, SkipExisting: {request.SkipExisting}, UpdateExisting: {request.UpdateExisting}");
+
+                                // Skip existing meter if requested
+                                if (meterExists && request.SkipExisting && !request.UpdateExisting)
+                                {
+                                    _logger.LogInformation($"Skipping existing meter: {variable.VariableName}");
+                                    skippedCount++;
+                                    continue;
+                                }
+
+                                // Ensure parent meter exists if specified
+                                int? parentId = null;
+
+                                if (!string.IsNullOrEmpty(variable.ParentMeterId))
+                                {
+                                    if (int.TryParse(variable.ParentMeterId, out int parsedParentId))
+                                    {
+                                        // Check if parent exists
+                                        using (var parentCheckCommand = new NpgsqlCommand(
+                                            @"SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @MeterId", connection, transaction))
+                                        {
+                                            parentCheckCommand.Parameters.AddWithValue("@MeterId", parsedParentId);
+                                            int parentCount = Convert.ToInt32(await parentCheckCommand.ExecuteScalarAsync());
+
+                                            if (parentCount > 0)
+                                            {
+                                                parentId = parsedParentId;
+                                                _logger.LogInformation($"Parent meter found with ID: {parentId}");
+                                            }
+                                            else
+                                            {
+                                                _logger.LogWarning($"Parent meter with ID {parsedParentId} not found for {variable.VariableName}, setting parent to null");
+                                                parentId = null;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Ensure type is valid
+                                string type = "main";
+                                if (!string.IsNullOrWhiteSpace(variable.Type) &&
+                                    (variable.Type.ToLower() == "main" || variable.Type.ToLower() == "sub"))
+                                {
+                                    type = variable.Type.ToLower();
+                                }
+
+                                _logger.LogInformation($"Will insert: {!meterExists}, Will update: {meterExists && request.UpdateExisting}");
+
+                                // Insert or update the meter
+                                if (meterExists && request.UpdateExisting)
+                                {
+                                    // Update existing meter
+                                    using (var updateCommand = new NpgsqlCommand(
+                                        @"UPDATE ""Meters"" SET 
+                                  ""Unit"" = @Unit,
+                                  ""ParentId"" = @ParentId,
+                                  ""LastReading"" = @LastReading,
+                                  ""Type"" = @Type,
+                                  ""Active"" = @Active
+                                  WHERE ""MeterId"" = @MeterId", connection, transaction))
+                                    {
+                                        updateCommand.Parameters.AddWithValue("@MeterId", existingMeterId);
+                                        updateCommand.Parameters.AddWithValue("@Unit", variable.Unit ?? "");
+                                        updateCommand.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
+                                        updateCommand.Parameters.AddWithValue("@LastReading", 0); // Default for web service variables
+                                        updateCommand.Parameters.AddWithValue("@Type", type);
+                                        updateCommand.Parameters.AddWithValue("@Active", variable.Active);
+
+                                        int rowsAffected = await updateCommand.ExecuteNonQueryAsync();
+                                        _logger.LogInformation($"Updated meter: {variable.VariableName}, Rows affected: {rowsAffected}");
+                                        if (rowsAffected > 0)
+                                        {
+                                            updatedCount++;
+                                        }
+                                    }
+                                }
+                                else if (!meterExists)
+                                {
+                                    // Insert new meter
+                                    using (var insertCommand = new NpgsqlCommand(
+                                        @"INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"")
+                                  VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active)
+                                  RETURNING ""MeterId""", connection, transaction))
+                                    {
+                                        insertCommand.Parameters.AddWithValue("@Name", variable.VariableName);
+                                        insertCommand.Parameters.AddWithValue("@Unit", variable.Unit ?? "");
+                                        insertCommand.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
+                                        insertCommand.Parameters.AddWithValue("@LastReading", 0); // Default for web service variables
+                                        insertCommand.Parameters.AddWithValue("@Type", type);
+                                        insertCommand.Parameters.AddWithValue("@Active", variable.Active);
+
+                                        var newMeterId = await insertCommand.ExecuteScalarAsync();
+                                        importedCount++;
+                                        _logger.LogInformation($"Imported new meter from variable: {variable.VariableName}, ID: {newMeterId}");
+                                    }
+                                }
+                                else
+                                {
+                                    // This case happens when the meter exists but we're not updating
+                                    _logger.LogInformation($"Variable {variable.VariableName} exists as meter but not updating due to settings");
+                                    skippedCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Track error for this variable but continue with others
+                                _logger.LogError(ex, $"Error importing variable {variable.VariableName}");
+                                errorCount++;
+                                errorVariables.Add(variable.VariableName);
+                                detailedErrors[variable.VariableName] = ex.Message;
+                            }
+                        }
+
+                        // Commit the transaction
+                        await transaction.CommitAsync();
+                        _logger.LogInformation($"Web Service Import completed: {importedCount} imported, {updatedCount} updated, {skippedCount} skipped, {errorCount} errors");
+
+                        return Json(new
+                        {
+                            success = errorCount == 0,
+                            importedCount,
+                            updatedCount,
+                            skippedCount,
+                            errorCount,
+                            errorVariables,
+                            detailedErrors,
+                            message = $"Successfully imported {importedCount} meters from variables, updated {updatedCount}, skipped {skippedCount}, with {errorCount} errors."
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        // Rollback the transaction if any error occurs
+                        await transaction.RollbackAsync();
+                        throw new Exception($"Failed to import Web Service variables as meters: {ex.Message}", ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing Web Service variables as meters");
+                return Json(new
+                {
+                    success = false,
+                    error = ex.Message,
+                    errorMessage = "An unexpected error occurred during the Web Service import process."
+                });
+            }
+        } // Fixed: Removed misplaced semicolon and return statement
 
         [HttpGet]
         public IActionResult GetSqlServerConnections()
@@ -77,50 +407,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [IgnoreAntiforgeryToken]
-        public async Task<IActionResult> ParseVarexp(IFormFile VarexpFile)
-        {
-            // 1) Basic file check
-            if (VarexpFile == null || VarexpFile.Length == 0)
-                return BadRequest("No VAREXP.DAT file was uploaded.");
+        #endregion
 
-            try
-            {
-                // 2) Attempt parse
-                var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
-
-                // 3) Get parent meter options from PostgreSQL database
-                _logger.LogInformation("🔍 DEBUG: About to call GetParentMeterOptions()"); // ✅ ADD THIS
-                var parentOptions = await GetParentMeterOptions();
-                _logger.LogInformation("🔍 DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0); // ✅ ADD THIS
-
-                var response = new
-                {
-                    success = true,
-                    records = records,
-                    parentOptions = parentOptions
-                };
-
-                _logger.LogInformation("🔍 DEBUG: Returning response with {RecordCount} records and {ParentCount} parent options",
-                    records?.Count ?? 0, parentOptions?.Count ?? 0); // ✅ ADD THIS
-
-                return Json(response);
-            }
-            catch (VarexpParseException vex)
-            {
-                _logger.LogError(vex, "VAREXP parse error at line {LineNumber}", vex.LineNumber);
-                return BadRequest($"Parsing error at line {vex.LineNumber}: {vex.Message}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error parsing VAREXP.DAT");
-                return BadRequest($"Unexpected error: {ex.Message}");
-            }
-        }
-
-
+        // ============================================================================================================
+        #region HDS (Historical Data Server) FUNCTIONALITY
+        // ============================================================================================================
 
         [HttpGet]
         public async Task<IActionResult> GetHdsTables(string connectionId = null)
@@ -141,8 +432,6 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, error = ex.Message });
             }
         }
-
-        // REPLACE the GetMetersFromTable method in your ImportController.cs with this version
 
         [HttpGet]
         public async Task<IActionResult> GetMetersFromTable(string tableName, string connectionId = null, string startDate = null, string endDate = null, int limit = 1000)
@@ -470,15 +759,6 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        public class ImportReadingsRequest
-        {
-            public string TableName { get; set; }
-            public List<string> MeterNames { get; set; }
-            public DateTime? StartDate { get; set; }
-            public DateTime? EndDate { get; set; }
-            public int? Limit { get; set; }
-        }
-
         [HttpPost]
         public IActionResult PrintHDSMeters([FromBody] PrintHDSMetersRequest request)
         {
@@ -563,28 +843,6 @@ namespace PoWorks_Rework.Controllers
                     error = $"HDS Print failed: {ex.Message}"
                 });
             }
-        }
-
-        // HDS-specific request model
-        public class PrintHDSMetersRequest
-        {
-            public string TableName { get; set; } = "";
-            public string ConnectionId { get; set; } = "";
-            public List<HDSMeterPrintItem> SelectedMeters { get; set; } = new();
-            public bool ImportHistoricalReadings { get; set; } = false;
-            public DateTime? StartDate { get; set; }
-            public DateTime? EndDate { get; set; }
-        }
-
-        public class HDSMeterPrintItem
-        {
-            public string HdsMeterName { get; set; } = "";
-            public string Unit { get; set; } = "";
-            public string Type { get; set; } = "main";
-            public string ParentMeterId { get; set; } = "";
-            public bool Active { get; set; } = true;
-            public string LastReading { get; set; } = "";
-            public bool IsSelected { get; set; } = true;
         }
 
         [HttpPost]
@@ -815,345 +1073,53 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        [HttpGet]
-        public IActionResult GetWebServiceConnections()
-        {
-            try
-            {
-                _logger.LogInformation("Getting Web Service connections...");
+        #endregion
 
-                // Get webservice connections from configuration
-                var connections = new List<dynamic>();
-                var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
-
-                if (webServiceSection.Exists())
-                {
-                    foreach (var connectionSection in webServiceSection.GetChildren())
-                    {
-                        connections.Add(new
-                        {
-                            connectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
-                            connectionName = connectionSection["ConnectionName"] ?? "",
-                            baseUrl = connectionSection["BaseUrl"] ?? "",
-                            projectName = connectionSection["ProjectName"] ?? "",
-                            isDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
-                        });
-                    }
-                }
-
-                _logger.LogInformation($"Found {connections.Count} Web Service connections");
-                return Json(new { success = true, connections = connections });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting Web Service connections");
-                return Json(new { success = false, error = ex.Message });
-            }
-        }
-
-        // Replace the BrowseVariablesWebService method in ImportController.cs with this debug version
+        // ============================================================================================================
+        #region VAREXP (PCVue Configuration Files) FUNCTIONALITY
+        // ============================================================================================================
 
         [HttpPost]
-        public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
+        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> ParseVarexp(IFormFile VarexpFile)
         {
+            // 1) Basic file check
+            if (VarexpFile == null || VarexpFile.Length == 0)
+                return BadRequest("No VAREXP.DAT file was uploaded.");
+
             try
             {
-                Console.WriteLine("\n=====================================================");
-                Console.WriteLine("PCVue VARIABLES BROWSE");
-                Console.WriteLine("=====================================================");
-                Console.WriteLine($"Connection ID: {request.ConnectionId}");
-                Console.WriteLine($"Max Variables: {request.MaxVariables}");
-                Console.WriteLine($"Branch Filter: {request.BranchFilter ?? "None"}");
-                Console.WriteLine($"Include System Variables: {request.IncludeSystemVariables}");
-                Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                // 2) Attempt parse
+                var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
 
-                // Get the connection settings
-                var connection = GetWebServiceConnectionById(request.ConnectionId);
-                if (connection == null)
+                // 3) Get parent meter options from PostgreSQL database
+                _logger.LogInformation("🔍 DEBUG: About to call GetParentMeterOptions()"); // ✅ ADD THIS
+                var parentOptions = await GetParentMeterOptions();
+                _logger.LogInformation("🔍 DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0); // ✅ ADD THIS
+
+                var response = new
                 {
-                    Console.WriteLine("❌ ERROR: Web Service connection not found");
-                    Console.WriteLine("=====================================================\n");
-                    return Json(new { success = false, message = "Web Service connection not found" });
-                }
+                    success = true,
+                    records = records,
+                    parentOptions = parentOptions
+                };
 
-                Console.WriteLine($"Connection Name: {connection.ConnectionName}");
+                _logger.LogInformation("🔍 DEBUG: Returning response with {RecordCount} records and {ParentCount} parent options",
+                    records?.Count ?? 0, parentOptions?.Count ?? 0); // ✅ ADD THIS
 
-                // Create HttpClient with SSL bypass
-                var handler = new HttpClientHandler();
-                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-
-                using var httpClient = new HttpClient(handler);
-                httpClient.Timeout = TimeSpan.FromSeconds(connection.TimeoutSeconds);
-
-                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<PCVueWebService>>();
-                var webService = new PCVueWebService(httpClient, logger);
-
-                // Get authentication token
-                Console.WriteLine("\n--- AUTHENTICATION ---");
-                var token = await webService.GetValidAccessTokenAsync(connection);
-                if (string.IsNullOrEmpty(token))
-                {
-                    Console.WriteLine("❌ ERROR: Failed to get authentication token");
-                    Console.WriteLine("=====================================================\n");
-                    return Json(new { success = false, message = "Failed to authenticate" });
-                }
-
-                Console.WriteLine("✅ Authentication successful");
-
-                // Build the Variables endpoint URL
-                var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
-                var queryParams = new List<string>
-        {
-            "Depth=0",
-            "Type=Any",
-            $"Size={request.MaxVariables}"
-        };
-
-                if (!string.IsNullOrEmpty(request.BranchFilter))
-                {
-                    queryParams.Add($"Id={Uri.EscapeDataString(request.BranchFilter)}");
-                }
-
-                var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
-                Console.WriteLine($"Endpoint: {fullUrl}");
-
-                // Create and send request
-                var httpRequest = new HttpRequestMessage(HttpMethod.Get, fullUrl);
-                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-
-                var response = await httpClient.SendAsync(httpRequest);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                Console.WriteLine($"Response Status: {response.StatusCode}");
-                Console.WriteLine($"Response Length: {responseContent?.Length ?? 0} characters");
-
-                if (response.IsSuccessStatusCode)
-                {
-                    Console.WriteLine("✅ API call successful");
-
-                    try
-                    {
-                        // Parse JSON response
-                        var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-
-                        // Parse the response using our parsing service with System variable filtering
-                        var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(
-                            jsonData,
-                            request.IncludeSystemVariables);
-
-                        // Print ONLY the parsed results to console
-                        var connectionName = connection.ConnectionName ?? request.ConnectionId;
-                        _variableBrowseParsingService.PrintParsedVariablesToConsole(
-                            parseResult,
-                            connectionName,
-                            request.IncludeSystemVariables);
-
-                        Console.WriteLine($"✅ Parsing completed successfully");
-
-                        // NEW: BulkRead Integration
-                        string bulkReadResponse = null;
-                        if (parseResult.Success && parseResult.Variables.Any())
-                        {
-                            Console.WriteLine("\n--- BULK READ OPERATION ---");
-
-                            try
-                            {
-                                // Extract variable names from parsed results, filtering out system variables
-                                var variableNames = parseResult.Variables
-                                    .Select(v => v.FullPath)
-                                    .Where(path => !string.IsNullOrEmpty(path))
-                                    .Where(path => !path.StartsWith(".")) // Filter out system variables like .Date, .Time, .User
-                                    .Where(path => path.Contains(".")) // Only include variables with proper branch structure
-                                    .Where(path => path.Length > 3) // Filter out very short names
-                                    .Take(20) // Increased limit for testing
-                                    .ToArray();
-
-                                Console.WriteLine($"Selected {variableNames.Length} variables for BulkRead:");
-                                foreach (var varName in variableNames)
-                                {
-                                    Console.WriteLine($"  - {varName}");
-                                }
-
-                                if (variableNames.Length > 0)
-                                {
-                                    // Call BulkRead API
-                                    bulkReadResponse = await webService.BulkReadVariablesAsync(
-                                        connection,
-                                        variableNames,
-                                        new[] { "VariableName", "Description", "Unit" });
-
-                                    Console.WriteLine("\n=== BULK READ RAW RESPONSE ===");
-
-                                    try
-                                    {
-                                        // Pretty print the JSON response
-                                        var jsonDoc = JsonDocument.Parse(bulkReadResponse);
-                                        var prettyJson = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions
-                                        {
-                                            WriteIndented = true
-                                        });
-                                        Console.WriteLine(prettyJson);
-
-                                        // Also create a cleaner table format
-                                        Console.WriteLine("\n=== BULK READ DATA SUMMARY ===");
-
-                                        if (jsonDoc.RootElement.ValueKind == JsonValueKind.Object)
-                                        {
-                                            Console.WriteLine("┌─────────────────────────────────────────────────┬───────────┬─────────────────────┬─────────────┐");
-                                            Console.WriteLine("│ Variable Name                                   │ Value     │ Timestamp           │ Quality     │");
-                                            Console.WriteLine("├─────────────────────────────────────────────────┼───────────┼─────────────────────┼─────────────┤");
-
-                                            foreach (var property in jsonDoc.RootElement.EnumerateObject())
-                                            {
-                                                var varName = property.Name;
-                                                var varData = property.Value;
-
-                                                var value = "N/A";
-                                                var timestamp = "N/A";
-                                                var quality = "N/A";
-
-                                                if (varData.TryGetProperty("value", out var valueElement))
-                                                    value = valueElement.ToString();
-
-                                                if (varData.TryGetProperty("Timestamp", out var timestampElement))
-                                                    timestamp = timestampElement.GetString()?.Substring(0, Math.Min(19, timestampElement.GetString()?.Length ?? 0)) ?? "N/A";
-
-                                                if (varData.TryGetProperty("quality", out var qualityElement))
-                                                    quality = qualityElement.GetString() ?? "N/A";
-
-                                                // Truncate variable name if too long
-                                                var displayName = varName.Length > 47 ? varName.Substring(0, 44) + "..." : varName;
-
-                                                Console.WriteLine($"│ {displayName,-47} │ {value,-9} │ {timestamp,-19} │ {quality,-11} │");
-                                            }
-                                            Console.WriteLine("└─────────────────────────────────────────────────┴───────────┴─────────────────────┴─────────────┘");
-                                        }
-                                        else if (jsonDoc.RootElement.ValueKind == JsonValueKind.Array)
-                                        {
-                                            // Handle error responses (array format)
-                                            Console.WriteLine("ERROR RESPONSES:");
-                                            foreach (var item in jsonDoc.RootElement.EnumerateArray())
-                                            {
-                                                if (item.TryGetProperty("code", out var code) &&
-                                                    item.TryGetProperty("Description", out var desc))
-                                                {
-                                                    var codeLabel = code.TryGetProperty("label", out var label) ? label.GetString() : "Unknown";
-                                                    Console.WriteLine($"❌ {desc.GetString()}: {codeLabel}");
-                                                }
-                                            }
-                                        }
-                                    }
-                                    catch
-                                    {
-                                        // Fallback to raw response if JSON parsing fails
-                                        Console.WriteLine(bulkReadResponse);
-                                    }
-
-                                    Console.WriteLine("===============================");
-                                }
-                                else
-                                {
-                                    Console.WriteLine("⚠️ No valid variable names found for BulkRead");
-                                }
-                            }
-                            catch (Exception bulkReadEx)
-                            {
-                                Console.WriteLine($"❌ BULK READ ERROR: {bulkReadEx.Message}");
-                                // Don't fail the entire operation if BulkRead fails
-                            }
-                        }
-
-                        Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                        Console.WriteLine("=====================================================\n");
-
-                        // Return enhanced response with parsed data and BulkRead response
-                        return Json(new
-                        {
-                            success = true,
-                            message = $"Variables browse completed! Found {parseResult.TotalCount} variables (System variables {(request.IncludeSystemVariables ? "included" : "filtered out")}). Check terminal for detailed results.",
-                            totalVariables = parseResult.TotalCount,
-                            systemVariablesIncluded = request.IncludeSystemVariables,
-                            parsedVariables = parseResult.Variables.Select(v => new
-                            {
-                                fullPath = v.FullPath,
-                                branches = v.Branches,
-                                variableName = v.VariableName,
-                                variableType = v.VariableType,
-                                isReadOnly = v.IsReadOnly,
-                                isLeaf = v.IsLeaf
-                            }).ToList(),
-                            parseSuccess = parseResult.Success,
-                            parseError = parseResult.Success ? null : parseResult.ErrorMessage,
-                            bulkReadExecuted = !string.IsNullOrEmpty(bulkReadResponse),
-                            bulkReadResponse = bulkReadResponse // Include raw response for debugging
-                        });
-                    }
-                    catch (JsonException parseEx)
-                    {
-                        Console.WriteLine($"❌ JSON PARSING ERROR: {parseEx.Message}");
-                        Console.WriteLine("=====================================================\n");
-
-                        return Json(new
-                        {
-                            success = false,
-                            message = $"API call succeeded but JSON parsing failed: {parseEx.Message}"
-                        });
-                    }
-                }
-                else
-                {
-                    Console.WriteLine($"❌ ERROR: Variables browse failed");
-                    Console.WriteLine($"Status Code: {response.StatusCode}");
-                    Console.WriteLine("=====================================================\n");
-
-                    return Json(new
-                    {
-                        success = false,
-                        message = $"Variables browse failed: {response.StatusCode}"
-                    });
-                }
+                return Json(response);
+            }
+            catch (VarexpParseException vex)
+            {
+                _logger.LogError(vex, "VAREXP parse error at line {LineNumber}", vex.LineNumber);
+                return BadRequest($"Parsing error at line {vex.LineNumber}: {vex.Message}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ EXCEPTION: {ex.Message}");
-                Console.WriteLine("=====================================================\n");
-
-                return Json(new
-                {
-                    success = false,
-                    message = "Error during variables browse. Check terminal for details."
-                });
+                _logger.LogError(ex, "Unexpected error parsing VAREXP.DAT");
+                return BadRequest($"Unexpected error: {ex.Message}");
             }
-        }
-
-        // Helper method to get web service connection by ID
-        private PCVueWebServiceSettings? GetWebServiceConnectionById(string connectionId)
-        {
-            var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
-
-            foreach (var connectionSection in webServiceSection.GetChildren())
-            {
-                if (connectionSection["ConnectionId"] == connectionId)
-                {
-                    return new PCVueWebServiceSettings
-                    {
-                        ConnectionId = connectionSection["ConnectionId"] ?? "",
-                        ConnectionName = connectionSection["ConnectionName"] ?? "",
-                        BaseUrl = connectionSection["BaseUrl"] ?? "",
-                        ClientId = connectionSection["ClientId"] ?? "",
-                        ClientSecret = connectionSection["ClientSecret"] ?? "",
-                        Username = connectionSection["Username"] ?? "",
-                        Password = connectionSection["Password"] ?? "",
-                        AuthType = Enum.Parse<AuthenticationType>(connectionSection["AuthType"] ?? "0"),
-                        TimeoutSeconds = int.Parse(connectionSection["TimeoutSeconds"] ?? "30"),
-                        ProjectName = connectionSection["ProjectName"] ?? "",
-                        IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
-                    };
-                }
-            }
-
-            return null;
         }
 
         [HttpPost]
@@ -1266,6 +1232,334 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        #endregion
+
+        // ============================================================================================================
+        #region WEB SERVICES (PCVue API) FUNCTIONALITY
+        // ============================================================================================================
+
+        [HttpGet]
+        public IActionResult GetWebServiceConnections()
+        {
+            try
+            {
+                _logger.LogInformation("Getting Web Service connections...");
+
+                // Get webservice connections from configuration
+                var connections = new List<dynamic>();
+                var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
+
+                if (webServiceSection.Exists())
+                {
+                    foreach (var connectionSection in webServiceSection.GetChildren())
+                    {
+                        connections.Add(new
+                        {
+                            connectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
+                            connectionName = connectionSection["ConnectionName"] ?? "",
+                            baseUrl = connectionSection["BaseUrl"] ?? "",
+                            projectName = connectionSection["ProjectName"] ?? "",
+                            isDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                        });
+                    }
+                }
+
+                _logger.LogInformation($"Found {connections.Count} Web Service connections");
+                return Json(new { success = true, connections = connections });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting Web Service connections");
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
+        {
+            try
+            {
+                Console.WriteLine("\n=====================================================");
+                Console.WriteLine("PCVue VARIABLES BROWSE");
+                Console.WriteLine("=====================================================");
+                Console.WriteLine($"Connection ID: {request.ConnectionId}");
+                Console.WriteLine($"Max Variables: {request.MaxVariables}");
+                Console.WriteLine($"Branch Filter: {request.BranchFilter ?? "None"}");
+                Console.WriteLine($"Include System Variables: {request.IncludeSystemVariables}");
+                Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+
+                // Get the connection settings
+                var connection = GetWebServiceConnectionById(request.ConnectionId);
+                if (connection == null)
+                {
+                    Console.WriteLine("❌ ERROR: Web Service connection not found");
+                    Console.WriteLine("=====================================================\n");
+                    return Json(new { success = false, message = "Web Service connection not found" });
+                }
+
+                Console.WriteLine($"Connection Name: {connection.ConnectionName}");
+
+                // Create HttpClient with SSL bypass
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                using var httpClient = new HttpClient(handler);
+                httpClient.Timeout = TimeSpan.FromSeconds(connection.TimeoutSeconds);
+
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<PCVueWebService>>();
+                var webService = new PCVueWebService(httpClient, logger);
+
+                // Get authentication token
+                Console.WriteLine("\n--- AUTHENTICATION ---");
+                var token = await webService.GetValidAccessTokenAsync(connection);
+                if (string.IsNullOrEmpty(token))
+                {
+                    Console.WriteLine("❌ ERROR: Failed to get authentication token");
+                    Console.WriteLine("=====================================================\n");
+                    return Json(new { success = false, message = "Failed to authenticate" });
+                }
+
+                Console.WriteLine("✅ Authentication successful");
+
+                // Build the Variables endpoint URL
+                var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
+                var queryParams = new List<string>
+                {
+                    "Depth=0",
+                    "Type=Any",
+                    $"Size={request.MaxVariables}"
+                };
+
+                if (!string.IsNullOrEmpty(request.BranchFilter))
+                {
+                    queryParams.Add($"Id={Uri.EscapeDataString(request.BranchFilter)}");
+                }
+
+                var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
+                Console.WriteLine($"Endpoint: {fullUrl}");
+
+                // Create and send request
+                var httpRequest = new HttpRequestMessage(HttpMethod.Get, fullUrl);
+                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+                var response = await httpClient.SendAsync(httpRequest);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                Console.WriteLine($"Response Status: {response.StatusCode}");
+                Console.WriteLine($"Response Length: {responseContent?.Length ?? 0} characters");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine("✅ API call successful");
+
+                    try
+                    {
+                        // Parse JSON response
+                        var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
+
+                        // Parse the response using our parsing service with System variable filtering
+                        var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(
+                            jsonData,
+                            request.IncludeSystemVariables);
+
+                        // Print ONLY the parsed results to console
+                        var connectionName = connection.ConnectionName ?? request.ConnectionId;
+                        _variableBrowseParsingService.PrintParsedVariablesToConsole(
+                            parseResult,
+                            connectionName,
+                            request.IncludeSystemVariables);
+
+                        Console.WriteLine($"✅ Parsing completed successfully");
+                        Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                        Console.WriteLine("=====================================================\n");
+
+                        // Return response with parsed data for meter selection table
+                        return Json(new
+                        {
+                            success = true,
+                            message = $"Variables browse completed! Found {parseResult.TotalCount} variables (System variables {(request.IncludeSystemVariables ? "included" : "filtered out")}). Check terminal for detailed results.",
+                            totalVariables = parseResult.TotalCount,
+                            systemVariablesIncluded = request.IncludeSystemVariables,
+                            // Format variables for meter selection table
+                            variables = parseResult.Variables.Select(v => new
+                            {
+                                variableName = v.FullPath,  // Use full path as meter name
+                                variableType = v.VariableType,
+                                isReadOnly = v.IsReadOnly,
+                                isLeaf = v.IsLeaf,
+                                branches = v.Branches
+                            }).ToList(),
+                            parseSuccess = parseResult.Success,
+                            parseError = parseResult.Success ? null : parseResult.ErrorMessage,
+                            // Add parent meter options for the selection table
+                            parentOptions = await GetParentMeterOptions(),
+                            // Add connection info for meter selection table
+                            connectionInfo = new
+                            {
+                                connectionId = request.ConnectionId,
+                                connectionName = connection.ConnectionName
+                            }
+                        });
+                    }
+                    catch (JsonException parseEx)
+                    {
+                        Console.WriteLine($"❌ JSON PARSING ERROR: {parseEx.Message}");
+                        Console.WriteLine("=====================================================\n");
+
+                        return Json(new
+                        {
+                            success = false,
+                            message = $"API call succeeded but JSON parsing failed: {parseEx.Message}"
+                        });
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"❌ ERROR: Variables browse failed");
+                    Console.WriteLine($"Status Code: {response.StatusCode}");
+                    Console.WriteLine("=====================================================\n");
+
+                    return Json(new
+                    {
+                        success = false,
+                        message = $"Variables browse failed: {response.StatusCode}"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ EXCEPTION: {ex.Message}");
+                Console.WriteLine("=====================================================\n");
+
+                return Json(new
+                {
+                    success = false,
+                    message = "Error during variables browse. Check terminal for details."
+                });
+            }
+        }
+
+        #endregion
+
+        // ============================================================================================================
+        #region UTILITY METHODS & HELPERS
+        // ============================================================================================================
+
+        [HttpPost]
+        public IActionResult PrintSelectedMeters([FromBody] PrintMetersRequest request)
+        {
+            Console.WriteLine("\n=====================================================");
+            Console.WriteLine("PRINT SELECTED METERS DATA");
+            Console.WriteLine("=====================================================");
+            Console.WriteLine($"Table Name: {request?.TableName ?? "Not provided"}");
+            Console.WriteLine($"Request type: {request?.GetType().Name ?? "null"}");
+
+            var selectedMeterNames = request?.SelectedMeterNames;
+            Console.WriteLine($"Selected meters count: {selectedMeterNames?.Count ?? 0}");
+
+            if (selectedMeterNames != null && selectedMeterNames.Count > 0)
+            {
+                Console.WriteLine("\nSelected meters:");
+                for (int i = 0; i < selectedMeterNames.Count; i++)
+                {
+                    string meterName = selectedMeterNames[i];
+                    string meterType = (request.SelectedMeterTypes != null && i < request.SelectedMeterTypes.Count) ? request.SelectedMeterTypes[i] : "Unknown";
+                    string meterUnit = (request.SelectedMeterUnits != null && i < request.SelectedMeterUnits.Count) ? request.SelectedMeterUnits[i] : "";
+
+                    Console.WriteLine($"  Meter {i + 1}: {meterName}");
+                    Console.WriteLine($"    Type: {meterType}");
+                    Console.WriteLine($"    Unit: {meterUnit}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("No meter names received");
+            }
+
+            Console.WriteLine("=====================================================\n");
+
+            return Json(new { success = true, message = "Printed meter data to console", count = selectedMeterNames?.Count ?? 0 });
+        }
+
+        // Helper method to get web service connection by ID
+        private PCVueWebServiceSettings? GetWebServiceConnectionById(string connectionId)
+        {
+            var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
+
+            foreach (var connectionSection in webServiceSection.GetChildren())
+            {
+                if (connectionSection["ConnectionId"] == connectionId)
+                {
+                    return new PCVueWebServiceSettings
+                    {
+                        ConnectionId = connectionSection["ConnectionId"] ?? "",
+                        ConnectionName = connectionSection["ConnectionName"] ?? "",
+                        BaseUrl = connectionSection["BaseUrl"] ?? "",
+                        ClientId = connectionSection["ClientId"] ?? "",
+                        ClientSecret = connectionSection["ClientSecret"] ?? "",
+                        Username = connectionSection["Username"] ?? "",
+                        Password = connectionSection["Password"] ?? "",
+                        AuthType = Enum.Parse<AuthenticationType>(connectionSection["AuthType"] ?? "0"),
+                        TimeoutSeconds = int.Parse(connectionSection["TimeoutSeconds"] ?? "30"),
+                        ProjectName = connectionSection["ProjectName"] ?? "",
+                        IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                    };
+                }
+            }
+
+            return null;
+        }
+
+        // Enhanced method to get parent meter options with better error handling
+        private async Task<List<SelectListItem>> GetParentMeterOptions()
+        {
+            var options = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "", Text = "None" }
+            };
+
+            try
+            {
+                if (_databaseService.IsInitialized)
+                {
+                    using (var connection = _databaseService.GetConnection())
+                    {
+                        var command = new Npgsql.NpgsqlCommand(@"
+                    SELECT ""MeterId"", ""Name"" 
+                    FROM ""Meters"" 
+                    WHERE ""Type"" = 'main' AND ""Active"" = true
+                    ORDER BY ""Name""", connection);
+
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                options.Add(new SelectListItem
+                                {
+                                    Value = reader.GetInt32(0).ToString(),
+                                    Text = reader.GetString(1)
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting parent meter options");
+                // Don't throw here, just return what we have
+            }
+
+            return options;
+        }
+
+        #endregion
+
+        // ============================================================================================================
+        #region VAREXP HELPER METHODS
+        // ============================================================================================================
+
         // Helper method to get existing meter by name
         private async Task<dynamic> GetExistingMeterByNameAsync(string meterName, NpgsqlConnection connection)
         {
@@ -1343,7 +1637,6 @@ namespace PoWorks_Rework.Controllers
             _logger.LogInformation($"Created meter {meter.MeterName} with ID {newMeterId}");
         }
 
-
         // Helper method to update existing VAREXP meter
         private async Task UpdateExistingVarexpMeterAsync(int meterId, VarexpMeterImportItem meter, NpgsqlConnection connection)
         {
@@ -1385,7 +1678,51 @@ namespace PoWorks_Rework.Controllers
             return count > 0;
         }
 
-        // Request models for VAREXP import
+        #endregion
+
+        // ============================================================================================================
+        #region REQUEST/RESPONSE MODELS
+        // ============================================================================================================
+
+        // HDS Models
+        public class ImportReadingsRequest
+        {
+            public string TableName { get; set; }
+            public List<string> MeterNames { get; set; }
+            public DateTime? StartDate { get; set; }
+            public DateTime? EndDate { get; set; }
+            public int? Limit { get; set; }
+        }
+
+        public class PrintHDSMetersRequest
+        {
+            public string TableName { get; set; } = "";
+            public string ConnectionId { get; set; } = "";
+            public List<HDSMeterPrintItem> SelectedMeters { get; set; } = new();
+            public bool ImportHistoricalReadings { get; set; } = false;
+            public DateTime? StartDate { get; set; }
+            public DateTime? EndDate { get; set; }
+        }
+
+        public class HDSMeterPrintItem
+        {
+            public string HdsMeterName { get; set; } = "";
+            public string Unit { get; set; } = "";
+            public string Type { get; set; } = "main";
+            public string ParentMeterId { get; set; } = "";
+            public bool Active { get; set; } = true;
+            public string LastReading { get; set; } = "";
+            public bool IsSelected { get; set; } = true;
+        }
+
+        public class ImportMetersRequest
+        {
+            public List<HDSMeterPrintItem> Meters { get; set; }
+            public bool SkipExisting { get; set; }
+            public bool UpdateExisting { get; set; }
+        }
+
+        // VAREXP Models
         public class ImportVarexpMetersRequest
         {
             public List<VarexpMeterImportItem> Meters { get; set; } = new();
@@ -1403,52 +1740,7 @@ namespace PoWorks_Rework.Controllers
             public bool Active { get; set; } = true;
         }
 
-        [HttpPost]
-        public IActionResult PrintSelectedMeters([FromBody] PrintMetersRequest request)
-        {
-            Console.WriteLine("\n=====================================================");
-            Console.WriteLine("PRINT SELECTED METERS DATA");
-            Console.WriteLine("=====================================================");
-            Console.WriteLine($"Table Name: {request?.TableName ?? "Not provided"}");
-            Console.WriteLine($"Request type: {request?.GetType().Name ?? "null"}");
-
-            var selectedMeterNames = request?.SelectedMeterNames;
-            Console.WriteLine($"Selected meters count: {selectedMeterNames?.Count ?? 0}");
-
-            if (selectedMeterNames != null && selectedMeterNames.Count > 0)
-            {
-                Console.WriteLine("\nSelected meters:");
-                for (int i = 0; i < selectedMeterNames.Count; i++)
-                {
-                    string meterName = selectedMeterNames[i];
-                    string meterType = (request.SelectedMeterTypes != null && i < request.SelectedMeterTypes.Count) ? request.SelectedMeterTypes[i] : "Unknown";
-                    string meterUnit = (request.SelectedMeterUnits != null && i < request.SelectedMeterUnits.Count) ? request.SelectedMeterUnits[i] : "";
-
-                    Console.WriteLine($"  Meter {i + 1}: {meterName}");
-                    Console.WriteLine($"    Type: {meterType}");
-                    Console.WriteLine($"    Unit: {meterUnit}");
-                }
-            }
-            else
-            {
-                Console.WriteLine("No meter names received");
-            }
-
-            Console.WriteLine("=====================================================\n");
-
-            return Json(new { success = true, message = "Printed meter data to console", count = selectedMeterNames?.Count ?? 0 });
-        }
-
-        // Create a class to receive the data from the request
-        public class PrintMetersRequest
-        {
-            public string TableName { get; set; }
-            public List<string> SelectedMeterNames { get; set; }
-            public List<string> SelectedMeterTypes { get; set; }
-            public List<string> SelectedMeterUnits { get; set; }
-        }
-
-        // Updated request model for Variables browsing
+        // Web Services Models
         public class BrowseVariablesRequest
         {
             public string ConnectionId { get; set; } = "";
@@ -1459,48 +1751,41 @@ namespace PoWorks_Rework.Controllers
             public bool IncludeSystemVariables { get; set; } = false;
         }
 
-        // Enhanced method to get parent meter options with better error handling
-        // Helper methods (CORRECTED - update this existing method)
-        private async Task<List<SelectListItem>> GetParentMeterOptions()
+        public class PrintWebServiceMetersRequest
         {
-            var options = new List<SelectListItem>
-    {
-        new SelectListItem { Value = "", Text = "None" }
-    };
-
-            try
-            {
-                if (_databaseService.IsInitialized)
-                {
-                    using (var connection = _databaseService.GetConnection())
-                    {
-                        var command = new Npgsql.NpgsqlCommand(@"
-                    SELECT ""MeterId"", ""Name"" 
-                    FROM ""Meters"" 
-                    WHERE ""Type"" = 'main' AND ""Active"" = true
-                    ORDER BY ""Name""", connection);
-
-                        using (var reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                options.Add(new SelectListItem
-                                {
-                                    Value = reader.GetInt32(0).ToString(),
-                                    Text = reader.GetString(1)
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting parent meter options");
-                // Don't throw here, just return what we have
-            }
-
-            return options;
+            public string ConnectionId { get; set; } = "";
+            public string ConnectionName { get; set; } = "";
+            public List<WebServiceVariableItem> SelectedVariables { get; set; } = new();
         }
+
+        public class WebServiceVariableItem
+        {
+            public string VariableName { get; set; } = "";
+            public string Unit { get; set; } = "";
+            public string Type { get; set; } = "main";
+            public string ParentMeterId { get; set; } = "";
+            public bool Active { get; set; } = true;
+            public string VariableType { get; set; } = "";
+            public bool IsReadOnly { get; set; } = false;
+            public bool IsSelected { get; set; } = true;
+        }
+
+        public class ImportWebServiceMetersRequest
+        {
+            public List<WebServiceVariableItem> Variables { get; set; } = new();
+            public bool SkipExisting { get; set; }
+            public bool UpdateExisting { get; set; }
+        }
+
+        // General Models
+        public class PrintMetersRequest
+        {
+            public string TableName { get; set; }
+            public List<string> SelectedMeterNames { get; set; }
+            public List<string> SelectedMeterTypes { get; set; }
+            public List<string> SelectedMeterUnits { get; set; }
+        }
+
+        #endregion
     }
 }

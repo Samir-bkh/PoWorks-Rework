@@ -300,6 +300,57 @@
     <script src="~/js/hdsMeterImport.js"></script>
     <script src="~/js/hdsMeterSelection.js"></script>
     <script src="~/js/import.js"></script>
+    <script src="~/js/webServiceMeterSelection.js" asp-append-version="true"></script>
+
+    <script>
+        // Web Service Integration - Connect browse response to meter selection
+        window.showWebServiceMeterSelection = function(variables, parentOptions, connectionInfo) {
+            console.log('🟢 Showing Web Service meter selection with', variables.length, 'variables');
+
+            // Store connection info for later use (print/import)
+            storeWebServiceConnectionInfo(connectionInfo);
+
+            // Get the shared meter selection section
+            const meterSelectionSection = document.getElementById('meterSelectionSection');
+            if (!meterSelectionSection) {
+                console.error('Meter selection section not found!');
+                return;
+            }
+
+            // Show the section
+            meterSelectionSection.classList.remove('d-none');
+
+            // Create the web service specific table HTML
+            const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
+
+            // Replace the card-body content with web service table
+            const cardBody = meterSelectionSection.querySelector('.card-body');
+            if (cardBody) {
+                cardBody.innerHTML = tableHtml;
+            }
+
+            // Update the section header
+            const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
+            if (sectionHeader) {
+                sectionHeader.innerHTML = '<i class="bi bi-cloud"></i> Web Service Variable to Meter Selection';
+            }
+
+            // Set data type flag for unified system
+            window.currentMeterDataType = 'WebService';
+            window.currentWebServiceContext = connectionInfo;
+
+            // Hide import readings checkbox (not applicable for web services)
+            const importReadingsCheckbox = document.getElementById('importReadings');
+            if (importReadingsCheckbox) {
+                const checkboxContainer = importReadingsCheckbox.closest('.form-check');
+                if (checkboxContainer) {
+                    checkboxContainer.style.display = 'none';
+                }
+            }
+
+            console.log('✅ Web Service meter selection displayed successfully');
+        };
+    </script>
 }
 
 <script>
@@ -381,7 +432,7 @@
             });
     }
 
-    // UPDATED: Browse Variables Function with System Variables Support
+    // UPDATED: Browse Variables Function with System Variables Support and Meter Selection Integration
     function browseVariables(connectionId) {
         // Get parameters
         const maxVariables = parseInt(document.getElementById('maxVariables').value) || 100000;
@@ -403,7 +454,7 @@
             branchFilter: branchFilter,
             variableType: 'Any',
             depth: 0,
-            includeSystemVariables: includeSystemVariables  // NEW: Include the system variables option
+            includeSystemVariables: includeSystemVariables
         };
 
         console.log('Browsing variables with parameters:', requestData);
@@ -426,9 +477,7 @@
             console.log('Variables browse response:', data);
 
             if (data.success) {
-                // AUTOMATIC PARSING RESULTS - The parsing happens automatically on the server
-                // and the parsed data is included in the response
-
+                // ✅ EXISTING CODE: Log parsed variables
                 console.log('=== PARSED VARIABLES (Client-side) ===');
                 if (data.parsedVariables && data.parsedVariables.length > 0) {
                     console.log(`Found ${data.parsedVariables.length} parsed variables:`);
@@ -451,13 +500,48 @@
                     console.log('No parsed variables received');
                 }
 
-                // Show success message with system variables status
+                // ✅ EXISTING CODE: Show success message
                 const systemStatus = data.systemVariablesIncluded ? "included" : "filtered out";
                 const message = data.totalVariables !== undefined
                     ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables (System variables ${systemStatus}). Check server terminal for detailed parsed results.`
                     : 'Variables browse completed! Check server terminal for detailed results.';
 
                 showWebServiceStatus('success', message);
+
+                // 🎯 NEW CODE: Show meter selection table if variables found
+                if (data.variables && data.variables.length > 0) {
+                    console.log('🟢 Calling showWebServiceMeterSelection with', data.variables.length, 'variables');
+
+                    // Call the meter selection function
+                    showWebServiceMeterSelection(
+                        data.variables,           // Variables array from controller
+                        data.parentOptions || [], // Parent meter options from controller
+                        data.connectionInfo || {} // Connection info from controller
+                    );
+
+                    // Scroll to the meter selection section
+                    setTimeout(() => {
+                        const meterSelectionSection = document.getElementById('meterSelectionSection');
+                        if (meterSelectionSection) {
+                            meterSelectionSection.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start'
+                            });
+                        }
+                    }, 100);
+
+                    // Update status message to include meter selection info
+                    showWebServiceStatus('success',
+                        message + ` 🎯 Meter selection table displayed below with ${data.variables.length} variables ready for import.`
+                    );
+                } else {
+                    console.log('⚠️ No variables array found in response for meter selection');
+                    console.log('Available data keys:', Object.keys(data));
+                    showWebServiceStatus('warning',
+                        message + ' No variables found for meter selection. Try adjusting your filters.'
+                    );
+                }
+
             } else {
                 // Handle parsing errors
                 const errorMsg = data.parseError
