@@ -339,6 +339,10 @@
             window.currentMeterDataType = 'WebService';
             window.currentWebServiceContext = connectionInfo;
 
+                    if (typeof updatePrintButtonForDataType === 'function') {
+            updatePrintButtonForDataType('WebService');
+        }
+
             // Hide import readings checkbox (not applicable for web services)
             const importReadingsCheckbox = document.getElementById('importReadings');
             if (importReadingsCheckbox) {

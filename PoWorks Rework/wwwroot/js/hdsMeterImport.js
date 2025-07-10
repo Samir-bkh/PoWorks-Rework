@@ -616,11 +616,11 @@ function updatePrintButtonForDataType(dataType) {
         } else if (dataType === 'VAREXP') {
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print VAREXP Meters';
             printBtn.className = 'btn btn-secondary'; // Grey for VAREXP
-        }
-
-    } else if (dataType === 'WebService') {
-        printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Web Service Variables';
-        printBtn.className = 'btn btn-outline-info'; // Light blue for WebServiceelse {
+        } else if (dataType === 'WebService') {
+            printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Web Service Variables';
+            printBtn.className = 'btn btn-outline-info'; // Light blue for WebService
+        } else {
+            // Default fallback for unknown data types
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Selected';
             printBtn.className = 'btn btn-info';
         }
