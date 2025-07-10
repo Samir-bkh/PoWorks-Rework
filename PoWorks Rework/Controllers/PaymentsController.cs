@@ -1,11 +1,16 @@
 ﻿// Controllers/PaymentsController.cs
 using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
+using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
-    public class PaymentsController : Controller
+    public class PaymentsController : BaseController
     {
+        public PaymentsController(DatabaseService databaseService) : base(databaseService)
+        {
+        }
+
         public IActionResult Index()
         {
             // Create a sample payment view model

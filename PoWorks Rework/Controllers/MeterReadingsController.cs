@@ -1,5 +1,4 @@
-﻿// Controllers/MeterReadingsController.cs - FIXED Quality Column Issue
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -30,7 +29,7 @@ namespace PoWorks_Rework.Controllers
         /// <summary>
         /// Main meter readings page - UPDATED to support multiple meter IDs
         /// </summary>
-        public async Task<IActionResult> Index(string meterIds = null, string viewType = "raw", int page = 1, int pageSize = 50)
+        public async Task<IActionResult> Index(string meterIds, string viewType = "raw", int page = 1, int pageSize = 50)
         {
             // Check if database is initialized
             if (!_databaseService.IsInitialized)

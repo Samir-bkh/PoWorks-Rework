@@ -6,7 +6,7 @@ namespace PoWorks_Rework.Models
         public DatabaseSettings PostgreSql { get; set; } = new DatabaseSettings();
         public List<SqlServerSettings> SqlServerConnections { get; set; } = new List<SqlServerSettings>();
 
-        // NEW: Web Service connections - THIS WAS MISSING!
+        // Web Service connections
         public List<PCVueWebServiceSettings> WebServiceConnections { get; set; } = new List<PCVueWebServiceSettings>();
 
         // Backward compatibility - returns the default SQL Server connection
