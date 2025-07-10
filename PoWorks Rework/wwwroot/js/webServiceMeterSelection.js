@@ -9,18 +9,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Set up event delegation for the parent page
     document.body.addEventListener('click', function (event) {
-        // Handle Select All button click
-        if (event.target.id === 'selectAllWebServiceBtn' || event.target.closest('#selectAllWebServiceBtn')) {
-            console.log('Select All Web Service variables button clicked');
-            handleWebServiceSelectAll();
-        }
-
-        // Handle Deselect All button click
-        if (event.target.id === 'deselectAllWebServiceBtn' || event.target.closest('#deselectAllWebServiceBtn')) {
-            console.log('Deselect All Web Service variables button clicked');
-            handleWebServiceDeselectAll();
-        }
-
         // Handle Apply Bulk Type button click
         if (event.target.id === 'applyWebServiceBulkType' || event.target.closest('#applyWebServiceBulkType')) {
             console.log('Apply Bulk Type button clicked (Web Service)');
@@ -37,18 +25,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (event.target.id === 'applyWebServiceBulkActive' || event.target.closest('#applyWebServiceBulkActive')) {
             console.log('Apply Bulk Active button clicked (Web Service)');
             applyWebServiceBulkActive();
-        }
-
-        // Handle Print Web Service Variables button click
-        if (event.target.id === 'printWebServiceVariablesBtn' || event.target.closest('#printWebServiceVariablesBtn')) {
-            console.log('Print Web Service Variables button clicked');
-            printWebServiceVariables();
-        }
-
-        // Handle Import Web Service Variables button click
-        if (event.target.id === 'importWebServiceVariablesBtn' || event.target.closest('#importWebServiceVariablesBtn')) {
-            console.log('Import Web Service Variables button clicked');
-            importWebServiceVariables();
         }
     });
 });
@@ -75,37 +51,28 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
     }
 
     let tableHtml = `
-        <div class="web-service-meter-selection-container">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5>Web Service Variable to Meter Selection</h5>
-                <div>
-                    <button type="button" class="btn btn-outline-primary btn-sm me-1" id="selectAllWebServiceBtn">
-                        <i class="bi bi-check-square"></i> Select All
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="deselectAllWebServiceBtn">
-                        <i class="bi bi-square"></i> Deselect All
-                    </button>
-                </div>
-            </div>
-
-            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                <table class="table table-sm table-striped table-hover">
-                    <thead class="table-dark sticky-top">
-                        <tr>
-                            <th style="width: 50px;">
-                                <input type="checkbox" class="form-check-input" id="selectAllWebServiceCheckbox" checked>
-                            </th>
-                            <th style="width: 60px;">Type</th>
-                            <th style="width: 300px;">Variable Name</th>
-                            <th style="width: 150px;">Unit</th>
-                            <th style="width: 100px;">Meter Type</th>
-                            <th style="width: 200px;">Parent Meter</th>
-                            <th style="width: 80px;">Active</th>
-                            <th style="width: 100px;">PCVue Type</th>
-                            <th style="width: 80px;">Read Only</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
+    <div class="web-service-meter-selection-container">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5>Web Service Variable to Meter Selection</h5>
+        </div>
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-striped table-hover">
+             <thead class="sticky-top">
+                <tr>
+                        <th style="width: 50px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;">
+                            <span class="text-dark fw-bold">Select</span>
+                        </th>
+                        <th style="width: 60px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Type</span></th>
+                        <th style="width: 300px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Variable Name</span></th>
+                        <th style="width: 150px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Unit</span></th>
+                        <th style="width: 100px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Meter Type</span></th>
+                        <th style="width: 200px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Parent Meter</span></th>
+                        <th style="width: 80px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Active</span></th>
+                        <th style="width: 100px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">PCVue Type</span></th>
+                        <th style="width: 80px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Read Only</span></th>
+                    </tr>
+                </thead>
+                <tbody>`;
 
     // Add info row
     tableHtml += `
@@ -152,7 +119,7 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
         tableHtml += `
             <tr class="web-service-variable-row" data-variable-index="${index}">
                 <td>
-                    <input type="checkbox" class="form-check-input web-service-variable-checkbox" checked data-variable-index="${index}">
+                  <input type="checkbox" class="form-check-input meter-checkbox web-service-variable-checkbox" checked data-variable-index="${index}">
                 </td>
                 <td>
                     <span class="badge ${badgeClass}">${typeBadge}</span>
@@ -227,18 +194,19 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
                 </div>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="d-flex justify-content-between mt-4">
-                <button type="button" class="btn btn-outline-info" id="printWebServiceVariablesBtn">
-                    <i class="bi bi-printer"></i> Print Web Service Variables
-                </button>
-                <button type="button" class="btn btn-success" id="importWebServiceVariablesBtn">
-                    <i class="bi bi-download"></i> Import Selected Variables as Meters
-                </button>
-            </div>
         </div>`;
 
     return tableHtml;
+}
+
+function handleWebServicePrint() {
+    // Bridge to existing printWebServiceVariables function
+    printWebServiceVariables();
+}
+
+function handleWebServiceImport() {
+    // Bridge to existing importWebServiceVariables function
+    importWebServiceVariables();
 }
 
 /**

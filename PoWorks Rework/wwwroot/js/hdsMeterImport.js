@@ -574,6 +574,11 @@ function handleUnifiedPrint() {
             }
             break;
 
+        case 'WebService':
+            console.log('🟠 Routing to WebService print handler');
+            handleWebServicePrint();
+            break;
+
         default:
             console.error('🔴 Unknown data type - cannot determine print handler');
 
@@ -611,7 +616,11 @@ function updatePrintButtonForDataType(dataType) {
         } else if (dataType === 'VAREXP') {
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print VAREXP Meters';
             printBtn.className = 'btn btn-secondary'; // Grey for VAREXP
-        } else {
+        }
+
+    } else if (dataType === 'WebService') {
+        printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Web Service Variables';
+        printBtn.className = 'btn btn-outline-info'; // Light blue for WebServiceelse {
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Selected';
             printBtn.className = 'btn btn-info';
         }
