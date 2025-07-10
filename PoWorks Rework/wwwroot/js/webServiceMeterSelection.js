@@ -425,35 +425,50 @@ function importWebServiceVariables() {
  * Collect selected Web Service variables with their configuration
  */
 function collectSelectedWebServiceVariables() {
+    console.log('🟠 Collecting selected WebService variables...');
+
     const selectedVariables = [];
     const selectedCheckboxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
 
-    selectedCheckboxes.forEach(checkbox => {
-        const index = checkbox.getAttribute('data-variable-index');
+    console.log(`🟠 Found ${selectedCheckboxes.length} selected checkboxes`);
+
+    selectedCheckboxes.forEach((checkbox, index) => {
+        const dataIndex = checkbox.getAttribute('data-variable-index');
         const row = checkbox.closest('.web-service-variable-row');
 
         if (row) {
             const cells = row.cells;
+            console.log(`🟠 Processing variable ${index + 1}, data-index: ${dataIndex}`);
 
-            // Extract variable name from the cell (now in cells[1])
-            const nameCell = cells[1];
-            const strongElement = nameCell?.querySelector('strong');
-            const variableName = strongElement ? strongElement.textContent.trim() : '';
+            // 🎯 FIXED: Extract variable name from cells[2] (Variable Name column) inside <small> element
+            const nameCell = cells[2]; // Was cells[1], should be cells[2]
+            const smallElement = nameCell?.querySelector('small'); // Was looking for <strong>, should be <small>
+            const variableName = smallElement ? smallElement.textContent.trim() : '';
+
+            console.log(`🟠 Extracted variable name: "${variableName}"`);
 
             // Get other values using the data-variable-index
-            const unit = document.querySelector(`.web-service-unit-input[data-variable-index="${index}"]`)?.value || '';
-            const type = document.querySelector(`.web-service-type-select[data-variable-index="${index}"]`)?.value || 'main';
-            const parentMeterId = document.querySelector(`.web-service-parent-select[data-variable-index="${index}"]`)?.value || '';
-            const active = document.querySelector(`.web-service-active-checkbox[data-variable-index="${index}"]`)?.checked || false;
+            const unitInput = document.querySelector(`.web-service-unit-input[data-variable-index="${dataIndex}"]`);
+            const unit = unitInput?.value || '';
 
-            // Extract PCVue type and read-only status from badge elements
-            const variableTypeBadge = cells[6]?.querySelector('.badge');
+            const typeSelect = document.querySelector(`.web-service-type-select[data-variable-index="${dataIndex}"]`);
+            const type = typeSelect?.value || 'main';
+
+            const parentSelect = document.querySelector(`.web-service-parent-select[data-variable-index="${dataIndex}"]`);
+            const parentMeterId = parentSelect?.value || '';
+
+            const activeCheckbox = document.querySelector(`.web-service-active-checkbox[data-variable-index="${dataIndex}"]`);
+            const active = activeCheckbox?.checked || false;
+
+            // 🎯 FIXED: Extract PCVue type from correct cell (cells[7] for PCVue Type column)
+            const variableTypeBadge = cells[7]?.querySelector('small');
             const variableType = variableTypeBadge ? variableTypeBadge.textContent.trim() : '';
 
-            const readOnlyBadge = cells[7]?.querySelector('.badge');
-            const isReadOnly = readOnlyBadge ? readOnlyBadge.textContent.trim() === 'Yes' : false;
+            // 🎯 FIXED: Extract read-only status from correct cell (cells[8] for Read Only column)
+            const readOnlyCell = cells[8]?.querySelector('small');
+            const isReadOnly = readOnlyCell ? readOnlyCell.textContent.trim() === 'Yes' : false;
 
-            selectedVariables.push({
+            const variableData = {
                 variableName: variableName,
                 unit: unit,
                 type: type,
@@ -462,10 +477,16 @@ function collectSelectedWebServiceVariables() {
                 variableType: variableType,
                 isReadOnly: isReadOnly,
                 isSelected: true
-            });
+            };
+
+            console.log(`🟠 Variable ${index + 1} data:`, variableData);
+            selectedVariables.push(variableData);
+        } else {
+            console.error(`🔴 Could not find row for checkbox with data-index: ${dataIndex}`);
         }
     });
 
+    console.log(`🟠 Collected ${selectedVariables.length} variables total`);
     return selectedVariables;
 }
 

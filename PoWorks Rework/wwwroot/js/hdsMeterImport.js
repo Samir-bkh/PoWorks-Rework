@@ -552,7 +552,7 @@ function populateHDSMetersTable(meters) {
 // =====================================================
 
 function handleUnifiedPrint() {
-    console.log('🎯 Unified Print Handler - Detecting data type...');
+    console.log('🎯 Enhanced Unified Print Handler - Detecting data type...');
 
     const dataType = window.currentMeterDataType || 'UNKNOWN';
     console.log(`🎯 Current data type: ${dataType}`);
@@ -565,7 +565,6 @@ function handleUnifiedPrint() {
 
         case 'VAREXP':
             console.log('🟨 Routing to VAREXP print handler');
-            // This will be handled by import.js
             if (typeof handleVarexpPrint === 'function') {
                 handleVarexpPrint();
             } else {
@@ -576,13 +575,33 @@ function handleUnifiedPrint() {
 
         case 'WebService':
             console.log('🟠 Routing to WebService print handler');
-            handleWebServicePrint();
+            // 🎯 ENHANCED: Check for WebService function AND checkboxes
+            if (typeof handleWebServicePrint === 'function') {
+                const wsCheckboxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
+                if (wsCheckboxes.length > 0) {
+                    handleWebServicePrint();
+                } else {
+                    alert('Please select at least one Web Service variable to print.');
+                }
+            } else {
+                console.error('🔴 WebService print handler not found');
+                alert('WebService print functionality not available');
+            }
             break;
 
         default:
-            console.error('🔴 Unknown data type - cannot determine print handler');
+            console.error('🔴 Unknown data type - attempting enhanced fallback detection');
 
-            // Fallback: Try to detect from table content
+            // 🎯 ENHANCED FALLBACK: Check for WebService content first
+            const webServiceTable = document.querySelector('.web-service-meter-selection-container');
+            if (webServiceTable) {
+                console.log('🟠 Fallback detected WebService from container class');
+                window.currentMeterDataType = 'WebService';
+                handleWebServicePrint();
+                return;
+            }
+
+            // Original fallback for HDS/VAREXP
             const tableBody = document.getElementById('metersTableBody');
             if (tableBody) {
                 const headerRow = tableBody.querySelector('.table-info');
