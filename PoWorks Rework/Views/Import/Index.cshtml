@@ -49,6 +49,34 @@
                                     <div class="form-text">Available when connected</div>
                                 </div>
 
+                                <!-- NEW: Date Range Selection for HDS Historical Data -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-calendar-range"></i> Historical Data Range
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <label for="hdsStartDate" class="form-label small text-muted">Start Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="hdsStartDate">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="hdsEndDate" class="form-label small text-muted">End Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="hdsEndDate">
+                                        </div>
+                                    </div>
+                                    <div class="form-text">Select date range for historical readings</div>
+                                </div>
+
+                                <!-- Quick Date Range Buttons for HDS -->
+                                <div class="mb-3">
+                                    <label class="form-label small">Quick Range:</label>
+                                    <div class="btn-group btn-group-sm w-100" role="group">
+                                        <button type="button" class="btn btn-outline-secondary" id="hdsQuickRange24h">24h</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="hdsQuickRange7d">7 Days</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="hdsQuickRange30d">30 Days</button>
+                                    </div>
+                                </div>
+
                                 <!-- Load Meters Button -->
                                 <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
                                     <i class="bi bi-search"></i> Load Meters
@@ -109,7 +137,35 @@
                                     <div class="form-text">Filter by specific branch/area</div>
                                 </div>
 
-                                <!-- NEW: Include System Variables Checkbox -->
+                                <!-- NEW: Date Range Selection for Trends -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-calendar-range"></i> Trends Date Range
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <label for="trendsStartDate" class="form-label small text-muted">Start Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="trendsStartDate">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="trendsEndDate" class="form-label small text-muted">End Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="trendsEndDate">
+                                        </div>
+                                    </div>
+                                    <div class="form-text">Select date range for historical trend data</div>
+                                </div>
+
+                                <!-- Quick Date Range Buttons -->
+                                <div class="mb-3">
+                                    <label class="form-label small">Quick Range:</label>
+                                    <div class="btn-group btn-group-sm w-100" role="group">
+                                        <button type="button" class="btn btn-outline-secondary" id="quickRange24h">24h</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="quickRange7d">7 Days</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="quickRange30d">30 Days</button>
+                                    </div>
+                                </div>
+
+                                <!-- Include System Variables Checkbox -->
                                 <div class="form-check mb-3">
                                     <input class="form-check-input" type="checkbox" id="includeSystemVariables" value="true">
                                     <label class="form-check-label" for="includeSystemVariables">
@@ -359,6 +415,18 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize date range with default values (last 24 hours)
+        initializeDateRange();
+        initializeHdsDateRange();
+
+        // Set up quick range buttons
+        setupQuickRangeButtons();
+        setupHdsQuickRangeButtons();
+
+        // Validate date range on input
+        setupDateValidation();
+        setupHdsDateValidation();
+
         // Load web service connections when page loads
         loadWebServiceConnections();
 
@@ -398,6 +466,395 @@
             }
         });
     });
+
+    /**
+     * Initialize date range with default values (last 24 hours)
+     */
+    function initializeDateRange() {
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
+        const endDateStr = formatDateTimeLocal(now);
+        const startDateStr = formatDateTimeLocal(yesterday);
+
+        document.getElementById('trendsEndDate').value = endDateStr;
+        document.getElementById('trendsStartDate').value = startDateStr;
+
+        console.log('🕒 Initialized date range: Last 24 hours');
+        console.log(`Start: ${startDateStr}, End: ${endDateStr}`);
+    }
+
+    /**
+     * Format date for datetime-local input
+     */
+    function formatDateTimeLocal(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    /**
+     * Set up quick range buttons
+     */
+    function setupQuickRangeButtons() {
+        // 24 Hours
+        document.getElementById('quickRange24h').addEventListener('click', function() {
+            setQuickRange(24, 'hours');
+            highlightActiveQuickRange(this);
+        });
+
+        // 7 Days
+        document.getElementById('quickRange7d').addEventListener('click', function() {
+            setQuickRange(7, 'days');
+            highlightActiveQuickRange(this);
+        });
+
+        // 30 Days
+        document.getElementById('quickRange30d').addEventListener('click', function() {
+            setQuickRange(30, 'days');
+            highlightActiveQuickRange(this);
+        });
+    }
+
+    /**
+     * Set date range based on quick range selection
+     */
+    function setQuickRange(amount, unit) {
+        const now = new Date();
+        const startDate = new Date();
+
+        if (unit === 'hours') {
+            startDate.setHours(startDate.getHours() - amount);
+        } else if (unit === 'days') {
+            startDate.setDate(startDate.getDate() - amount);
+        }
+
+        document.getElementById('trendsEndDate').value = formatDateTimeLocal(now);
+        document.getElementById('trendsStartDate').value = formatDateTimeLocal(startDate);
+
+        console.log(`🕒 Set quick range: Last ${amount} ${unit}`);
+
+        // Trigger validation
+        validateDateRange();
+    }
+
+    /**
+     * Highlight the active quick range button
+     */
+    function highlightActiveQuickRange(activeButton) {
+        // Remove active class from all quick range buttons
+        document.querySelectorAll('#quickRange24h, #quickRange7d, #quickRange30d').forEach(btn => {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-outline-secondary');
+        });
+
+        // Add active class to clicked button
+        activeButton.classList.remove('btn-outline-secondary');
+        activeButton.classList.add('btn-secondary');
+    }
+
+    /**
+     * Set up date validation
+     */
+    function setupDateValidation() {
+        const startDateInput = document.getElementById('trendsStartDate');
+        const endDateInput = document.getElementById('trendsEndDate');
+
+        startDateInput.addEventListener('change', validateDateRange);
+        endDateInput.addEventListener('change', validateDateRange);
+    }
+
+    /**
+     * Validate that end date is after start date
+     */
+    function validateDateRange() {
+        const startDateInput = document.getElementById('trendsStartDate');
+        const endDateInput = document.getElementById('trendsEndDate');
+
+        const startDate = new Date(startDateInput.value);
+        const endDate = new Date(endDateInput.value);
+
+        // Clear previous validation styles
+        startDateInput.classList.remove('is-invalid');
+        endDateInput.classList.remove('is-invalid');
+
+        if (startDate >= endDate) {
+            // Invalid: start date is after or equal to end date
+            endDateInput.classList.add('is-invalid');
+            console.warn('⚠️ Invalid date range: End date must be after start date');
+            return false;
+        }
+
+        // Check if date range is too large (more than 1 year)
+        const oneYear = 365 * 24 * 60 * 60 * 1000; // milliseconds
+        if (endDate - startDate > oneYear) {
+            startDateInput.classList.add('is-invalid');
+            endDateInput.classList.add('is-invalid');
+            console.warn('⚠️ Date range too large: Maximum 1 year range allowed');
+            return false;
+        }
+
+        console.log('✅ Valid date range selected');
+        return true;
+    }
+
+    /**
+     * Get the selected date range for API calls
+     */
+    function getSelectedDateRange() {
+        const startDateInput = document.getElementById('trendsStartDate');
+        const endDateInput = document.getElementById('trendsEndDate');
+
+        if (!startDateInput.value || !endDateInput.value) {
+            console.error('Date range not selected');
+            return null;
+        }
+
+        if (!validateDateRange()) {
+            console.error('Invalid date range selected');
+            return null;
+        }
+
+        const startDate = new Date(startDateInput.value);
+        const endDate = new Date(endDateInput.value);
+
+        return {
+            startDate: startDate,
+            endDate: endDate,
+            startDateStr: startDate.toISOString(),
+            endDateStr: endDate.toISOString(),
+            // Format for API (YYYY-MM-DD HH:MM:SS)
+            startDateApi: formatDateForApi(startDate),
+            endDateApi: formatDateForApi(endDate)
+        };
+    }
+
+    /**
+     * Format date for API calls (YYYY-MM-DD HH:MM:SS)
+     */
+    function formatDateForApi(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+
+    /**
+     * Display current date range info
+     */
+    function displayDateRangeInfo() {
+        const dateRange = getSelectedDateRange();
+        if (dateRange) {
+            const duration = dateRange.endDate - dateRange.startDate;
+            const hours = Math.round(duration / (1000 * 60 * 60));
+            const days = Math.round(hours / 24);
+
+            console.log('📅 Selected Date Range:');
+            console.log(`   Start: ${dateRange.startDateApi}`);
+            console.log(`   End: ${dateRange.endDateApi}`);
+            console.log(`   Duration: ${days > 1 ? `${days} days` : `${hours} hours`}`);
+
+            return dateRange;
+        }
+        return null;
+    }
+
+    // Make functions available globally for trends functionality
+    window.getSelectedDateRange = getSelectedDateRange;
+    window.validateDateRange = validateDateRange;
+    window.displayDateRangeInfo = displayDateRangeInfo;
+
+    // ===========================================
+    // HDS DATE RANGE FUNCTIONALITY (Same logic but for HDS)
+    // ===========================================
+
+    /**
+     * Initialize HDS date range with default values (last 24 hours)
+     */
+    function initializeHdsDateRange() {
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
+        const endDateStr = formatDateTimeLocal(now);
+        const startDateStr = formatDateTimeLocal(yesterday);
+
+        document.getElementById('hdsEndDate').value = endDateStr;
+        document.getElementById('hdsStartDate').value = startDateStr;
+
+        console.log('🕒 Initialized HDS date range: Last 24 hours');
+        console.log(`HDS Start: ${startDateStr}, HDS End: ${endDateStr}`);
+    }
+
+    /**
+     * Set up HDS quick range buttons
+     */
+    function setupHdsQuickRangeButtons() {
+        // 24 Hours
+        document.getElementById('hdsQuickRange24h').addEventListener('click', function() {
+            setHdsQuickRange(24, 'hours');
+            highlightActiveHdsQuickRange(this);
+        });
+
+        // 7 Days
+        document.getElementById('hdsQuickRange7d').addEventListener('click', function() {
+            setHdsQuickRange(7, 'days');
+            highlightActiveHdsQuickRange(this);
+        });
+
+        // 30 Days
+        document.getElementById('hdsQuickRange30d').addEventListener('click', function() {
+            setHdsQuickRange(30, 'days');
+            highlightActiveHdsQuickRange(this);
+        });
+    }
+
+    /**
+     * Set HDS date range based on quick range selection
+     */
+    function setHdsQuickRange(amount, unit) {
+        const now = new Date();
+        const startDate = new Date();
+
+        if (unit === 'hours') {
+            startDate.setHours(startDate.getHours() - amount);
+        } else if (unit === 'days') {
+            startDate.setDate(startDate.getDate() - amount);
+        }
+
+        document.getElementById('hdsEndDate').value = formatDateTimeLocal(now);
+        document.getElementById('hdsStartDate').value = formatDateTimeLocal(startDate);
+
+        console.log(`🕒 Set HDS quick range: Last ${amount} ${unit}`);
+
+        // Trigger validation
+        validateHdsDateRange();
+    }
+
+    /**
+     * Highlight the active HDS quick range button
+     */
+    function highlightActiveHdsQuickRange(activeButton) {
+        // Remove active class from all HDS quick range buttons
+        document.querySelectorAll('#hdsQuickRange24h, #hdsQuickRange7d, #hdsQuickRange30d').forEach(btn => {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-outline-secondary');
+        });
+
+        // Add active class to clicked button
+        activeButton.classList.remove('btn-outline-secondary');
+        activeButton.classList.add('btn-secondary');
+    }
+
+    /**
+     * Set up HDS date validation
+     */
+    function setupHdsDateValidation() {
+        const startDateInput = document.getElementById('hdsStartDate');
+        const endDateInput = document.getElementById('hdsEndDate');
+
+        startDateInput.addEventListener('change', validateHdsDateRange);
+        endDateInput.addEventListener('change', validateHdsDateRange);
+    }
+
+    /**
+     * Validate that HDS end date is after start date
+     */
+    function validateHdsDateRange() {
+        const startDateInput = document.getElementById('hdsStartDate');
+        const endDateInput = document.getElementById('hdsEndDate');
+
+        const startDate = new Date(startDateInput.value);
+        const endDate = new Date(endDateInput.value);
+
+        // Clear previous validation styles
+        startDateInput.classList.remove('is-invalid');
+        endDateInput.classList.remove('is-invalid');
+
+        if (startDate >= endDate) {
+            // Invalid: start date is after or equal to end date
+            endDateInput.classList.add('is-invalid');
+            console.warn('⚠️ Invalid HDS date range: End date must be after start date');
+            return false;
+        }
+
+        // Check if date range is too large (more than 1 year)
+        const oneYear = 365 * 24 * 60 * 60 * 1000; // milliseconds
+        if (endDate - startDate > oneYear) {
+            startDateInput.classList.add('is-invalid');
+            endDateInput.classList.add('is-invalid');
+            console.warn('⚠️ HDS date range too large: Maximum 1 year range allowed');
+            return false;
+        }
+
+        console.log('✅ Valid HDS date range selected');
+        return true;
+    }
+
+    /**
+     * Get the selected HDS date range for API calls
+     */
+    function getHdsSelectedDateRange() {
+        const startDateInput = document.getElementById('hdsStartDate');
+        const endDateInput = document.getElementById('hdsEndDate');
+
+        if (!startDateInput.value || !endDateInput.value) {
+            console.error('HDS date range not selected');
+            return null;
+        }
+
+        if (!validateHdsDateRange()) {
+            console.error('Invalid HDS date range selected');
+            return null;
+        }
+
+        const startDate = new Date(startDateInput.value);
+        const endDate = new Date(endDateInput.value);
+
+        return {
+            startDate: startDate,
+            endDate: endDate,
+            startDateStr: startDate.toISOString(),
+            endDateStr: endDate.toISOString(),
+            // Format for API (YYYY-MM-DD HH:MM:SS)
+            startDateApi: formatDateForApi(startDate),
+            endDateApi: formatDateForApi(endDate)
+        };
+    }
+
+    /**
+     * Display current HDS date range info
+     */
+    function displayHdsDateRangeInfo() {
+        const dateRange = getHdsSelectedDateRange();
+        if (dateRange) {
+            const duration = dateRange.endDate - dateRange.startDate;
+            const hours = Math.round(duration / (1000 * 60 * 60));
+            const days = Math.round(hours / 24);
+
+            console.log('📅 Selected HDS Date Range:');
+            console.log(`   Start: ${dateRange.startDateApi}`);
+            console.log(`   End: ${dateRange.endDateApi}`);
+            console.log(`   Duration: ${days > 1 ? `${days} days` : `${hours} hours`}`);
+
+            return dateRange;
+        }
+        return null;
+    }
+
+    // Make HDS functions available globally
+    window.getHdsSelectedDateRange = getHdsSelectedDateRange;
+    window.validateHdsDateRange = validateHdsDateRange;
+    window.displayHdsDateRangeInfo = displayHdsDateRangeInfo;
 
     function loadWebServiceConnections() {
         fetch('/Import/GetWebServiceConnections')

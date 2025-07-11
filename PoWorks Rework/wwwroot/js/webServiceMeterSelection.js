@@ -3,32 +3,6 @@
  * This file handles the meter selection table after browsing PCVue web service variables
  */
 
-// Wait for the document to be fully loaded
-document.addEventListener('DOMContentLoaded', function () {
-    console.log('Web Service Meter Selection JS loaded - DOM Content Loaded');
-
-    // Set up event delegation for the parent page
-    document.body.addEventListener('click', function (event) {
-        // Handle Apply Bulk Type button click
-        if (event.target.id === 'applyWebServiceBulkType' || event.target.closest('#applyWebServiceBulkType')) {
-            console.log('Apply Bulk Type button clicked (Web Service)');
-            applyWebServiceBulkType();
-        }
-
-        // Handle Apply Bulk Parent button click
-        if (event.target.id === 'applyWebServiceBulkParent' || event.target.closest('#applyWebServiceBulkParent')) {
-            console.log('Apply Bulk Parent button clicked (Web Service)');
-            applyWebServiceBulkParent();
-        }
-
-        // Handle Apply Bulk Active button click
-        if (event.target.id === 'applyWebServiceBulkActive' || event.target.closest('#applyWebServiceBulkActive')) {
-            console.log('Apply Bulk Active button clicked (Web Service)');
-            applyWebServiceBulkActive();
-        }
-    });
-});
-
 /**
  * Create the meter selection table from browsed web service variables
  */
@@ -156,45 +130,6 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
             </tr>`;
     });
 
-    tableHtml += `
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Bulk Operations -->
-            <div class="row mt-3">
-                <div class="col-md-4">
-                    <label class="form-label">Bulk Type:</label>
-                    <div class="input-group">
-                        <select class="form-select" id="webServiceBulkTypeSelect">
-                            <option value="main">Main</option>
-                            <option value="sub">Sub</option>
-                        </select>
-                        <button class="btn btn-outline-secondary" type="button" id="applyWebServiceBulkType">Apply</button>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Bulk Parent:</label>
-                    <div class="input-group">
-                        <select class="form-select" id="webServiceBulkParentSelect">
-                            ${parentOptionsHtml}
-                        </select>
-                        <button class="btn btn-outline-secondary" type="button" id="applyWebServiceBulkParent">Apply</button>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Bulk Active:</label>
-                    <div class="input-group">
-                        <select class="form-select" id="webServiceBulkActiveSelect">
-                            <option value="true">Active (True)</option>
-                            <option value="false">Inactive (False)</option>
-                        </select>
-                        <button class="btn btn-outline-secondary" type="button" id="applyWebServiceBulkActive">Apply</button>
-                    </div>
-                </div>
-            </div>
-
-        </div>`;
 
     return tableHtml;
 }
@@ -243,61 +178,6 @@ function handleWebServiceDeselectAll() {
     }
 
     console.log('Deselected all Web Service variables');
-}
-
-/**
- * Apply bulk type to selected variables
- */
-function applyWebServiceBulkType() {
-    const bulkType = document.getElementById('webServiceBulkTypeSelect')?.value;
-    if (!bulkType) return;
-
-    const selectedCheckboxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
-    selectedCheckboxes.forEach(checkbox => {
-        const index = checkbox.getAttribute('data-variable-index');
-        const typeSelect = document.querySelector(`.web-service-type-select[data-variable-index="${index}"]`);
-        if (typeSelect) {
-            typeSelect.value = bulkType;
-        }
-    });
-
-    console.log(`Applied bulk type "${bulkType}" to ${selectedCheckboxes.length} selected variables`);
-}
-
-/**
- * Apply bulk parent to selected variables
- */
-function applyWebServiceBulkParent() {
-    const bulkParent = document.getElementById('webServiceBulkParentSelect')?.value;
-
-    const selectedCheckboxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
-    selectedCheckboxes.forEach(checkbox => {
-        const index = checkbox.getAttribute('data-variable-index');
-        const parentSelect = document.querySelector(`.web-service-parent-select[data-variable-index="${index}"]`);
-        if (parentSelect) {
-            parentSelect.value = bulkParent || '';
-        }
-    });
-
-    console.log(`Applied bulk parent "${bulkParent || 'None'}" to ${selectedCheckboxes.length} selected variables`);
-}
-
-/**
- * Apply bulk active status to selected variables
- */
-function applyWebServiceBulkActive() {
-    const bulkActive = document.getElementById('webServiceBulkActiveSelect')?.value === 'true';
-
-    const selectedCheckboxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
-    selectedCheckboxes.forEach(checkbox => {
-        const index = checkbox.getAttribute('data-variable-index');
-        const activeCheckbox = document.querySelector(`.web-service-active-checkbox[data-variable-index="${index}"]`);
-        if (activeCheckbox) {
-            activeCheckbox.checked = bulkActive;
-        }
-    });
-
-    console.log(`Applied bulk active status "${bulkActive}" to ${selectedCheckboxes.length} selected variables`);
 }
 
 /**

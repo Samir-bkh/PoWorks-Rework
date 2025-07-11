@@ -28,6 +28,9 @@ builder.Services.AddHttpClient<PCVueWebService>(client =>
     return handler;
 });
 
+// NEW: Register TrendsService (depends on PCVueWebService)
+builder.Services.AddScoped<TrendsService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
