@@ -359,9 +359,9 @@
     <script src="~/js/webServiceMeterSelection.js" asp-append-version="true"></script>
 
     <script>
-        // Web Service Integration - Connect browse response to meter selection
-        window.showWebServiceMeterSelection = function(variables, parentOptions, connectionInfo) {
-            console.log('🟢 Showing Web Service meter selection with', variables.length, 'variables');
+        // Updated Web Service Integration - Connect browse response to meter selection
+             window.showWebServiceMeterSelection = function(variables, parentOptions, connectionInfo) {
+            console.log('🔧 Showing Web Service meter selection with', variables.length, 'variables');
 
             // Store connection info for later use (print/import)
             storeWebServiceConnectionInfo(connectionInfo);
@@ -369,35 +369,45 @@
             // Get the shared meter selection section
             const meterSelectionSection = document.getElementById('meterSelectionSection');
             if (!meterSelectionSection) {
-                console.error('Meter selection section not found!');
+                console.error('🔧 Meter selection section not found!');
                 return;
             }
 
             // Show the section
             meterSelectionSection.classList.remove('d-none');
+            console.log('🔧 Meter selection section shown');
 
-            // Create the web service specific table HTML
+            // 🎯 UPDATED: Create the web service table HTML (without custom buttons)
             const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
 
-            // Replace the card-body content with web service table
+            // 🎯 UPDATED: Replace ONLY the table content, keep the card-footer with unified buttons
             const cardBody = meterSelectionSection.querySelector('.card-body');
             if (cardBody) {
                 cardBody.innerHTML = tableHtml;
+                console.log('🔧 Card body updated with WebService table');
+            } else {
+                console.error('🔧 Card body not found');
             }
 
             // Update the section header
             const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
             if (sectionHeader) {
                 sectionHeader.innerHTML = '<i class="bi bi-cloud"></i> Web Service Variable to Meter Selection';
+                console.log('🔧 Section header updated');
             }
 
-            // Set data type flag for unified system
+            // 🎯 CRITICAL: Set data type flag for unified system
             window.currentMeterDataType = 'WebService';
             window.currentWebServiceContext = connectionInfo;
+            console.log('🔧 Set data type to WebService');
 
-                    if (typeof updatePrintButtonForDataType === 'function') {
-            updatePrintButtonForDataType('WebService');
-        }
+            // 🎯 UPDATED: Update unified print button for WebService
+            if (typeof updatePrintButtonForDataType === 'function') {
+                updatePrintButtonForDataType('WebService');
+                console.log('🔧 Print button updated for WebService');
+            } else {
+                console.log('🔧 updatePrintButtonForDataType function not found');
+            }
 
             // Hide import readings checkbox (not applicable for web services)
             const importReadingsCheckbox = document.getElementById('importReadings');
@@ -405,10 +415,29 @@
                 const checkboxContainer = importReadingsCheckbox.closest('.form-check');
                 if (checkboxContainer) {
                     checkboxContainer.style.display = 'none';
+                    console.log('🔧 Import readings checkbox hidden');
                 }
             }
 
-            console.log('✅ Web Service meter selection displayed successfully');
+            // 🎯 NEW: Update import button text for WebService
+            const importBtn = document.getElementById('importSelectedBtn');
+            if (importBtn) {
+                importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected Variables';
+                console.log('🔧 Updated import button text for WebService');
+            } else {
+                console.error('🔧 Import button not found!');
+            }
+
+            // 🎯 NEW: Update counter to reflect WebService variables
+            // Check if updateMeterCounter function exists
+            if (typeof updateMeterCounter === 'function') {
+                updateMeterCounter();
+                console.log('🔧 Called updateMeterCounter successfully');
+            } else {
+                console.error('🔧 updateMeterCounter function not found!');
+            }
+
+            console.log('🔧 Web Service meter selection displayed successfully with unified buttons');
         };
     </script>
 }

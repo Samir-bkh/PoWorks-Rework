@@ -6,11 +6,17 @@
 /**
  * Create the meter selection table from browsed web service variables
  */
+/**
+ * Create the meter selection table from browsed web service variables
+ * UPDATED: Now compatible with unified import button system
+ */
+// 🎯 REPLACE the existing createWebServiceMeterSelectionTable function with this:
+
 function createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo) {
-    console.log('Creating Web Service meter selection table with', variables.length, 'variables');
+    console.log('🔧 Creating Web Service meter selection table with', variables.length, 'variables');
 
     if (!variables || variables.length === 0) {
-        console.warn('No variables provided for Web Service meter selection table');
+        console.warn('🔧 No variables provided for Web Service meter selection table');
         return '<p class="text-warning">No variables found to display.</p>';
     }
 
@@ -24,17 +30,14 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
         });
     }
 
+    // 🎯 UPDATED: Build table that works with shared button structure
     let tableHtml = `
-    <div class="web-service-meter-selection-container">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5>Web Service Variable to Meter Selection</h5>
-        </div>
         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
             <table class="table table-sm table-striped table-hover">
-             <thead class="sticky-top">
-                <tr>
+                <thead class="sticky-top">
+                    <tr>
                         <th style="width: 50px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;">
-                            <span class="text-dark fw-bold">Select</span>
+                            <span class="text-dark fw-bold">Import</span>
                         </th>
                         <th style="width: 60px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Type</span></th>
                         <th style="width: 300px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Variable Name</span></th>
@@ -46,7 +49,7 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
                         <th style="width: 80px; background-color: #e9ecef !important; color: black !important; border-color: #dee2e6 !important;"><span class="text-dark fw-bold">Read Only</span></th>
                     </tr>
                 </thead>
-                <tbody>`;
+                <tbody id="metersTableBody">`;
 
     // Add info row
     tableHtml += `
@@ -62,6 +65,8 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
 
     // Add variable rows
     variables.forEach((variable, index) => {
+        console.log(`🔧 Processing variable ${index}:`, variable.variableName);
+
         // Determine variable type badge
         let typeBadge = 'TXT';
         let badgeClass = 'bg-secondary';
@@ -93,7 +98,7 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
         tableHtml += `
             <tr class="web-service-variable-row" data-variable-index="${index}">
                 <td>
-                  <input type="checkbox" class="form-check-input meter-checkbox web-service-variable-checkbox" checked data-variable-index="${index}">
+                    <input type="checkbox" class="form-check-input meter-checkbox web-service-variable-checkbox" checked data-variable-index="${index}">
                 </td>
                 <td>
                     <span class="badge ${badgeClass}">${typeBadge}</span>
@@ -130,7 +135,13 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
             </tr>`;
     });
 
+    // Close table
+    tableHtml += `
+                </tbody>
+            </table>
+        </div>`;
 
+    console.log('🔧 WebService table HTML generated successfully');
     return tableHtml;
 }
 
