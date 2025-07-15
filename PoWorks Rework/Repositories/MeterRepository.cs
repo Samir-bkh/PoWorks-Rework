@@ -267,5 +267,127 @@ namespace PoWorks_Rework.Repositories
             _logger.LogInformation("Retrieved {Count} sub meters for parent meter ID {ParentMeterId}", meters.Count, parentMeterId);
             return meters;
         }
+
+
+        /// <summary>
+        /// Get meters that were imported from WebService variables
+        /// These meters can be identified by their Name field containing WebService variable patterns
+        /// </summary>
+        /// <param name="activeOnly">If true, only return active meters</param>
+        /// <param name="limit">Maximum number of meters to return (0 = no limit)</param>
+        /// <returns>List of meters that originated from WebService imports</returns>
+        public async Task<List<MeterForTrendsAnalysis>> GetWebServiceImportedMetersAsync(bool activeOnly = true, int limit = 0)
+        {
+            _logger.LogInformation("Getting WebService imported meters - ActiveOnly: {ActiveOnly}, Limit: {Limit}", activeOnly, limit);
+
+            var meters = new List<MeterForTrendsAnalysis>();
+
+            try
+            {
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    await connection.OpenAsync();
+                    _logger.LogInformation("Database connection opened for GetWebServiceImportedMetersAsync");
+
+                    // Build WHERE clause to identify WebService-imported meters
+                    var whereConditions = new List<string>();
+
+                    // WebService variables typically use dot notation (e.g., "varsets.varset001.Variable")
+                    // or specific naming patterns that distinguish them from HDS/manual meters
+                    whereConditions.Add(@"(m.""Name"" LIKE '%.%' OR m.""Name"" LIKE 'varsets.%')");
+
+                    if (activeOnly)
+                    {
+                        whereConditions.Add(@"m.""Active"" = true");
+                    }
+
+                    var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
+                    var limitClause = limit > 0 ? $"LIMIT {limit}" : "";
+
+                    string sql = $@"
+                SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", 
+                       m.""Type"", m.""Active"", m.""TenantID"", 
+                       t.""DisplayName"" AS ""TenantName""
+                FROM ""Meters"" m
+                LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                {whereClause}
+                ORDER BY m.""Name""
+                {limitClause}";
+
+                    _logger.LogInformation("Executing SQL: {SQL}", sql);
+
+                    using var cmd = new NpgsqlCommand(sql, connection);
+                    using var reader = await cmd.ExecuteReaderAsync();
+
+                    while (await reader.ReadAsync())
+                    {
+                        var meter = new MeterForTrendsAnalysis
+                        {
+                            MeterId = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                            Name = reader.GetString(reader.GetOrdinal("Name")),
+                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
+                            Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
+                            Type = reader.GetString(reader.GetOrdinal("Type")),
+                            Active = reader.GetBoolean(reader.GetOrdinal("Active")),
+                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")),
+                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
+
+                            // For trends processing, the Name field contains the original WebService variable name
+                            OriginalVariableName = reader.GetString(reader.GetOrdinal("Name"))
+                        };
+
+                        meters.Add(meter);
+                    }
+
+                    _logger.LogInformation("Retrieved {Count} WebService imported meters", meters.Count);
+                    return meters;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting WebService imported meters");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Get count of meters that were imported from WebService variables
+        /// </summary>
+        /// <param name="activeOnly">If true, only count active meters</param>
+        /// <returns>Total count of WebService imported meters</returns>
+        public async Task<int> GetWebServiceImportedMetersCountAsync(bool activeOnly = true)
+        {
+            try
+            {
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    await connection.OpenAsync();
+
+                    var whereConditions = new List<string>();
+                    whereConditions.Add(@"(""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')");
+
+                    if (activeOnly)
+                    {
+                        whereConditions.Add(@"""Active"" = true");
+                    }
+
+                    var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
+
+                    string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
+
+                    using var cmd = new NpgsqlCommand(sql, connection);
+                    var result = await cmd.ExecuteScalarAsync();
+                    int count = Convert.ToInt32(result);
+
+                    _logger.LogInformation("Total WebService imported meters count: {Count}", count);
+                    return count;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting WebService imported meters count");
+                throw;
+            }
+        }
     }
 }

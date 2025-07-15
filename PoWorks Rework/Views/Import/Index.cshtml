@@ -102,7 +102,7 @@
                         </div>
                     </div>
 
-                    <!-- UPDATED: Web Services Card -->
+                    <!-- Web Services Card -->
                     <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-body">
@@ -135,34 +135,6 @@
                                     <label for="branchFilter" class="form-label">Branch Filter (Optional)</label>
                                     <input type="text" class="form-control" id="branchFilter" placeholder="e.g., Production.Line1">
                                     <div class="form-text">Filter by specific branch/area</div>
-                                </div>
-
-                                <!-- NEW: Date Range Selection for Trends -->
-                                <div class="mb-3">
-                                    <label class="form-label">
-                                        <i class="bi bi-calendar-range"></i> Trends Date Range
-                                    </label>
-                                    <div class="row">
-                                        <div class="col-6">
-                                            <label for="trendsStartDate" class="form-label small text-muted">Start Date</label>
-                                            <input type="datetime-local" class="form-control form-control-sm" id="trendsStartDate">
-                                        </div>
-                                        <div class="col-6">
-                                            <label for="trendsEndDate" class="form-label small text-muted">End Date</label>
-                                            <input type="datetime-local" class="form-control form-control-sm" id="trendsEndDate">
-                                        </div>
-                                    </div>
-                                    <div class="form-text">Select date range for historical trend data</div>
-                                </div>
-
-                                <!-- Quick Date Range Buttons -->
-                                <div class="mb-3">
-                                    <label class="form-label small">Quick Range:</label>
-                                    <div class="btn-group btn-group-sm w-100" role="group">
-                                        <button type="button" class="btn btn-outline-secondary" id="quickRange24h">24h</button>
-                                        <button type="button" class="btn btn-outline-secondary" id="quickRange7d">7 Days</button>
-                                        <button type="button" class="btn btn-outline-secondary" id="quickRange30d">30 Days</button>
-                                    </div>
                                 </div>
 
                                 <!-- Include System Variables Checkbox -->
@@ -267,20 +239,20 @@
                                     </label>
                                 </div>
 
-                                <!-- Import Button -->
+                                <!-- Import Button - THIS WILL NOW ALSO PROCESS TRENDS -->
                                 <button type="button" class="btn btn-primary" id="importSelectedBtn">
-                                    <i class="bi bi-cloud-upload"></i> Import Selected
+                                    <i class="bi bi-cloud-upload"></i> Import Selected Variables
                                 </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Import Result Modal -->
+                    <!-- Import Result Modal - UPDATED to show trends results -->
                     <div class="modal fade" id="importResultModal" tabindex="-1" aria-labelledby="importResultModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="importResultModalLabel">Import Results</h5>
+                                    <h5 class="modal-title" id="importResultModalLabel">Import & Trends Results</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
@@ -357,10 +329,11 @@
     <script src="~/js/hdsMeterSelection.js"></script>
     <script src="~/js/import.js"></script>
     <script src="~/js/webServiceMeterSelection.js" asp-append-version="true"></script>
+    <!-- NO trends-testing.js script needed - trends integrated into existing import -->
 
     <script>
         // Updated Web Service Integration - Connect browse response to meter selection
-             window.showWebServiceMeterSelection = function(variables, parentOptions, connectionInfo) {
+        window.showWebServiceMeterSelection = function(variables, parentOptions, connectionInfo) {
             console.log('🔧 Showing Web Service meter selection with', variables.length, 'variables');
 
             // Store connection info for later use (print/import)
@@ -377,10 +350,10 @@
             meterSelectionSection.classList.remove('d-none');
             console.log('🔧 Meter selection section shown');
 
-            // 🎯 UPDATED: Create the web service table HTML (without custom buttons)
+            // Create the web service table HTML
             const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
 
-            // 🎯 UPDATED: Replace ONLY the table content, keep the card-footer with unified buttons
+            // Replace table content
             const cardBody = meterSelectionSection.querySelector('.card-body');
             if (cardBody) {
                 cardBody.innerHTML = tableHtml;
@@ -396,12 +369,12 @@
                 console.log('🔧 Section header updated');
             }
 
-            // 🎯 CRITICAL: Set data type flag for unified system
+            // Set data type flag for unified system
             window.currentMeterDataType = 'WebService';
             window.currentWebServiceContext = connectionInfo;
             console.log('🔧 Set data type to WebService');
 
-            // 🎯 UPDATED: Update unified print button for WebService
+            // Update unified print button for WebService
             if (typeof updatePrintButtonForDataType === 'function') {
                 updatePrintButtonForDataType('WebService');
                 console.log('🔧 Print button updated for WebService');
@@ -419,17 +392,17 @@
                 }
             }
 
-            // 🎯 NEW: Update import button text for WebService
+            // Update import button text for WebService + Trends
             const importBtn = document.getElementById('importSelectedBtn');
             if (importBtn) {
-                importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected Variables';
-                console.log('🔧 Updated import button text for WebService');
+                importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected Variables + Get Trends';
+                importBtn.title = 'Import variables as meters and automatically retrieve trends data';
+                console.log('🔧 Updated import button text for WebService + Trends');
             } else {
                 console.error('🔧 Import button not found!');
             }
 
-            // 🎯 NEW: Update counter to reflect WebService variables
-            // Check if updateMeterCounter function exists
+            // Update counter to reflect WebService variables
             if (typeof updateMeterCounter === 'function') {
                 updateMeterCounter();
                 console.log('🔧 Called updateMeterCounter successfully');
@@ -437,23 +410,20 @@
                 console.error('🔧 updateMeterCounter function not found!');
             }
 
-            console.log('🔧 Web Service meter selection displayed successfully with unified buttons');
+            console.log('🔧 Web Service meter selection displayed successfully - trends will be processed automatically after import');
         };
     </script>
 }
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize date range with default values (last 24 hours)
-        initializeDateRange();
+        // Initialize date ranges
         initializeHdsDateRange();
 
         // Set up quick range buttons
-        setupQuickRangeButtons();
         setupHdsQuickRangeButtons();
 
         // Validate date range on input
-        setupDateValidation();
         setupHdsDateValidation();
 
         // Load web service connections when page loads
@@ -496,27 +466,23 @@
         });
     });
 
-    /**
-     * Initialize date range with default values (last 24 hours)
-     */
-    function initializeDateRange() {
+    // =============================================
+    // HDS DATE RANGE FUNCTIONALITY
+    // =============================================
+
+    function initializeHdsDateRange() {
         const now = new Date();
         const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-        // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
         const endDateStr = formatDateTimeLocal(now);
         const startDateStr = formatDateTimeLocal(yesterday);
 
-        document.getElementById('trendsEndDate').value = endDateStr;
-        document.getElementById('trendsStartDate').value = startDateStr;
+        document.getElementById('hdsEndDate').value = endDateStr;
+        document.getElementById('hdsStartDate').value = startDateStr;
 
-        console.log('🕒 Initialized date range: Last 24 hours');
-        console.log(`Start: ${startDateStr}, End: ${endDateStr}`);
+        console.log('🕒 Initialized HDS date range: Last 24 hours');
     }
 
-    /**
-     * Format date for datetime-local input
-     */
     function formatDateTimeLocal(date) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -527,229 +493,23 @@
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
-    /**
-     * Set up quick range buttons
-     */
-    function setupQuickRangeButtons() {
-        // 24 Hours
-        document.getElementById('quickRange24h').addEventListener('click', function() {
-            setQuickRange(24, 'hours');
-            highlightActiveQuickRange(this);
-        });
-
-        // 7 Days
-        document.getElementById('quickRange7d').addEventListener('click', function() {
-            setQuickRange(7, 'days');
-            highlightActiveQuickRange(this);
-        });
-
-        // 30 Days
-        document.getElementById('quickRange30d').addEventListener('click', function() {
-            setQuickRange(30, 'days');
-            highlightActiveQuickRange(this);
-        });
-    }
-
-    /**
-     * Set date range based on quick range selection
-     */
-    function setQuickRange(amount, unit) {
-        const now = new Date();
-        const startDate = new Date();
-
-        if (unit === 'hours') {
-            startDate.setHours(startDate.getHours() - amount);
-        } else if (unit === 'days') {
-            startDate.setDate(startDate.getDate() - amount);
-        }
-
-        document.getElementById('trendsEndDate').value = formatDateTimeLocal(now);
-        document.getElementById('trendsStartDate').value = formatDateTimeLocal(startDate);
-
-        console.log(`🕒 Set quick range: Last ${amount} ${unit}`);
-
-        // Trigger validation
-        validateDateRange();
-    }
-
-    /**
-     * Highlight the active quick range button
-     */
-    function highlightActiveQuickRange(activeButton) {
-        // Remove active class from all quick range buttons
-        document.querySelectorAll('#quickRange24h, #quickRange7d, #quickRange30d').forEach(btn => {
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-outline-secondary');
-        });
-
-        // Add active class to clicked button
-        activeButton.classList.remove('btn-outline-secondary');
-        activeButton.classList.add('btn-secondary');
-    }
-
-    /**
-     * Set up date validation
-     */
-    function setupDateValidation() {
-        const startDateInput = document.getElementById('trendsStartDate');
-        const endDateInput = document.getElementById('trendsEndDate');
-
-        startDateInput.addEventListener('change', validateDateRange);
-        endDateInput.addEventListener('change', validateDateRange);
-    }
-
-    /**
-     * Validate that end date is after start date
-     */
-    function validateDateRange() {
-        const startDateInput = document.getElementById('trendsStartDate');
-        const endDateInput = document.getElementById('trendsEndDate');
-
-        const startDate = new Date(startDateInput.value);
-        const endDate = new Date(endDateInput.value);
-
-        // Clear previous validation styles
-        startDateInput.classList.remove('is-invalid');
-        endDateInput.classList.remove('is-invalid');
-
-        if (startDate >= endDate) {
-            // Invalid: start date is after or equal to end date
-            endDateInput.classList.add('is-invalid');
-            console.warn('⚠️ Invalid date range: End date must be after start date');
-            return false;
-        }
-
-        // Check if date range is too large (more than 1 year)
-        const oneYear = 365 * 24 * 60 * 60 * 1000; // milliseconds
-        if (endDate - startDate > oneYear) {
-            startDateInput.classList.add('is-invalid');
-            endDateInput.classList.add('is-invalid');
-            console.warn('⚠️ Date range too large: Maximum 1 year range allowed');
-            return false;
-        }
-
-        console.log('✅ Valid date range selected');
-        return true;
-    }
-
-    /**
-     * Get the selected date range for API calls
-     */
-    function getSelectedDateRange() {
-        const startDateInput = document.getElementById('trendsStartDate');
-        const endDateInput = document.getElementById('trendsEndDate');
-
-        if (!startDateInput.value || !endDateInput.value) {
-            console.error('Date range not selected');
-            return null;
-        }
-
-        if (!validateDateRange()) {
-            console.error('Invalid date range selected');
-            return null;
-        }
-
-        const startDate = new Date(startDateInput.value);
-        const endDate = new Date(endDateInput.value);
-
-        return {
-            startDate: startDate,
-            endDate: endDate,
-            startDateStr: startDate.toISOString(),
-            endDateStr: endDate.toISOString(),
-            // Format for API (YYYY-MM-DD HH:MM:SS)
-            startDateApi: formatDateForApi(startDate),
-            endDateApi: formatDateForApi(endDate)
-        };
-    }
-
-    /**
-     * Format date for API calls (YYYY-MM-DD HH:MM:SS)
-     */
-    function formatDateForApi(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-
-        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    }
-
-    /**
-     * Display current date range info
-     */
-    function displayDateRangeInfo() {
-        const dateRange = getSelectedDateRange();
-        if (dateRange) {
-            const duration = dateRange.endDate - dateRange.startDate;
-            const hours = Math.round(duration / (1000 * 60 * 60));
-            const days = Math.round(hours / 24);
-
-            console.log('📅 Selected Date Range:');
-            console.log(`   Start: ${dateRange.startDateApi}`);
-            console.log(`   End: ${dateRange.endDateApi}`);
-            console.log(`   Duration: ${days > 1 ? `${days} days` : `${hours} hours`}`);
-
-            return dateRange;
-        }
-        return null;
-    }
-
-    // Make functions available globally for trends functionality
-    window.getSelectedDateRange = getSelectedDateRange;
-    window.validateDateRange = validateDateRange;
-    window.displayDateRangeInfo = displayDateRangeInfo;
-
-    // ===========================================
-    // HDS DATE RANGE FUNCTIONALITY (Same logic but for HDS)
-    // ===========================================
-
-    /**
-     * Initialize HDS date range with default values (last 24 hours)
-     */
-    function initializeHdsDateRange() {
-        const now = new Date();
-        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-        // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
-        const endDateStr = formatDateTimeLocal(now);
-        const startDateStr = formatDateTimeLocal(yesterday);
-
-        document.getElementById('hdsEndDate').value = endDateStr;
-        document.getElementById('hdsStartDate').value = startDateStr;
-
-        console.log('🕒 Initialized HDS date range: Last 24 hours');
-        console.log(`HDS Start: ${startDateStr}, HDS End: ${endDateStr}`);
-    }
-
-    /**
-     * Set up HDS quick range buttons
-     */
     function setupHdsQuickRangeButtons() {
-        // 24 Hours
         document.getElementById('hdsQuickRange24h').addEventListener('click', function() {
             setHdsQuickRange(24, 'hours');
             highlightActiveHdsQuickRange(this);
         });
 
-        // 7 Days
         document.getElementById('hdsQuickRange7d').addEventListener('click', function() {
             setHdsQuickRange(7, 'days');
             highlightActiveHdsQuickRange(this);
         });
 
-        // 30 Days
         document.getElementById('hdsQuickRange30d').addEventListener('click', function() {
             setHdsQuickRange(30, 'days');
             highlightActiveHdsQuickRange(this);
         });
     }
 
-    /**
-     * Set HDS date range based on quick range selection
-     */
     function setHdsQuickRange(amount, unit) {
         const now = new Date();
         const startDate = new Date();
@@ -764,29 +524,19 @@
         document.getElementById('hdsStartDate').value = formatDateTimeLocal(startDate);
 
         console.log(`🕒 Set HDS quick range: Last ${amount} ${unit}`);
-
-        // Trigger validation
         validateHdsDateRange();
     }
 
-    /**
-     * Highlight the active HDS quick range button
-     */
     function highlightActiveHdsQuickRange(activeButton) {
-        // Remove active class from all HDS quick range buttons
         document.querySelectorAll('#hdsQuickRange24h, #hdsQuickRange7d, #hdsQuickRange30d').forEach(btn => {
             btn.classList.remove('btn-secondary');
             btn.classList.add('btn-outline-secondary');
         });
 
-        // Add active class to clicked button
         activeButton.classList.remove('btn-outline-secondary');
         activeButton.classList.add('btn-secondary');
     }
 
-    /**
-     * Set up HDS date validation
-     */
     function setupHdsDateValidation() {
         const startDateInput = document.getElementById('hdsStartDate');
         const endDateInput = document.getElementById('hdsEndDate');
@@ -795,9 +545,6 @@
         endDateInput.addEventListener('change', validateHdsDateRange);
     }
 
-    /**
-     * Validate that HDS end date is after start date
-     */
     function validateHdsDateRange() {
         const startDateInput = document.getElementById('hdsStartDate');
         const endDateInput = document.getElementById('hdsEndDate');
@@ -805,19 +552,16 @@
         const startDate = new Date(startDateInput.value);
         const endDate = new Date(endDateInput.value);
 
-        // Clear previous validation styles
         startDateInput.classList.remove('is-invalid');
         endDateInput.classList.remove('is-invalid');
 
         if (startDate >= endDate) {
-            // Invalid: start date is after or equal to end date
             endDateInput.classList.add('is-invalid');
             console.warn('⚠️ Invalid HDS date range: End date must be after start date');
             return false;
         }
 
-        // Check if date range is too large (more than 1 year)
-        const oneYear = 365 * 24 * 60 * 60 * 1000; // milliseconds
+        const oneYear = 365 * 24 * 60 * 60 * 1000;
         if (endDate - startDate > oneYear) {
             startDateInput.classList.add('is-invalid');
             endDateInput.classList.add('is-invalid');
@@ -828,62 +572,6 @@
         console.log('✅ Valid HDS date range selected');
         return true;
     }
-
-    /**
-     * Get the selected HDS date range for API calls
-     */
-    function getHdsSelectedDateRange() {
-        const startDateInput = document.getElementById('hdsStartDate');
-        const endDateInput = document.getElementById('hdsEndDate');
-
-        if (!startDateInput.value || !endDateInput.value) {
-            console.error('HDS date range not selected');
-            return null;
-        }
-
-        if (!validateHdsDateRange()) {
-            console.error('Invalid HDS date range selected');
-            return null;
-        }
-
-        const startDate = new Date(startDateInput.value);
-        const endDate = new Date(endDateInput.value);
-
-        return {
-            startDate: startDate,
-            endDate: endDate,
-            startDateStr: startDate.toISOString(),
-            endDateStr: endDate.toISOString(),
-            // Format for API (YYYY-MM-DD HH:MM:SS)
-            startDateApi: formatDateForApi(startDate),
-            endDateApi: formatDateForApi(endDate)
-        };
-    }
-
-    /**
-     * Display current HDS date range info
-     */
-    function displayHdsDateRangeInfo() {
-        const dateRange = getHdsSelectedDateRange();
-        if (dateRange) {
-            const duration = dateRange.endDate - dateRange.startDate;
-            const hours = Math.round(duration / (1000 * 60 * 60));
-            const days = Math.round(hours / 24);
-
-            console.log('📅 Selected HDS Date Range:');
-            console.log(`   Start: ${dateRange.startDateApi}`);
-            console.log(`   End: ${dateRange.endDateApi}`);
-            console.log(`   Duration: ${days > 1 ? `${days} days` : `${hours} hours`}`);
-
-            return dateRange;
-        }
-        return null;
-    }
-
-    // Make HDS functions available globally
-    window.getHdsSelectedDateRange = getHdsSelectedDateRange;
-    window.validateHdsDateRange = validateHdsDateRange;
-    window.displayHdsDateRangeInfo = displayHdsDateRangeInfo;
 
     function loadWebServiceConnections() {
         fetch('/Import/GetWebServiceConnections')
@@ -903,7 +591,6 @@
                         select.appendChild(option);
                     });
 
-                    // Auto-select default connection if available
                     const defaultConnection = data.connections.find(c => c.isDefault);
                     if (defaultConnection) {
                         select.value = defaultConnection.connectionId;
@@ -922,14 +609,11 @@
             });
     }
 
-    // UPDATED: Browse Variables Function with System Variables Support and Meter Selection Integration
     function browseVariables(connectionId) {
-        // Get parameters
         const maxVariables = parseInt(document.getElementById('maxVariables').value) || 100000;
         const branchFilter = document.getElementById('branchFilter').value.trim();
         const includeSystemVariables = document.getElementById('includeSystemVariables').checked;
 
-        // Show loading status with system variables info
         const systemMsg = includeSystemVariables ? " (including System variables)" : " (System variables filtered out)";
         showWebServiceStatus('info', `Starting variables browse... (Max: ${maxVariables.toLocaleString()}, Filter: ${branchFilter || 'None'})${systemMsg}`);
 
@@ -937,7 +621,6 @@
         browseBtn.disabled = true;
         browseBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Browsing...';
 
-        // Prepare request data
         const requestData = {
             connectionId: connectionId,
             maxVariables: maxVariables,
@@ -949,12 +632,9 @@
 
         console.log('Browsing variables with parameters:', requestData);
 
-        // Make API call to the endpoint
         fetch('/Import/BrowseVariablesWebService', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
         })
         .then(response => {
@@ -967,30 +647,6 @@
             console.log('Variables browse response:', data);
 
             if (data.success) {
-                // ✅ EXISTING CODE: Log parsed variables
-                console.log('=== PARSED VARIABLES (Client-side) ===');
-                if (data.parsedVariables && data.parsedVariables.length > 0) {
-                    console.log(`Found ${data.parsedVariables.length} parsed variables:`);
-                    console.log(`System variables: ${data.systemVariablesIncluded ? 'INCLUDED' : 'FILTERED OUT'}`);
-
-                    // Log first 10 parsed variables as examples
-                    const sampleCount = Math.min(10, data.parsedVariables.length);
-                    for (let i = 0; i < sampleCount; i++) {
-                        const variable = data.parsedVariables[i];
-                        console.log(`${i + 1}. ${variable.fullPath}`);
-                        console.log(`   Type: ${variable.variableType}, ReadOnly: ${variable.isReadOnly}`);
-                    }
-
-                    if (data.parsedVariables.length > 10) {
-                        console.log(`... and ${data.parsedVariables.length - 10} more variables`);
-                    }
-
-                    console.log('=== See server terminal for complete parsed output ===');
-                } else {
-                    console.log('No parsed variables received');
-                }
-
-                // ✅ EXISTING CODE: Show success message
                 const systemStatus = data.systemVariablesIncluded ? "included" : "filtered out";
                 const message = data.totalVariables !== undefined
                     ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables (System variables ${systemStatus}). Check server terminal for detailed parsed results.`
@@ -998,18 +654,15 @@
 
                 showWebServiceStatus('success', message);
 
-                // 🎯 NEW CODE: Show meter selection table if variables found
                 if (data.variables && data.variables.length > 0) {
                     console.log('🟢 Calling showWebServiceMeterSelection with', data.variables.length, 'variables');
 
-                    // Call the meter selection function
                     showWebServiceMeterSelection(
-                        data.variables,           // Variables array from controller
-                        data.parentOptions || [], // Parent meter options from controller
-                        data.connectionInfo || {} // Connection info from controller
+                        data.variables,
+                        data.parentOptions || [],
+                        data.connectionInfo || {}
                     );
 
-                    // Scroll to the meter selection section
                     setTimeout(() => {
                         const meterSelectionSection = document.getElementById('meterSelectionSection');
                         if (meterSelectionSection) {
@@ -1020,20 +673,16 @@
                         }
                     }, 100);
 
-                    // Update status message to include meter selection info
                     showWebServiceStatus('success',
-                        message + ` 🎯 Meter selection table displayed below with ${data.variables.length} variables ready for import.`
+                        message + ` 🎯 Meter selection table displayed below with ${data.variables.length} variables ready for import. Trends data will be automatically retrieved after import.`
                     );
                 } else {
                     console.log('⚠️ No variables array found in response for meter selection');
-                    console.log('Available data keys:', Object.keys(data));
                     showWebServiceStatus('warning',
                         message + ' No variables found for meter selection. Try adjusting your filters.'
                     );
                 }
-
             } else {
-                // Handle parsing errors
                 const errorMsg = data.parseError
                     ? `Variables browse failed. Parsing error: ${data.parseError}`
                     : `Variables browse failed: ${data.errorMessage || 'Unknown error'}`;
@@ -1046,7 +695,6 @@
             showWebServiceStatus('danger', 'Error during variables browse: ' + error.message);
         })
         .finally(() => {
-            // Reset button
             browseBtn.disabled = false;
             browseBtn.innerHTML = '<i class="bi bi-search"></i> Browse Variables';
         });
@@ -1060,24 +708,10 @@
         statusDiv.innerHTML = message;
         statusDiv.style.display = 'block';
 
-        // Auto-hide success messages after 8 seconds
         if (type === 'success') {
             setTimeout(() => {
                 statusDiv.style.display = 'none';
             }, 8000);
         }
     }
-
-    // Helper function for debugging
-    function testVariablesBrowse() {
-        const select = document.getElementById('webServiceConnection');
-        if (select.value) {
-            browseVariables(select.value);
-        } else {
-            showWebServiceStatus('warning', 'Please select a connection first');
-        }
-    }
-
-    // Make function available globally for debugging
-    window.testVariablesBrowse = testVariablesBrowse;
 </script>
