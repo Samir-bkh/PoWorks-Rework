@@ -526,3 +526,234 @@ function browseWebServiceVariables() {
             }
         });
 }
+
+
+// Updated Web Service Integration - Connect browse response to meter selection
+window.showWebServiceMeterSelection = function (variables, parentOptions, connectionInfo) {
+    console.log('🔧 Showing Web Service meter selection with', variables.length, 'variables');
+
+    // Store connection info for later use (print/import)
+    storeWebServiceConnectionInfo(connectionInfo);
+
+    // Get the shared meter selection section
+    const meterSelectionSection = document.getElementById('meterSelectionSection');
+    if (!meterSelectionSection) {
+        console.error('🔧 Meter selection section not found!');
+        return;
+    }
+
+    // Show the section
+    meterSelectionSection.classList.remove('d-none');
+    console.log('🔧 Meter selection section shown');
+
+    // Create the web service table HTML
+    const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
+
+    // Replace table content
+    const cardBody = meterSelectionSection.querySelector('.card-body');
+    if (cardBody) {
+        cardBody.innerHTML = tableHtml;
+        console.log('🔧 Card body updated with WebService table');
+    } else {
+        console.error('🔧 Card body not found');
+    }
+
+    // Update the section header
+    const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
+    if (sectionHeader) {
+        sectionHeader.innerHTML = '<i class="bi bi-cloud"></i> Web Service Variable to Meter Selection';
+        console.log('🔧 Section header updated');
+    }
+
+    // Set data type flag for unified system
+    window.currentMeterDataType = 'WebService';
+    window.currentWebServiceContext = connectionInfo;
+    console.log('🔧 Set data type to WebService');
+
+    // Update unified print button for WebService
+    if (typeof updatePrintButtonForDataType === 'function') {
+        updatePrintButtonForDataType('WebService');
+        console.log('🔧 Print button updated for WebService');
+    } else {
+        console.log('🔧 updatePrintButtonForDataType function not found');
+    }
+
+    // Hide import readings checkbox (not applicable for web services)
+    const importReadingsCheckbox = document.getElementById('importReadings');
+    if (importReadingsCheckbox) {
+        const checkboxContainer = importReadingsCheckbox.closest('.form-check');
+        if (checkboxContainer) {
+            checkboxContainer.style.display = 'none';
+            console.log('🔧 Import readings checkbox hidden');
+        }
+    }
+
+    // Update import button text for WebService + Trends
+    const importBtn = document.getElementById('importSelectedBtn');
+    if (importBtn) {
+        importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected Variables + Get Trends';
+        importBtn.title = 'Import variables as meters and automatically retrieve trends data';
+        console.log('🔧 Updated import button text for WebService + Trends');
+    } else {
+        console.error('🔧 Import button not found!');
+    }
+
+    // Update counter to reflect WebService variables
+    if (typeof updateMeterCounter === 'function') {
+        updateMeterCounter();
+        console.log('🔧 Called updateMeterCounter successfully');
+    } else {
+        console.error('🔧 updateMeterCounter function not found!');
+    }
+
+    console.log('🔧 Web Service meter selection displayed successfully - trends will be processed automatically after import');
+};
+
+
+
+
+
+
+
+
+function loadWebServiceConnections() {
+    fetch('/Import/GetWebServiceConnections')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('webServiceConnection');
+            select.innerHTML = '<option value="">Select a connection...</option>';
+
+            if (data.success && data.connections) {
+                data.connections.forEach(conn => {
+                    const option = document.createElement('option');
+                    option.value = conn.connectionId;
+                    option.textContent = `${conn.connectionName} (${conn.baseUrl})`;
+                    if (conn.isDefault) {
+                        option.textContent += ' - Default';
+                    }
+                    select.appendChild(option);
+                });
+
+                const defaultConnection = data.connections.find(c => c.isDefault);
+                if (defaultConnection) {
+                    select.value = defaultConnection.connectionId;
+                    select.dispatchEvent(new Event('change'));
+                }
+
+                console.log(`Loaded ${data.connections.length} web service connections`);
+            } else {
+                console.error('Failed to load web service connections:', data.error);
+                showWebServiceStatus('danger', 'Failed to load web service connections. Please check your settings.');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading web service connections:', error);
+            showWebServiceStatus('danger', 'Error loading web service connections: ' + error.message);
+        });
+}
+
+function browseVariables(connectionId) {
+    const maxVariables = parseInt(document.getElementById('maxVariables').value) || 100000;
+    const branchFilter = document.getElementById('branchFilter').value.trim();
+    const includeSystemVariables = document.getElementById('includeSystemVariables').checked;
+
+    const systemMsg = includeSystemVariables ? " (including System variables)" : " (System variables filtered out)";
+    showWebServiceStatus('info', `Starting variables browse... (Max: ${maxVariables.toLocaleString()}, Filter: ${branchFilter || 'None'})${systemMsg}`);
+
+    const browseBtn = document.getElementById('browseVariablesBtn');
+    browseBtn.disabled = true;
+    browseBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Browsing...';
+
+    const requestData = {
+        connectionId: connectionId,
+        maxVariables: maxVariables,
+        branchFilter: branchFilter,
+        variableType: 'Any',
+        depth: 0,
+        includeSystemVariables: includeSystemVariables
+    };
+
+    console.log('Browsing variables with parameters:', requestData);
+
+    fetch('/Import/BrowseVariablesWebService', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Variables browse response:', data);
+
+            if (data.success) {
+                const systemStatus = data.systemVariablesIncluded ? "included" : "filtered out";
+                const message = data.totalVariables !== undefined
+                    ? `Variables browse completed! Found ${data.totalVariables.toLocaleString()} variables (System variables ${systemStatus}). Check server terminal for detailed parsed results.`
+                    : 'Variables browse completed! Check server terminal for detailed results.';
+
+                showWebServiceStatus('success', message);
+
+                if (data.variables && data.variables.length > 0) {
+                    console.log('🟢 Calling showWebServiceMeterSelection with', data.variables.length, 'variables');
+
+                    showWebServiceMeterSelection(
+                        data.variables,
+                        data.parentOptions || [],
+                        data.connectionInfo || {}
+                    );
+
+                    setTimeout(() => {
+                        const meterSelectionSection = document.getElementById('meterSelectionSection');
+                        if (meterSelectionSection) {
+                            meterSelectionSection.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start'
+                            });
+                        }
+                    }, 100);
+
+                    showWebServiceStatus('success',
+                        message + ` 🎯 Meter selection table displayed below with ${data.variables.length} variables ready for import. Trends data will be automatically retrieved after import.`
+                    );
+                } else {
+                    console.log('⚠️ No variables array found in response for meter selection');
+                    showWebServiceStatus('warning',
+                        message + ' No variables found for meter selection. Try adjusting your filters.'
+                    );
+                }
+            } else {
+                const errorMsg = data.parseError
+                    ? `Variables browse failed. Parsing error: ${data.parseError}`
+                    : `Variables browse failed: ${data.errorMessage || 'Unknown error'}`;
+
+                showWebServiceStatus('danger', errorMsg);
+            }
+        })
+        .catch(error => {
+            console.error('Error during variables browse:', error);
+            showWebServiceStatus('danger', 'Error during variables browse: ' + error.message);
+        })
+        .finally(() => {
+            browseBtn.disabled = false;
+            browseBtn.innerHTML = '<i class="bi bi-search"></i> Browse Variables';
+        });
+}
+
+function showWebServiceStatus(type, message) {
+    const statusDiv = document.getElementById('webServiceStatus');
+    const alertClass = `alert-${type}`;
+
+    statusDiv.className = `alert ${alertClass}`;
+    statusDiv.innerHTML = message;
+    statusDiv.style.display = 'block';
+
+    if (type === 'success') {
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 8000);
+    }
+}
