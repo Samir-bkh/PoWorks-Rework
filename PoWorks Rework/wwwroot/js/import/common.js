@@ -1,4 +1,87 @@
-﻿function handleUnifiedPrint() {
+﻿// =====================================================
+// DOM EVENT INITIALIZATION
+// =====================================================
+
+/**
+ * Initializes various DOM events and input validation
+ * when the document has finished loading.
+ */
+document.addEventListener('DOMContentLoaded', function () {
+    console.log('🚀 Common.js loaded - Setting up unified event handlers');
+
+    // 🔧 SIMPLIFIED: Only handle unified functionality in common.js
+    // Let each module (hds_import.js, webservices_import.js, etc.) handle their own initialization
+    setupUnifiedEventDelegation();
+});
+
+// =====================================================
+// 🔧 ADD: UNIFIED EVENT DELEGATION
+// =====================================================
+
+/**
+ * Sets up unified event delegation for all shared buttons
+ * This ensures the shared functions are called regardless of which module is active
+ */
+function setupUnifiedEventDelegation() {
+    console.log('🔧 Setting up unified event delegation');
+
+    // Single event delegation for the entire document
+    document.body.addEventListener('click', function (event) {
+        // Unified Print Button
+        if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
+            console.log('🎯 Unified Print Button clicked');
+            event.preventDefault();
+            handleUnifiedPrint();
+            return;
+        }
+
+        // Unified Import Button
+        if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
+            console.log('🔧 Unified Import Button clicked');
+            event.preventDefault();
+            handleImport();
+            return;
+        }
+
+        // Unified Select All Button
+        if (event.target.id === 'selectAllBtn' || event.target.closest('#selectAllBtn')) {
+            console.log('🔧 Unified Select All Button clicked');
+            event.preventDefault();
+            handleSelectAll();
+            return;
+        }
+
+        // Unified Deselect All Button
+        if (event.target.id === 'deselectAllBtn' || event.target.closest('#deselectAllBtn')) {
+            console.log('🔧 Unified Deselect All Button clicked');
+            event.preventDefault();
+            handleDeselectAll();
+            return;
+        }
+    });
+
+    // Unified checkbox change delegation
+    document.body.addEventListener('change', function (event) {
+        if (event.target.classList.contains('meter-checkbox') ||
+            event.target.classList.contains('web-service-variable-checkbox')) {
+            console.log('🔧 Checkbox changed, updating counter');
+            updateMeterCounter();
+        }
+    });
+
+    console.log('✅ Unified event delegation setup complete');
+}
+
+// =====================================================
+// GLOBAL EXPORTS
+// =====================================================
+
+/**
+ * Handles unified printing by detecting the current meter data type
+ * and routing the request to the corresponding print handler.
+ */
+// Can be removed from Prod - only for Debugging 
+function handleUnifiedPrint() {
     console.log('🎯 Enhanced Unified Print Handler - Detecting data type...');
 
     const dataType = window.currentMeterDataType || 'UNKNOWN';
@@ -7,7 +90,12 @@
     switch (dataType) {
         case 'HDS':
             console.log('🔵 Routing to HDS print handler');
-            handleHDSPrint();
+            if (typeof handleHDSPrint === 'function') {
+                handleHDSPrint();
+            } else {
+                console.error('🔴 HDS print handler not found');
+                alert('HDS print functionality not available');
+            }
             break;
 
         case 'VAREXP':
@@ -22,7 +110,6 @@
 
         case 'WebService':
             console.log('🟠 Routing to WebService print handler');
-            // 🎯 ENHANCED: Check for WebService function AND checkboxes
             if (typeof handleWebServicePrint === 'function') {
                 const wsCheckboxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
                 if (wsCheckboxes.length > 0) {
@@ -44,24 +131,28 @@
             if (webServiceTable) {
                 console.log('🟠 Fallback detected WebService from container class');
                 window.currentMeterDataType = 'WebService';
-                handleWebServicePrint();
+                handleUnifiedPrint(); // Retry with detected type
                 return;
             }
 
-            // Original fallback for HDS/VAREXP
             const tableBody = document.getElementById('metersTableBody');
             if (tableBody) {
                 const headerRow = tableBody.querySelector('.table-info');
                 if (headerRow && headerRow.textContent.includes('HDS Import')) {
                     console.log('🔵 Fallback detected HDS from table header');
                     window.currentMeterDataType = 'HDS';
-                    handleHDSPrint();
+                    updatePrintButtonForDataType('HDS');
+                    handleUnifiedPrint(); // Retry with detected type
                 } else if (headerRow && headerRow.textContent.includes('VAREXP Import')) {
                     console.log('🟨 Fallback detected VAREXP from table header');
                     window.currentMeterDataType = 'VAREXP';
-                    if (typeof handleVarexpPrint === 'function') {
-                        handleVarexpPrint();
-                    }
+                    updatePrintButtonForDataType('VAREXP');
+                    handleUnifiedPrint(); // Retry with detected type
+                } else if (headerRow && headerRow.textContent.includes('Web Service Import')) {
+                    console.log('🟠 Fallback detected WebService from table header');
+                    window.currentMeterDataType = 'WebService';
+                    updatePrintButtonForDataType('WebService');
+                    handleUnifiedPrint(); // Retry with detected type
                 } else {
                     alert('Cannot determine data type. Please reload the meters and try again.');
                 }
@@ -72,21 +163,26 @@
     }
 }
 
+/**
+ * Updates the print button text and style based on the current data type.
+ * @param {string} dataType - The detected data type (HDS, VAREXP, WebService, etc.)
+ */
+
+// Can be removed from Prod - only for Debugging 
 function updatePrintButtonForDataType(dataType) {
     const printBtn = document.getElementById('printSelectedBtn');
 
     if (printBtn) {
         if (dataType === 'HDS') {
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print HDS Meters';
-            printBtn.className = 'btn btn-info'; // Blue for HDS
+            printBtn.className = 'btn btn-info';
         } else if (dataType === 'VAREXP') {
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print VAREXP Meters';
-            printBtn.className = 'btn btn-secondary'; // Grey for VAREXP
+            printBtn.className = 'btn btn-secondary';
         } else if (dataType === 'WebService') {
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Web Service Variables';
-            printBtn.className = 'btn btn-outline-info'; // Light blue for WebService
+            printBtn.className = 'btn btn-outline-info';
         } else {
-            // Default fallback for unknown data types
             printBtn.innerHTML = '<i class="bi bi-printer"></i> Print Selected';
             printBtn.className = 'btn btn-info';
         }
@@ -95,7 +191,14 @@ function updatePrintButtonForDataType(dataType) {
     }
 }
 
+// =====================================================
+// SELECT / DESELECT HANDLERS
+// =====================================================
 
+/**
+ * Selects all checkboxes for the current meter data type
+ * and updates the selection counter.
+ */
 function handleSelectAll() {
     console.log('🔧 Select All clicked');
 
@@ -120,7 +223,10 @@ function handleSelectAll() {
     console.log(`🔧 Selected all ${checkboxes.length} items for ${dataType}`);
 }
 
-
+/**
+ * Deselects all checkboxes for the current meter data type
+ * and updates the selection counter.
+ */
 function handleDeselectAll() {
     console.log('🔧 Deselect All clicked');
 
@@ -145,9 +251,14 @@ function handleDeselectAll() {
     console.log(`🔧 Deselected all ${checkboxes.length} items for ${dataType}`);
 }
 
+// =====================================================
+// COUNTER UPDATE
+// =====================================================
 
-
-
+/**
+ * Updates the counter display showing how many meters/variables
+ * are selected out of the total available.
+ */
 function updateMeterCounter() {
     console.log('🔧 updateMeterCounter called');
 
@@ -157,18 +268,15 @@ function updateMeterCounter() {
     let checkboxes, checkedBoxes;
 
     if (dataType === 'WebService') {
-        // WebService uses different checkbox classes
         checkboxes = document.querySelectorAll('.web-service-variable-checkbox');
         checkedBoxes = document.querySelectorAll('.web-service-variable-checkbox:checked');
         console.log('🔧 WebService checkboxes found:', checkboxes.length, 'checked:', checkedBoxes.length);
     } else {
-        // HDS and VAREXP use standard meter-checkbox class
         checkboxes = document.querySelectorAll('.meter-checkbox');
         checkedBoxes = document.querySelectorAll('.meter-checkbox:checked');
         console.log('🔧 Standard checkboxes found:', checkboxes.length, 'checked:', checkedBoxes.length);
     }
 
-    // Update filter status to show selection count
     const statusElement = document.getElementById('meterFilterStatus');
     if (statusElement) {
         const totalItems = checkboxes.length;
@@ -184,7 +292,6 @@ function updateMeterCounter() {
         console.log('🔧 Status element not found');
     }
 
-    // Update import button text
     const importBtn = document.getElementById('importSelectedBtn');
     if (importBtn) {
         if (dataType === 'WebService') {
@@ -204,8 +311,14 @@ function updateMeterCounter() {
     console.log(`🔧 Counter updated: ${checkedBoxes.length} selected of ${checkboxes.length} total (${dataType})`);
 }
 
+// =====================================================
+// IMPORT HANDLER
+// =====================================================
 
-
+/**
+ * Handles importing data for the current meter data type
+ * by routing to the appropriate import function.
+ */
 function handleImport() {
     console.log('🔧 handleImport called!');
 
@@ -214,10 +327,14 @@ function handleImport() {
 
     if (dataType === 'HDS') {
         console.log('🔧 Routing to HDS import handler');
-        handleHDSImport();
+        if (typeof handleHDSImport === 'function') {
+            handleHDSImport();
+        } else {
+            console.error('🔧 HDS import handler not found');
+            alert('HDS import functionality not available');
+        }
     } else if (dataType === 'VAREXP') {
         console.log('🔧 Routing to VAREXP import handler');
-        // This will be handled by import.js
         if (typeof handleVarexpImport === 'function') {
             handleVarexpImport();
         } else {
@@ -227,7 +344,6 @@ function handleImport() {
     } else if (dataType === 'WebService') {
         console.log('🔧 Routing to WebService import handler');
 
-        // Check if function exists
         if (typeof importWebServiceVariables === 'function') {
             console.log('🔧 importWebServiceVariables function found, calling it...');
             importWebServiceVariables();
@@ -242,53 +358,4 @@ function handleImport() {
     }
 }
 
-
-document.addEventListener('DOMContentLoaded', function () {
-    // Initialize date ranges
-    initializeHdsDateRange();
-
-    // Set up quick range buttons
-    setupHdsQuickRangeButtons();
-
-    // Validate date range on input
-    setupHdsDateValidation();
-
-    // Load web service connections when page loads
-    loadWebServiceConnections();
-
-    // Handle web service connection change
-    document.getElementById('webServiceConnection').addEventListener('change', function () {
-        const selectedConnection = this.value;
-        const browseBtn = document.getElementById('browseVariablesBtn');
-        const statusSpan = document.getElementById('webServiceConnectionStatus');
-
-        if (selectedConnection) {
-            browseBtn.disabled = false;
-            statusSpan.innerHTML = '<i class="bi bi-check-circle text-success"></i> Connection selected - ready to browse variables';
-        } else {
-            browseBtn.disabled = true;
-            statusSpan.innerHTML = '<i class="bi bi-info-circle"></i> Select a web service connection';
-        }
-    });
-
-    // Handle browse variables button click
-    document.getElementById('browseVariablesBtn').addEventListener('click', function () {
-        const selectedConnection = document.getElementById('webServiceConnection').value;
-        if (!selectedConnection) {
-            showWebServiceStatus('warning', 'Please select a web service connection first');
-            return;
-        }
-
-        browseVariables(selectedConnection);
-    });
-
-    // Handle input validation for max variables
-    document.getElementById('maxVariables').addEventListener('input', function () {
-        const value = parseInt(this.value);
-        if (value < 1) {
-            this.value = 1;
-        } else if (value > 1000000) {
-            this.value = 1000000;
-        }
-    });
-});
+console.log('✅ Common.js initialization complete with unified event delegation');
