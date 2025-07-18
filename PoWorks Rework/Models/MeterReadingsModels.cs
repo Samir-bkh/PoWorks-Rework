@@ -1,10 +1,4 @@
-﻿// Models/MeterReadingsModels.cs - COMPLETE FIXED VERSION
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-
-namespace PoWorks_Rework.Models
+﻿namespace PoWorks_Rework.Models
 {
     /// <summary>
     /// Main view model for the meter readings page - COMPLETE multi-select support

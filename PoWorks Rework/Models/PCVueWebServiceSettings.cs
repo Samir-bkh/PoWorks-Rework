@@ -1,5 +1,4 @@
-﻿// Models/PCVueWebServiceSettings.cs
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace PoWorks_Rework.Models
 {
@@ -23,7 +22,6 @@ namespace PoWorks_Rework.Models
         [Display(Name = "API Key")]
         public string ApiKey { get; set; } = ""; // Alternative to OAuth
 
-        // NEW: Basic Auth fields
         [Display(Name = "Username")]
         public string Username { get; set; } = "";
 

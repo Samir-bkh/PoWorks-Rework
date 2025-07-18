@@ -5,8 +5,6 @@ using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Repositories;
 using PoWorks_Rework.Services;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Controllers
 {

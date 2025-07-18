@@ -1,7 +1,4 @@
-﻿// Add these models to Models/ImportExportModels.cs or create a new Models/TrendsModels.cs
-
-using PoWorks_Rework.Models;
-
+﻿using PoWorks_Rework.Models;
 /// <summary>
 /// Model representing a meter for trends analysis
 /// Contains both meter database info and WebService variable mapping

@@ -1,7 +1,4 @@
-﻿// Models/TenantModels.cs
-using System.Collections.Generic;
-
-namespace PoWorks_Rework.Models
+﻿namespace PoWorks_Rework.Models
 {
     public class TenantViewModel
     {

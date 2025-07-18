@@ -4,14 +4,8 @@ using Microsoft.Data.SqlClient;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using static PoWorks_Rework.Controllers.HdsImportController;
-using System.Net.Http;
 using System.Text.Json;
-using System.Linq; // Added missing using statement
-using PoWorks_Rework.Repositories; // NEW: Added MeterRepository
+using PoWorks_Rework.Repositories;
 
 
 namespace PoWorks_Rework.Controllers

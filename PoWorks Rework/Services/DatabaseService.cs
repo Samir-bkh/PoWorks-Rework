@@ -1,8 +1,5 @@
-﻿// Services/DatabaseService.cs
-using Microsoft.Extensions.Configuration;
-using Npgsql;
+﻿using Npgsql;
 using PoWorks_Rework.Models;
-using System;
 
 namespace PoWorks_Rework.Services
 {

@@ -15,8 +15,6 @@
  * Initialize WebService functionality when DOM is ready
  */
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🟠 WebService Import JS loaded');
-
     // Load connections on startup
     loadWebServiceConnections();
 
@@ -77,14 +75,12 @@ function setupWebServiceEventListeners() {
  * Loads available Web Service connections into the dropdown.
  */
 function loadWebServiceConnections() {
-    console.log('🟠 Loading Web Service connections...');
 
     fetch('/Import/GetWebServiceConnections')
         .then(response => response.json())
         .then(data => {
             const select = document.getElementById('webServiceConnection');
             if (!select) {
-                console.log('🟠 Web Service connection dropdown not found - WebService functionality disabled');
                 return;
             }
 
@@ -106,15 +102,11 @@ function loadWebServiceConnections() {
                     select.value = defaultConnection.connectionId;
                     select.dispatchEvent(new Event('change'));
                 }
-
-                console.log(`🟠 Loaded ${data.connections.length} web service connections`);
             } else {
-                console.error('🟠 Failed to load web service connections:', data.error);
                 showWebServiceStatus('danger', 'Failed to load web service connections. Please check your settings.');
             }
         })
         .catch(error => {
-            console.error('🟠 Error loading web service connections:', error);
             showWebServiceStatus('danger', 'Error loading web service connections: ' + error.message);
         });
 }
@@ -150,8 +142,6 @@ function browseVariables(connectionId) {
         includeSystemVariables
     };
 
-    console.log('🟠 Browsing variables with parameters:', requestData);
-
     fetch('/Import/BrowseVariablesWebService', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,7 +157,6 @@ function browseVariables(connectionId) {
             handleWebServiceBrowseResponse(data);
         })
         .catch(error => {
-            console.error('🟠 Error during variables browse:', error);
             showWebServiceStatus('danger', 'Error during variables browse: ' + error.message);
         })
         .finally(() => {
@@ -202,8 +191,6 @@ function handleWebServiceBrowseResponse(data) {
     if (!statusDiv) return;
 
     if (data.success) {
-        console.log('✅ Web Service browse successful:', data);
-
         if (data.variables?.length > 0) {
             statusDiv.innerHTML = `
                 <div class="alert alert-success">
@@ -234,7 +221,6 @@ function handleWebServiceBrowseResponse(data) {
         }
 
     } else {
-        console.error('❌ Web Service browse failed:', data);
         statusDiv.innerHTML = `
             <div class="alert alert-danger">
                 <i class="bi bi-exclamation-circle"></i>
@@ -253,13 +239,11 @@ function handleWebServiceBrowseResponse(data) {
  * with Web Service variables loaded into a table.
  */
 window.showWebServiceMeterSelection = function (variables, parentOptions, connectionInfo) {
-    console.log('🟠 Showing Web Service meter selection with', variables.length, 'variables');
 
     storeWebServiceConnectionInfo(connectionInfo);
 
     const meterSelectionSection = document.getElementById('meterSelectionSection');
     if (!meterSelectionSection) {
-        console.error('🟠 Meter selection section not found!');
         return;
     }
 
@@ -294,15 +278,12 @@ window.showWebServiceMeterSelection = function (variables, parentOptions, connec
     if (typeof updateMeterCounter === 'function') {
         updateMeterCounter();
     }
-
-    console.log('🟠 Web Service meter selection displayed successfully');
 };
 
 /**
  * Creates HTML for the meter table from Web Service variables.
  */
 function createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo) {
-    console.log('🟠 Creating Web Service meter selection table with', variables.length, 'variables');
 
     if (!variables.length) {
         return '<p class="text-warning">No variables found to display.</p>';
@@ -447,8 +428,6 @@ function printWebServiceVariables() {
         selectedVariables
     };
 
-    console.log('🟠 Sending print request for Web Service variables:', requestData);
-
     fetch('/Import/PrintWebServiceMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -463,7 +442,6 @@ function printWebServiceVariables() {
             }
         })
         .catch(err => {
-            console.error('🟠 Error printing Web Service variables:', err);
             alert('❌ Network error while printing Web Service variables.');
         });
 }
@@ -514,8 +492,6 @@ function importWebServiceVariables() {
         importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing...';
     }
 
-    console.log('🟠 Sending import request for Web Service variables:', requestData);
-
     fetch('/Import/ImportWebServiceMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -537,7 +513,6 @@ function importWebServiceVariables() {
             }
         })
         .catch(err => {
-            console.error('🟠 Error importing Web Service variables:', err);
             alert('❌ Network error while importing Web Service variables.');
         })
         .finally(() => {
@@ -556,7 +531,6 @@ function importWebServiceVariables() {
  * Collects selected Web Service variables from the table.
  */
 function collectSelectedWebServiceVariables() {
-    console.log('🟠 Collecting selected WebService variables...');
     const selectedVariables = [];
 
     document.querySelectorAll('.web-service-variable-checkbox:checked').forEach(checkbox => {
@@ -587,12 +561,8 @@ function collectSelectedWebServiceVariables() {
             isReadOnly,
             isSelected: true
         };
-
-        console.log('🟠 Collected variable:', variableData);
         selectedVariables.push(variableData);
     });
-
-    console.log(`🟠 Collected ${selectedVariables.length} variables`);
     return selectedVariables;
 }
 
@@ -613,33 +583,3 @@ function storeWebServiceConnectionInfo(connectionInfo) {
 function getStoredWebServiceConnectionInfo() {
     return window.webServiceConnectionInfo || {};
 }
-
-// =====================================================
-// SELECT ALL / DESELECT ALL (LEGACY - NOT USED)
-// =====================================================
-
-/**
- * Legacy function - not used anymore since shared functions handle this
- * Kept for compatibility
- */
-function handleWebServiceSelectAll() {
-    document.querySelectorAll('.web-service-variable-checkbox').forEach(cb => cb.checked = true);
-    if (typeof updateMeterCounter === 'function') {
-        updateMeterCounter();
-    }
-    console.log('🟠 Selected all Web Service variables');
-}
-
-/**
- * Legacy function - not used anymore since shared functions handle this  
- * Kept for compatibility
- */
-function handleWebServiceDeselectAll() {
-    document.querySelectorAll('.web-service-variable-checkbox').forEach(cb => cb.checked = false);
-    if (typeof updateMeterCounter === 'function') {
-        updateMeterCounter();
-    }
-    console.log('🟠 Deselected all Web Service variables');
-}
-
-console.log('✅ WebService Import JS initialization complete');

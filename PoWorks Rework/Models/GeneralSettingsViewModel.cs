@@ -1,5 +1,4 @@
-﻿// Models/GeneralSettingsViewModel.cs
-namespace PoWorks_Rework.Models
+﻿namespace PoWorks_Rework.Models
 {
     public class GeneralSettingsViewModel
     {

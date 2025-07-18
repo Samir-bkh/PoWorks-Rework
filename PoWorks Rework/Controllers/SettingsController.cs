@@ -1,17 +1,11 @@
 ﻿// Controllers/SettingsController.cs
 using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
-using Microsoft.Extensions.Configuration;
-using System;
-using System.IO;
 using System.Text.Json;
 using Npgsql;
 using PoWorks_Rework.Services;
-using System.Collections.Generic;
 using Microsoft.Data.SqlClient; // Add this for SQL Server connection
-using System.Net.Http; // Add this for Web Services
 using System.Text; // Add this for Web Services
-using System.Threading.Tasks; // Add this for Web Services
 
 namespace PoWorks_Rework.Controllers
 {

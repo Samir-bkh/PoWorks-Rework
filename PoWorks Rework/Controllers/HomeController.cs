@@ -1,7 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System.Diagnostics;
-using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers

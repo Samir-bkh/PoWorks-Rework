@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using PoWorks_Rework.Models;
-using Microsoft.Extensions.Logging;
 
 namespace PoWorks_Rework.Services
 {

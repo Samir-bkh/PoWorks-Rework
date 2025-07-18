@@ -1,13 +1,6 @@
-﻿// Repositories/MeterRepository.cs
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
-using Npgsql;
+﻿using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
-using Microsoft.Extensions.Logging;
 
 namespace PoWorks_Rework.Repositories
 {

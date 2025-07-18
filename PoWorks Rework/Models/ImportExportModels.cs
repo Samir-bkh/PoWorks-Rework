@@ -1,7 +1,4 @@
-﻿// Models/ImportExportViewModel.cs
-using Microsoft.AspNetCore.Mvc.Rendering;
-using System.Collections.Generic;
-using static PoWorks_Rework.Controllers.ImportController;
+﻿using static PoWorks_Rework.Controllers.ImportController;
 namespace PoWorks_Rework.Models
 {
     public class ImportExportViewModel

@@ -1,5 +1,4 @@
-﻿// Models/CompanyInfo.cs
-namespace PoWorks_Rework.Models
+﻿namespace PoWorks_Rework.Models
 {
     public class CompanyInfo
     {

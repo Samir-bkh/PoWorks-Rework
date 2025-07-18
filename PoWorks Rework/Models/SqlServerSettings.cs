@@ -1,5 +1,4 @@
-﻿// Models/SqlServerSettings.cs
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace PoWorks_Rework.Models
 {
