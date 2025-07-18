@@ -54,9 +54,5 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// Add specific routes for HDS Import
-app.MapControllerRoute(
-    name: "hdsImport",
-    pattern: "HdsImport/{action=GetTables}/{id?}");
 
 app.Run();

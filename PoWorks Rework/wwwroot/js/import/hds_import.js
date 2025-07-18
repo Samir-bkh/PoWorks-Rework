@@ -252,7 +252,7 @@ function loadHdsTables(connectionId) {
         loadButton.disabled = true;
     }
 
-    fetch(`/HdsImport/GetTables?connectionId=${encodeURIComponent(connectionId)}`)
+    fetch(`/Import/GetTables?connectionId=${encodeURIComponent(connectionId)}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`Failed to load tables: ${response.status} ${response.statusText}`);
