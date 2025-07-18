@@ -53,7 +53,7 @@ function handleVarexpFileParse() {
     const formData = new FormData();
     formData.append('VarexpFile', file);
 
-    fetch('/Import/ParseVarexp', {
+    fetch('/VarexpImport/ParseVarexp', {
         method: 'POST',
         body: formData
     })
@@ -141,7 +141,10 @@ function convertVarexpToMeterSelection(records) {
  */
 function showMeterSelectionForVarexp(meters) {
 
-    document.getElementById('varexpRecordsContainer')?.innerHTML = '';
+    const container = document.getElementById('varexpRecordsContainer');
+    if (container) {
+        container.innerHTML = '';
+    }
 
     const meterSelectionSection = document.getElementById('meterSelectionSection');
     if (!meterSelectionSection) {
@@ -395,7 +398,7 @@ function handleVarexpImport() {
         return;
     }
 
-    fetch('/Import/ImportVarexpMeters', {
+    fetch('/VarexpImport/ImportVarexpMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

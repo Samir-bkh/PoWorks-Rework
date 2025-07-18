@@ -17,7 +17,6 @@ namespace PoWorks_Rework.Controllers
         private readonly ILogger<ImportController> _logger;
         private readonly SqlServerService _sqlServerService;
         private readonly DatabaseService _databaseService;
-        private readonly VarexpParserService _varexpParserService;
         private readonly VariableBrowseParsingService _variableBrowseParsingService;
         private readonly TrendsService _trendsService;
         private readonly MeterRepository _meterRepository; // NEW: Added MeterRepository
@@ -34,7 +33,6 @@ namespace PoWorks_Rework.Controllers
             _logger = logger;
             _sqlServerService = sqlServerService;
             _databaseService = databaseService;
-            _varexpParserService = varexpParserService;
             _variableBrowseParsingService = variableBrowseParsingService;
             _trendsService = trendsService;
             _meterRepository = meterRepository; // NEW: Assign MeterRepository
@@ -51,8 +49,7 @@ namespace PoWorks_Rework.Controllers
                 // Initialize with default values if needed
                 HdsTables = new List<string>()
             };
-
-            return View(viewModel); // Fixed: Added missing return statement and closing brace
+            return View(viewModel);
         }
 
         [HttpPost]
@@ -376,18 +373,14 @@ namespace PoWorks_Rework.Controllers
                     errorMessage = "An unexpected error occurred during the Web Service import process."
                 });
             }
-        } // Fixed: Removed misplaced semicolon and return statement
+        }
 
         [HttpGet]
         public IActionResult GetSqlServerConnections()
         {
             try
             {
-                _logger.LogInformation("Getting SQL Server connections...");
-
                 var connections = _sqlServerService.GetAllConnections();
-                _logger.LogInformation($"Found {connections.Count} SQL Server connections");
-
                 var connectionData = connections.Select(c => new
                 {
                     connectionId = c.ConnectionId,
@@ -398,13 +391,10 @@ namespace PoWorks_Rework.Controllers
                     isDefault = c.IsDefault
                 }).ToList();
 
-                _logger.LogInformation($"Returning connection data: {string.Join(", ", connectionData.Select(c => c.connectionName))}");
-
                 return Json(new { success = true, connections = connectionData });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting SQL Server connections");
                 return Json(new { success = false, error = ex.Message });
             }
         }
@@ -730,13 +720,10 @@ namespace PoWorks_Rework.Controllers
                 _logger.LogInformation("Starting trends processing for imported meters - Connection: {ConnectionId}, DateRange: {StartDate} to {EndDate}",
                     request.ConnectionId, request.StartDate, request.EndDate);
 
-                PrintProcessingHeader(request);
-
                 // Validate request
                 var validationResult = ValidateTrendsRequest(request);
                 if (!validationResult.IsValid)
-                {
-                    PrintValidationError(validationResult.ErrorMessage);
+                {                 
                     return Json(new ImportedMetersTrendsResponse
                     {
                         Success = false,
@@ -748,8 +735,7 @@ namespace PoWorks_Rework.Controllers
                 var settings = GetWebServiceSettings(request.ConnectionId);
                 if (settings == null)
                 {
-                    var errorMsg = $"WebService connection '{request.ConnectionId}' not found";
-                    PrintConnectionError(errorMsg);
+                    var errorMsg = $"WebService connection '{request.ConnectionId}' not found";                 
                     return Json(new ImportedMetersTrendsResponse
                     {
                         Success = false,
@@ -757,14 +743,11 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
-                PrintConnectionInfo(settings);
-
                 // Get imported meters from database
                 var importedMeters = await GetImportedMetersForProcessing(request);
                 if (importedMeters.Count == 0)
                 {
                     var noMetersMsg = "No imported WebService meters found for processing";
-                    PrintNoMetersFound();
                     return Json(new ImportedMetersTrendsResponse
                     {
                         Success = true,
@@ -779,8 +762,6 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
-                PrintMetersFound(importedMeters);
-
                 // Process each meter sequentially
                 var meterResults = await ProcessMetersSequentially(importedMeters, request, settings);
 
@@ -788,8 +769,6 @@ namespace PoWorks_Rework.Controllers
 
                 // Create summary
                 var summary = CreateProcessingSummary(meterResults, overallStartTime, overallEndTime, settings, request);
-
-                PrintOverallSummary(summary, meterResults);
 
                 return Json(new ImportedMetersTrendsResponse
                 {
@@ -803,7 +782,7 @@ namespace PoWorks_Rework.Controllers
             {
                 var errorMsg = $"Server error during trends processing: {ex.Message}";
                 _logger.LogError(ex, "Error processing trends for imported meters");
-                PrintFatalError(ex);
+
 
                 return Json(new ImportedMetersTrendsResponse
                 {
@@ -834,8 +813,6 @@ namespace PoWorks_Rework.Controllers
                 var meter = meters[i];
                 var meterStartTime = DateTime.UtcNow;
 
-                PrintMeterProcessingStart(meter, i + 1, meters.Count);
-
                 try
                 {
                     // Step 1: Call GetTrendsData endpoint
@@ -848,8 +825,6 @@ namespace PoWorks_Rework.Controllers
                     var meterResult = CreateMeterResult(meter, trendsDataResult, importTrendsResult, meterStartTime);
 
                     results.Add(meterResult);
-
-                    PrintMeterProcessingComplete(meterResult);
 
                     // Small delay between meters to be API-friendly
                     await Task.Delay(200);
@@ -869,9 +844,7 @@ namespace PoWorks_Rework.Controllers
                         ImportTrendsError = $"Exception: {ex.Message}",
                         ProcessingDuration = DateTime.UtcNow - meterStartTime
                     };
-
                     results.Add(errorResult);
-                    PrintMeterProcessingError(meter, ex);
                 }
             }
 
@@ -1089,223 +1062,6 @@ namespace PoWorks_Rework.Controllers
                                 .Select(r => $"{r.MeterName}: {r.GetTrendsDataError}")
                                 .ToList()
             };
-        }
-
-        #endregion
-
-        #region Console Output Methods
-
-        /// <summary>
-        /// Print main processing header
-        /// </summary>
-        private void PrintProcessingHeader(GetTrendsForImportedMetersRequest request)
-        {
-            Console.WriteLine();
-            Console.WriteLine("=====================================================");
-            Console.WriteLine("IMPORTED METERS TRENDS DATA PROCESSING");
-            Console.WriteLine("=====================================================");
-            Console.WriteLine($"Connection ID: {request.ConnectionId}");
-            Console.WriteLine($"Date Range: {request.StartDate:yyyy-MM-dd HH:mm:ss} to {request.EndDate:yyyy-MM-dd HH:mm:ss}");
-            Console.WriteLine($"Process All Imported: {request.GetAllImported}");
-            Console.WriteLine($"Active Only: {request.ActiveOnly}");
-            Console.WriteLine($"Meter Limit: {(request.MeterLimit > 0 ? request.MeterLimit.ToString() : "No Limit")}");
-            Console.WriteLine($"Processing Started: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print validation error
-        /// </summary>
-        private void PrintValidationError(string? errorMessage)
-        {
-            Console.WriteLine();
-            Console.WriteLine("❌ VALIDATION ERROR ❌");
-            Console.WriteLine($"Error: {errorMessage}");
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print connection error
-        /// </summary>
-        private void PrintConnectionError(string errorMessage)
-        {
-            Console.WriteLine();
-            Console.WriteLine("❌ CONNECTION ERROR ❌");
-            Console.WriteLine($"Error: {errorMessage}");
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print connection information
-        /// </summary>
-        private void PrintConnectionInfo(PCVueWebServiceSettings settings)
-        {
-            Console.WriteLine();
-            Console.WriteLine("--- CONNECTION INFORMATION ---");
-            Console.WriteLine($"Connection Name: {settings.ConnectionName}");
-            Console.WriteLine($"Base URL: {settings.BaseUrl}");
-            Console.WriteLine($"Project: {settings.ProjectName}");
-            Console.WriteLine($"Auth Type: {settings.AuthType}");
-            Console.WriteLine($"Timeout: {settings.TimeoutSeconds}s");
-        }
-
-        /// <summary>
-        /// Print when no meters are found
-        /// </summary>
-        private void PrintNoMetersFound()
-        {
-            Console.WriteLine();
-            Console.WriteLine("⚠️  NO METERS FOUND ⚠️");
-            Console.WriteLine("No imported WebService meters found matching the criteria.");
-            Console.WriteLine("Check that:");
-            Console.WriteLine("- Meters have been imported from WebService variables");
-            Console.WriteLine("- Meters are active (if ActiveOnly = true)");
-            Console.WriteLine("- Database contains meters with WebService naming patterns");
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print meters found for processing
-        /// </summary>
-        private void PrintMetersFound(List<MeterForTrendsAnalysis> meters)
-        {
-            Console.WriteLine();
-            Console.WriteLine($"--- FOUND {meters.Count} METERS FOR PROCESSING ---");
-
-            for (int i = 0; i < Math.Min(meters.Count, 10); i++) // Show first 10
-            {
-                var meter = meters[i];
-                Console.WriteLine($"{i + 1}. ID:{meter.MeterId} | {meter.Name} | {meter.Unit} | {meter.Type} | Active:{meter.Active}");
-            }
-
-            if (meters.Count > 10)
-            {
-                Console.WriteLine($"... and {meters.Count - 10} more meters");
-            }
-            Console.WriteLine();
-        }
-
-        /// <summary>
-        /// Print meter processing start
-        /// </summary>
-        private void PrintMeterProcessingStart(MeterForTrendsAnalysis meter, int current, int total)
-        {
-            Console.WriteLine($"--- PROCESSING METER {current}/{total} ---");
-            Console.WriteLine($"Meter ID: {meter.MeterId}");
-            Console.WriteLine($"Meter Name: {meter.Name}");
-            Console.WriteLine($"Variable Name: {meter.OriginalVariableName}");
-            Console.WriteLine($"Unit: {meter.Unit}");
-            Console.WriteLine($"Type: {meter.Type}");
-            Console.WriteLine($"Started: {DateTime.Now:HH:mm:ss}");
-        }
-
-        /// <summary>
-        /// Print meter processing completion
-        /// </summary>
-        private void PrintMeterProcessingComplete(MeterTrendsResult result)
-        {
-            Console.WriteLine();
-            Console.WriteLine("--- ENDPOINT 1: GetTrendsData Results ---");
-            Console.WriteLine($"Success: {result.GetTrendsDataSuccess}");
-            if (result.GetTrendsDataSuccess)
-            {
-                Console.WriteLine($"Data Points Retrieved: {result.TrendsDataPointsCount:N0}");
-                Console.WriteLine($"Request ID: {result.TrendsRequestId}");
-                if (result.FirstTimestamp.HasValue && result.LastTimestamp.HasValue)
-                {
-                    Console.WriteLine($"Date Range: {result.FirstTimestamp:yyyy-MM-dd HH:mm:ss} to {result.LastTimestamp:yyyy-MM-dd HH:mm:ss}");
-                }
-                if (result.MinValue.HasValue && result.MaxValue.HasValue && result.AverageValue.HasValue)
-                {
-                    Console.WriteLine($"Value Range: {result.MinValue:F2} to {result.MaxValue:F2} (Avg: {result.AverageValue:F2})");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"Error: {result.GetTrendsDataError}");
-            }
-
-            Console.WriteLine();
-            Console.WriteLine("--- ENDPOINT 2: ImportWebServiceVariablesWithTrends Results ---");
-            Console.WriteLine($"Success: {result.ImportTrendsSuccess}");
-            Console.WriteLine($"Action: {result.ImportAction}");
-            if (result.ImportTrendsSuccess)
-            {
-                Console.WriteLine($"Data Points Imported: {result.ImportedDataPoints:N0}");
-            }
-            else
-            {
-                Console.WriteLine($"Error: {result.ImportTrendsError}");
-            }
-
-            Console.WriteLine();
-            Console.WriteLine($"--- PROCESSING COMPLETE ---");
-            Console.WriteLine($"Duration: {result.ProcessingDuration.TotalSeconds:F1}s");
-            Console.WriteLine($"Overall Success: {(result.GetTrendsDataSuccess && result.ImportTrendsSuccess ? "✅ YES" : "❌ NO")}");
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print meter processing error
-        /// </summary>
-        private void PrintMeterProcessingError(MeterForTrendsAnalysis meter, Exception ex)
-        {
-            Console.WriteLine();
-            Console.WriteLine($"❌ ERROR PROCESSING METER: {meter.Name}");
-            Console.WriteLine($"Exception: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-            }
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print overall processing summary
-        /// </summary>
-        private void PrintOverallSummary(TrendsProcessingSummary summary, List<MeterTrendsResult> results)
-        {
-            Console.WriteLine();
-            Console.WriteLine("=====================================================");
-            Console.WriteLine("OVERALL TRENDS PROCESSING SUMMARY");
-            Console.WriteLine("=====================================================");
-            Console.WriteLine($"Total Meters Processed: {summary.TotalMetersProcessed}");
-            Console.WriteLine($"Successful: {summary.SuccessfulMeters} ({summary.SuccessRate:F1}%)");
-            Console.WriteLine($"Failed: {summary.FailedMeters} ({summary.FailureRate:F1}%)");
-            Console.WriteLine($"Total Data Points Retrieved: {summary.TotalDataPointsRetrieved:N0}");
-            Console.WriteLine($"Total Data Points Imported: {summary.TotalDataPointsImported:N0}");
-            Console.WriteLine($"Average Points per Meter: {summary.AverageDataPointsPerMeter:F0}");
-            Console.WriteLine($"Total Processing Time: {summary.TotalProcessingTime.TotalMinutes:F1} minutes");
-            Console.WriteLine($"Connection Used: {summary.ConnectionUsed}");
-            Console.WriteLine($"Completed: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-
-            if (summary.Errors.Any())
-            {
-                Console.WriteLine();
-                Console.WriteLine("--- ERRORS ENCOUNTERED ---");
-                foreach (var error in summary.Errors.Take(5)) // Show first 5 errors
-                {
-                    Console.WriteLine($"• {error}");
-                }
-                if (summary.Errors.Count > 5)
-                {
-                    Console.WriteLine($"... and {summary.Errors.Count - 5} more errors");
-                }
-            }
-
-            Console.WriteLine("=====================================================");
-        }
-
-        /// <summary>
-        /// Print fatal error
-        /// </summary>
-        private void PrintFatalError(Exception ex)
-        {
-            Console.WriteLine();
-            Console.WriteLine("💥 FATAL ERROR 💥");
-            Console.WriteLine($"Exception: {ex.Message}");
-            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-            Console.WriteLine("=====================================================");
         }
 
         #endregion
@@ -2014,165 +1770,6 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         // ============================================================================================================
-        #region VAREXP (PCVue Configuration Files) FUNCTIONALITY
-        // ============================================================================================================
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [IgnoreAntiforgeryToken]
-        public async Task<IActionResult> ParseVarexp(IFormFile VarexpFile)
-        {
-            // 1) Basic file check
-            if (VarexpFile == null || VarexpFile.Length == 0)
-                return BadRequest("No VAREXP.DAT file was uploaded.");
-
-            try
-            {
-                // 2) Attempt parse
-                var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
-
-                // 3) Get parent meter options from PostgreSQL database
-                _logger.LogInformation("🔍 DEBUG: About to call GetParentMeterOptions()"); // ✅ ADD THIS
-                var parentOptions = await GetParentMeterOptions();
-                _logger.LogInformation("🔍 DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0); // ✅ ADD THIS
-
-                var response = new
-                {
-                    success = true,
-                    records = records,
-                    parentOptions = parentOptions
-                };
-
-                _logger.LogInformation("🔍 DEBUG: Returning response with {RecordCount} records and {ParentCount} parent options",
-                    records?.Count ?? 0, parentOptions?.Count ?? 0); // ✅ ADD THIS
-
-                return Json(response);
-            }
-            catch (VarexpParseException vex)
-            {
-                _logger.LogError(vex, "VAREXP parse error at line {LineNumber}", vex.LineNumber);
-                return BadRequest($"Parsing error at line {vex.LineNumber}: {vex.Message}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error parsing VAREXP.DAT");
-                return BadRequest($"Unexpected error: {ex.Message}");
-            }
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> ImportVarexpMeters([FromBody] ImportVarexpMetersRequest request)
-        {
-            try
-            {
-                _logger.LogInformation($"Received VAREXP import request for {request?.Meters?.Count ?? 0} meters");
-
-                if (request?.Meters == null || !request.Meters.Any())
-                {
-                    return Json(new
-                    {
-                        success = false,
-                        error = "No meters provided for import"
-                    });
-                }
-
-                if (!_databaseService.IsInitialized)
-                {
-                    return Json(new
-                    {
-                        success = false,
-                        error = "Database connection not initialized"
-                    });
-                }
-
-                int importedCount = 0;
-                int updatedCount = 0;
-                int skippedCount = 0;
-                int errorCount = 0;
-                var detailedErrors = new Dictionary<string, string>();
-
-                // Use a single connection for the entire import operation
-                using var connection = _databaseService.GetConnection();
-
-                // Process each meter
-                foreach (var meter in request.Meters)
-                {
-                    try
-                    {
-                        _logger.LogInformation($"Processing VAREXP meter: {meter.MeterName}");
-
-                        // Check if meter already exists
-                        var existingMeter = await GetExistingMeterByNameAsync(meter.MeterName, connection);
-
-                        if (existingMeter != null)
-                        {
-                            if (request.SkipExisting)
-                            {
-                                _logger.LogInformation($"Skipping existing meter: {meter.MeterName}");
-                                skippedCount++;
-                                continue;
-                            }
-                            else if (request.UpdateExisting)
-                            {
-                                // Update existing meter
-                                await UpdateExistingVarexpMeterAsync(existingMeter.MeterId, meter, connection);
-                                updatedCount++;
-                                _logger.LogInformation($"Updated meter: {meter.MeterName}");
-                            }
-                            else
-                            {
-                                errorCount++;
-                                detailedErrors[meter.MeterName] = "Meter already exists";
-                                _logger.LogWarning($"Meter already exists and not configured to skip/update: {meter.MeterName}");
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            // Create new meter
-                            await CreateNewVarexpMeterAsync(meter, request.CreateMissingParents, connection);
-                            importedCount++;
-                            _logger.LogInformation($"Created new meter: {meter.MeterName}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        errorCount++;
-                        detailedErrors[meter.MeterName] = ex.Message;
-                        _logger.LogError(ex, $"Error processing VAREXP meter: {meter.MeterName}");
-                    }
-                }
-
-                var totalProcessed = importedCount + updatedCount + skippedCount + errorCount;
-                var message = $"VAREXP Import completed: {importedCount} imported, {updatedCount} updated, {skippedCount} skipped, {errorCount} errors.";
-
-                return Json(new
-                {
-                    success = errorCount == 0,
-                    importedCount = importedCount,
-                    updatedCount = updatedCount,
-                    skippedCount = skippedCount,
-                    errorCount = errorCount,
-                    totalProcessed = totalProcessed,
-                    detailedErrors = detailedErrors,
-                    message = message
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error importing VAREXP meters");
-                return Json(new
-                {
-                    success = false,
-                    error = ex.Message,
-                    errorCount = request?.Meters?.Count ?? 0
-                });
-            }
-        }
-
-        #endregion
-
-        // ============================================================================================================
         #region WEB SERVICES (PCVue API) FUNCTIONALITY
         // ============================================================================================================
 
@@ -2614,238 +2211,6 @@ namespace PoWorks_Rework.Controllers
             }
 
             return options;
-        }
-
-        #endregion
-
-        // ============================================================================================================
-        #region VAREXP HELPER METHODS
-        // ============================================================================================================
-
-        // Helper method to get existing meter by name
-        private async Task<dynamic> GetExistingMeterByNameAsync(string meterName, NpgsqlConnection connection)
-        {
-            var command = new Npgsql.NpgsqlCommand(@"
-        SELECT ""MeterId"", ""Name"", ""Type"", ""Unit"", ""ParentId"", ""Active"", ""LastReading"", ""TenantID""
-        FROM ""Meters"" 
-        WHERE ""Name"" = @name", connection);
-
-            command.Parameters.AddWithValue("@name", meterName);
-
-            using var reader = await command.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                return new
-                {
-                    MeterId = reader.GetInt32(0),
-                    Name = reader.GetString(1),
-                    Type = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    Unit = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                    ParentId = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4),
-                    Active = reader.GetBoolean(5),
-                    LastReading = reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
-                    TenantID = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7)
-                };
-            }
-
-            return null;
-        }
-
-        // Helper method to create new VAREXP meter
-        private async Task CreateNewVarexpMeterAsync(VarexpMeterImportItem meter, bool createMissingParents, NpgsqlConnection connection)
-        {
-            // Handle parent meter ID conversion
-            int? parentId = null;
-            if (!string.IsNullOrEmpty(meter.ParentMeterId))
-            {
-                if (int.TryParse(meter.ParentMeterId, out var parentIdValue))
-                {
-                    // Verify parent meter exists using the same connection
-                    var parentExists = await CheckMeterExistsAsync(parentIdValue, connection);
-                    if (parentExists)
-                    {
-                        parentId = parentIdValue;
-                    }
-                    else if (createMissingParents)
-                    {
-                        _logger.LogWarning($"Parent meter ID {parentIdValue} not found for meter {meter.MeterName}. Creating without parent.");
-                        // Could implement parent creation logic here if needed
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"Parent meter ID {parentIdValue} not found and createMissingParents is false");
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning($"Invalid parent meter ID format: {meter.ParentMeterId} for meter {meter.MeterName}");
-                }
-            }
-
-            var command = new Npgsql.NpgsqlCommand(@"
-        INSERT INTO ""Meters"" (""Name"", ""Type"", ""Unit"", ""ParentId"", ""Active"", ""LastReading"", ""TenantID"")
-        VALUES (@name, @type, @unit, @parentId, @active, @lastReading, @tenantId)
-        RETURNING ""MeterId""", connection);
-
-            command.Parameters.AddWithValue("@name", meter.MeterName);
-            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); // Ensure lowercase as per schema constraint
-            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); // Empty string, not null
-            command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
-            command.Parameters.AddWithValue("@active", meter.Active);
-            command.Parameters.AddWithValue("@lastReading", 0); // Default to 0 for VAREXP meters
-            command.Parameters.AddWithValue("@tenantId", DBNull.Value); // No tenant for VAREXP imports
-
-            var newMeterId = await command.ExecuteScalarAsync();
-            _logger.LogInformation($"Created meter {meter.MeterName} with ID {newMeterId}");
-        }
-
-        // Helper method to update existing VAREXP meter
-        private async Task UpdateExistingVarexpMeterAsync(int meterId, VarexpMeterImportItem meter, NpgsqlConnection connection)
-        {
-            // Handle parent meter ID conversion
-            int? parentId = null;
-            if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out var parentIdValue))
-            {
-                var parentExists = await CheckMeterExistsAsync(parentIdValue, connection);
-                if (parentExists)
-                {
-                    parentId = parentIdValue;
-                }
-            }
-
-            var command = new Npgsql.NpgsqlCommand(@"
-        UPDATE ""Meters"" 
-        SET ""Type"" = @type, ""Unit"" = @unit, ""ParentId"" = @parentId, ""Active"" = @active
-        WHERE ""MeterId"" = @meterId", connection);
-
-            command.Parameters.AddWithValue("@meterId", meterId);
-            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); // Ensure lowercase
-            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); // Empty string, not null
-            command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
-            command.Parameters.AddWithValue("@active", meter.Active);
-
-            await command.ExecuteNonQueryAsync();
-            _logger.LogInformation($"Updated meter {meter.MeterName} with ID {meterId}");
-        }
-
-        // Helper method to check if meter exists by ID
-        private async Task<bool> CheckMeterExistsAsync(int meterId, NpgsqlConnection connection)
-        {
-            var command = new Npgsql.NpgsqlCommand(@"
-        SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @meterId", connection);
-
-            command.Parameters.AddWithValue("@meterId", meterId);
-
-            var count = (long)await command.ExecuteScalarAsync();
-            return count > 0;
-        }
-
-        #endregion
-
-        // ============================================================================================================
-        #region REQUEST/RESPONSE MODELS
-        // ============================================================================================================
-
-        // HDS Models
-        public class ImportReadingsRequest
-        {
-            public string TableName { get; set; }
-            public List<string> MeterNames { get; set; }
-            public DateTime? StartDate { get; set; }
-            public DateTime? EndDate { get; set; }
-            public int? Limit { get; set; }
-        }
-
-        public class PrintHDSMetersRequest
-        {
-            public string TableName { get; set; } = "";
-            public string ConnectionId { get; set; } = "";
-            public List<HDSMeterPrintItem> SelectedMeters { get; set; } = new();
-            public bool ImportHistoricalReadings { get; set; } = false;
-            public DateTime? StartDate { get; set; }
-            public DateTime? EndDate { get; set; }
-        }
-
-        public class HDSMeterPrintItem
-        {
-            public string HdsMeterName { get; set; } = "";
-            public string Unit { get; set; } = "";
-            public string Type { get; set; } = "main";
-            public string ParentMeterId { get; set; } = "";
-            public bool Active { get; set; } = true;
-            public string LastReading { get; set; } = "";
-            public bool IsSelected { get; set; } = true;
-        }
-
-        public class ImportMetersRequest
-        {
-            public List<HDSMeterPrintItem> Meters { get; set; }
-            public bool SkipExisting { get; set; }
-            public bool UpdateExisting { get; set; }
-        }
-
-        // VAREXP Models
-        public class ImportVarexpMetersRequest
-        {
-            public List<VarexpMeterImportItem> Meters { get; set; } = new();
-            public bool SkipExisting { get; set; }
-            public bool UpdateExisting { get; set; }
-            public bool CreateMissingParents { get; set; }
-        }
-
-        public class VarexpMeterImportItem
-        {
-            public string MeterName { get; set; } = "";
-            public string? Unit { get; set; }
-            public string Type { get; set; } = "Main";
-            public string? ParentMeterId { get; set; }
-            public bool Active { get; set; } = true;
-        }
-
-        // Web Services Models
-        public class BrowseVariablesRequest
-        {
-            public string ConnectionId { get; set; } = "";
-            public int MaxVariables { get; set; } = 100000;
-            public string? BranchFilter { get; set; } = "";
-            public string VariableType { get; set; } = "Any";
-            public int Depth { get; set; } = 0;
-            public bool IncludeSystemVariables { get; set; } = false;
-        }
-
-        public class PrintWebServiceMetersRequest
-        {
-            public string ConnectionId { get; set; } = "";
-            public string ConnectionName { get; set; } = "";
-            public List<WebServiceVariableItem> SelectedVariables { get; set; } = new();
-        }
-
-        public class WebServiceVariableItem
-        {
-            public string VariableName { get; set; } = "";
-            public string Unit { get; set; } = "";
-            public string Type { get; set; } = "main";
-            public string ParentMeterId { get; set; } = "";
-            public bool Active { get; set; } = true;
-            public string VariableType { get; set; } = "";
-            public bool IsReadOnly { get; set; } = false;
-            public bool IsSelected { get; set; } = true;
-        }
-
-        public class ImportWebServiceMetersRequest
-        {
-            public List<WebServiceVariableItem> Variables { get; set; } = new();
-            public bool SkipExisting { get; set; }
-            public bool UpdateExisting { get; set; }
-        }
-
-        // General Models
-        public class PrintMetersRequest
-        {
-            public string TableName { get; set; }
-            public List<string> SelectedMeterNames { get; set; }
-            public List<string> SelectedMeterTypes { get; set; }
-            public List<string> SelectedMeterUnits { get; set; }
         }
 
         #endregion

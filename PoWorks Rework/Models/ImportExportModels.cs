@@ -245,3 +245,109 @@ namespace PoWorks_Rework.Models
         public bool MaxNumberExceeded { get; set; }
     }
 }
+
+// ================================
+// IMPORT CONTROLLER MODELS
+// ================================
+
+// HDS Models
+public class ImportReadingsRequest
+{
+    public string TableName { get; set; }
+    public List<string> MeterNames { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public int? Limit { get; set; }
+}
+
+public class PrintHDSMetersRequest
+{
+    public string TableName { get; set; } = "";
+    public string ConnectionId { get; set; } = "";
+    public List<HDSMeterPrintItem> SelectedMeters { get; set; } = new();
+    public bool ImportHistoricalReadings { get; set; } = false;
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+}
+
+public class HDSMeterPrintItem
+{
+    public string HdsMeterName { get; set; } = "";
+    public string Unit { get; set; } = "";
+    public string Type { get; set; } = "main";
+    public string ParentMeterId { get; set; } = "";
+    public bool Active { get; set; } = true;
+    public string LastReading { get; set; } = "";
+    public bool IsSelected { get; set; } = true;
+}
+
+public class ImportMetersRequest
+{
+    public List<HDSMeterPrintItem> Meters { get; set; }
+    public bool SkipExisting { get; set; }
+    public bool UpdateExisting { get; set; }
+}
+
+// VAREXP Models
+public class ImportVarexpMetersRequest
+{
+    public List<VarexpMeterImportItem> Meters { get; set; } = new();
+    public bool SkipExisting { get; set; }
+    public bool UpdateExisting { get; set; }
+    public bool CreateMissingParents { get; set; }
+}
+
+public class VarexpMeterImportItem
+{
+    public string MeterName { get; set; } = "";
+    public string? Unit { get; set; }
+    public string Type { get; set; } = "Main";
+    public string? ParentMeterId { get; set; }
+    public bool Active { get; set; } = true;
+}
+
+// Web Services Models
+public class BrowseVariablesRequest
+{
+    public string ConnectionId { get; set; } = "";
+    public int MaxVariables { get; set; } = 100000;
+    public string? BranchFilter { get; set; } = "";
+    public string VariableType { get; set; } = "Any";
+    public int Depth { get; set; } = 0;
+    public bool IncludeSystemVariables { get; set; } = false;
+}
+
+public class PrintWebServiceMetersRequest
+{
+    public string ConnectionId { get; set; } = "";
+    public string ConnectionName { get; set; } = "";
+    public List<WebServiceVariableItem> SelectedVariables { get; set; } = new();
+}
+
+public class WebServiceVariableItem
+{
+    public string VariableName { get; set; } = "";
+    public string Unit { get; set; } = "";
+    public string Type { get; set; } = "main";
+    public string ParentMeterId { get; set; } = "";
+    public bool Active { get; set; } = true;
+    public string VariableType { get; set; } = "";
+    public bool IsReadOnly { get; set; } = false;
+    public bool IsSelected { get; set; } = true;
+}
+
+public class ImportWebServiceMetersRequest
+{
+    public List<WebServiceVariableItem> Variables { get; set; } = new();
+    public bool SkipExisting { get; set; }
+    public bool UpdateExisting { get; set; }
+}
+
+// General Models
+public class PrintMetersRequest
+{
+    public string TableName { get; set; }
+    public List<string> SelectedMeterNames { get; set; }
+    public List<string> SelectedMeterTypes { get; set; }
+    public List<string> SelectedMeterUnits { get; set; }
+}
