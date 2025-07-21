@@ -76,7 +76,7 @@ function setupWebServiceEventListeners() {
  */
 function loadWebServiceConnections() {
 
-    fetch('/Import/GetWebServiceConnections')
+    fetch('/WebServicesImport/GetWebServiceConnections')
         .then(response => response.json())
         .then(data => {
             const select = document.getElementById('webServiceConnection');
@@ -142,7 +142,7 @@ function browseVariables(connectionId) {
         includeSystemVariables
     };
 
-    fetch('/Import/BrowseVariablesWebService', {
+    fetch('/WebServicesImport/BrowseVariablesWebService', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)
@@ -428,7 +428,7 @@ function printWebServiceVariables() {
         selectedVariables
     };
 
-    fetch('/Import/PrintWebServiceMeters', {
+    fetch('/WebServicesImport/PrintWebServiceMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)
@@ -492,7 +492,7 @@ function importWebServiceVariables() {
         importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing...';
     }
 
-    fetch('/Import/ImportWebServiceMeters', {
+    fetch('/WebServicesImport/ImportWebServiceMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)

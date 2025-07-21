@@ -63,4 +63,9 @@ app.MapControllerRoute(
     pattern: "VarexpImport/{action}/{id?}",
     defaults: new { controller = "VarexpImport" });
 
+app.MapControllerRoute(
+    name: "webServicesImport",
+    pattern: "WebServicesImport/{action}/{id?}",
+    defaults: new { controller = "WebServicesImport" });
+
 app.Run();
