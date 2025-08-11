@@ -4,6 +4,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddControllers();
 builder.Services.AddScoped<PoWorks_Rework.Repositories.MeterRepository>();
 
 // Register the DatabaseService as a singleton

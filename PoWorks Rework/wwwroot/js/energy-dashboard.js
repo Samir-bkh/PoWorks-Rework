@@ -1,4 +1,4 @@
-﻿// Energy Dashboard JavaScript
+﻿// Optimized Energy Dashboard JavaScript - Fast Loading with Timeout Handling
 (function () {
     'use strict';
 
@@ -7,16 +7,33 @@
     let currentData = [];
     let tenants = [];
     let meters = [];
+    let loadingTimeout = null;
 
-    // Initialize
+    // ✅ OPTIMIZATION 1: Faster initialization
     document.addEventListener('DOMContentLoaded', function () {
-        initializeDateFilters();
-        loadTenants();
-        attachEventListeners();
-        loadChartData();
+        console.log('🚀 Dashboard initializing...');
+
+        try {
+            initializeDateFilters();
+            attachEventListeners();
+
+            // ✅ Load data in parallel
+            Promise.all([
+                loadTenants(),
+                loadChartData()
+            ]).then(() => {
+                console.log('✅ Dashboard initialization completed');
+            }).catch(error => {
+                console.error('❌ Dashboard initialization error:', error);
+                showNotification('Dashboard initialization failed, showing demo data', 'warning');
+            });
+
+        } catch (initError) {
+            console.error('❌ Critical initialization error:', initError);
+            showDemoChart();
+        }
     });
 
-    // Initialize date filters with default values
     function initializeDateFilters() {
         const endDate = new Date();
         const startDate = new Date();
@@ -26,12 +43,10 @@
         document.getElementById('endDate').value = formatDate(endDate);
     }
 
-    // Format date to YYYY-MM-DD
     function formatDate(date) {
         return date.toISOString().split('T')[0];
     }
 
-    // Attach event listeners
     function attachEventListeners() {
         document.getElementById('tenantFilter').addEventListener('change', onTenantChange);
         document.getElementById('applyFilters').addEventListener('click', loadChartData);
@@ -40,21 +55,35 @@
         document.getElementById('dateFilter').addEventListener('change', onDateFilterChange);
     }
 
-    // Load tenants
-    function loadTenants() {
-        fetch('/api/DashboardApi/GetTenants')
-            .then(response => response.json())
-            .then(data => {
-                tenants = data;
-                populateTenantDropdown();
-            })
-            .catch(error => {
-                console.error('Error loading tenants:', error);
-                showNotification('Error loading tenants', 'error');
+    // ✅ OPTIMIZATION 2: Fast tenant loading with timeout
+    async function loadTenants() {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+            const response = await fetch('/Dashboard/GetTenants', {
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            tenants = data || [];
+            populateTenantDropdown();
+
+        } catch (error) {
+            console.error('Error loading tenants:', error);
+            if (error.name === 'AbortError') {
+                showNotification('Tenant loading timeout - using defaults', 'warning');
+            }
+            // Continue without tenants - don't block the UI
+        }
     }
 
-    // Populate tenant dropdown
     function populateTenantDropdown() {
         const tenantSelect = document.getElementById('tenantFilter');
         tenantSelect.innerHTML = '<option value="">All Tenants</option>';
@@ -67,7 +96,6 @@
         });
     }
 
-    // Handle tenant change
     function onTenantChange(event) {
         const tenantId = event.target.value;
         const meterSelect = document.getElementById('meterFilter');
@@ -81,21 +109,34 @@
         }
     }
 
-    // Load meters for selected tenant
-    function loadMeters(tenantId) {
-        fetch(`/api/DashboardApi/GetMetersByTenant/${tenantId}`)
-            .then(response => response.json())
-            .then(data => {
-                meters = data;
-                populateMeterDropdown();
-            })
-            .catch(error => {
-                console.error('Error loading meters:', error);
-                showNotification('Error loading meters', 'error');
+    // ✅ OPTIMIZATION 3: Fast meter loading with timeout
+    async function loadMeters(tenantId) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+            const response = await fetch(`/Dashboard/GetMetersByTenant/${tenantId}`, {
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            meters = data || [];
+            populateMeterDropdown();
+
+        } catch (error) {
+            console.error('Error loading meters:', error);
+            if (error.name === 'AbortError') {
+                showNotification('Meter loading timeout', 'warning');
+            }
+        }
     }
 
-    // Populate meter dropdown
     function populateMeterDropdown() {
         const meterSelect = document.getElementById('meterFilter');
         meterSelect.innerHTML = '<option value="">All Meters</option>';
@@ -108,7 +149,6 @@
         });
     }
 
-    // Handle date filter change
     function onDateFilterChange(event) {
         const filterType = event.target.value;
         const startDate = document.getElementById('startDate');
@@ -131,9 +171,22 @@
         }
     }
 
-    // Load chart data
-    function loadChartData() {
+    // ✅ OPTIMIZATION 4: Fast chart loading with timeout and fallback
+    async function loadChartData() {
+        console.log('🔧 Loading chart data...');
         showLoading(true);
+
+        // ✅ Clear any existing timeout
+        if (loadingTimeout) {
+            clearTimeout(loadingTimeout);
+        }
+
+        // ✅ Set a timeout for chart loading
+        loadingTimeout = setTimeout(() => {
+            console.warn('⏰ Chart loading timeout - showing demo data');
+            showDemoChart();
+            showNotification('Chart loading took too long - showing demo data', 'warning');
+        }, 15000); // 15 second timeout
 
         const filters = {
             dateFilter: document.getElementById('dateFilter').value,
@@ -143,97 +196,191 @@
             endDate: document.getElementById('endDate').value
         };
 
-        fetch('/api/DashboardApi/GetConsumptionData', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(filters)
-        })
-            .then(response => response.json())
-            .then(data => {
-                currentData = data.chartData;
-                updateChart(data.chartData);
-                updateSummaryCards(data.summary);
-                showLoading(false);
-            })
-            .catch(error => {
-                console.error('Error loading chart data:', error);
-                showNotification('Error loading chart data', 'error');
-                showLoading(false);
+        console.log('📋 Filters:', filters);
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second request timeout
+
+            const response = await fetch('/Dashboard/GetConsumptionData', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(filters),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
+            clearTimeout(loadingTimeout);
+
+            console.log('🌐 Response Status:', response.status);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('📊 Received data:', data);
+
+            // ✅ Handle demo data notification
+            if (data.isDemoData) {
+                showNotification(data.message || 'Showing demo data', 'info');
+            } else if (data.message) {
+                showNotification(data.message, 'info');
+            }
+
+            currentData = data.chartData;
+            updateChart(data.chartData);
+            updateSummaryCards(data.summary);
+            showLoading(false);
+
+            console.log('✅ Chart updated successfully');
+
+        } catch (error) {
+            clearTimeout(loadingTimeout);
+            console.error('❌ Chart loading error:', error);
+
+            if (error.name === 'AbortError') {
+                console.warn('⏰ Request timeout - showing demo data');
+                showNotification('Request timeout - showing demo data', 'warning');
+            } else {
+                showNotification(`Error: ${error.message} - showing demo data`, 'error');
+            }
+
+            showDemoChart();
+        }
     }
 
-    // Update chart
-    function updateChart(data) {
-        const ctx = document.getElementById('consumptionChart').getContext('2d');
-        const chartType = document.getElementById('chartType').value;
+    // ✅ OPTIMIZATION 5: Demo chart for better UX
+    function showDemoChart() {
+        const demoData = {
+            labels: ['2025-08-05', '2025-08-06', '2025-08-07', '2025-08-08', '2025-08-09', '2025-08-10', '2025-08-11'],
+            datasets: [
+                {
+                    label: 'Demo Meter 1 (kWh)',
+                    data: [120, 135, 148, 162, 155, 170, 165]
+                },
+                {
+                    label: 'Demo Meter 2 (kWh)',
+                    data: [200, 210, 235, 225, 240, 255, 250]
+                }
+            ]
+        };
 
+        const demoSummary = {
+            totalConsumption: 1925,
+            averageDaily: 275,
+            peakUsage: 255,
+            activeMeters: 2
+        };
+
+        currentData = demoData;
+        updateChart(demoData);
+        updateSummaryCards(demoSummary);
+        showLoading(false);
+    }
+
+    // ✅ OPTIMIZATION 6: Improved chart rendering
+    function updateChart(data) {
+        console.log('📈 Updating chart with data:', data);
+
+        const canvas = document.getElementById('consumptionChart');
+        if (!canvas) {
+            console.error('❌ Canvas not found');
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        const chartType = document.getElementById('chartType')?.value || 'bar';
+
+        // Check Chart.js availability
+        if (typeof Chart === 'undefined') {
+            console.error('❌ Chart.js not loaded');
+            showNotification('Chart library not loaded', 'error');
+            return;
+        }
+
+        // Destroy existing chart
         if (chart) {
             chart.destroy();
         }
 
-        chart = new Chart(ctx, {
-            type: chartType,
-            data: {
-                labels: data.labels,
-                datasets: data.datasets.map((dataset, index) => ({
-                    label: dataset.label,
-                    data: dataset.data,
-                    backgroundColor: chartType === 'bar' ?
-                        getColor(index, 0.6) : 'transparent',
-                    borderColor: getColor(index, 1),
-                    borderWidth: 2,
-                    tension: 0.1,
-                    fill: false
-                }))
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Energy Consumption Over Time'
-                    },
-                    legend: {
-                        display: true,
-                        position: 'top'
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
-                    }
+        // Validate data
+        if (!data || !data.labels || !data.datasets) {
+            console.warn('⚠️ Invalid chart data structure');
+            showDemoChart();
+            return;
+        }
+
+        try {
+            const processedDatasets = data.datasets.map((dataset, index) => ({
+                label: dataset.label,
+                data: dataset.data,
+                backgroundColor: chartType === 'bar' ? getColor(index, 0.6) : 'transparent',
+                borderColor: getColor(index, 1),
+                borderWidth: 2,
+                tension: 0.1,
+                fill: false
+            }));
+
+            chart = new Chart(ctx, {
+                type: chartType,
+                data: {
+                    labels: data.labels,
+                    datasets: processedDatasets
                 },
-                scales: {
-                    x: {
-                        display: true,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
                         title: {
                             display: true,
-                            text: 'Date'
+                            text: 'Energy Consumption Over Time'
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
                         }
                     },
-                    y: {
-                        display: true,
-                        title: {
+                    scales: {
+                        x: {
                             display: true,
-                            text: 'Consumption (kWh)'
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
                         },
-                        beginAtZero: true
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Consumption (kWh)'
+                            },
+                            beginAtZero: true
+                        }
                     }
                 }
-            }
-        });
+            });
+
+            console.log('✅ Chart created successfully');
+
+        } catch (chartError) {
+            console.error('❌ Chart creation error:', chartError);
+            showNotification('Chart rendering failed', 'error');
+        }
     }
 
-    // Update chart type
     function updateChartType() {
         if (currentData && currentData.labels) {
             updateChart(currentData);
         }
     }
 
-    // Get color for chart
     function getColor(index, alpha) {
         const colors = [
             `rgba(54, 162, 235, ${alpha})`,
@@ -246,15 +393,17 @@
         return colors[index % colors.length];
     }
 
-    // Update summary cards
     function updateSummaryCards(summary) {
-        document.getElementById('totalConsumption').textContent = `${summary.totalConsumption.toFixed(2)} kWh`;
-        document.getElementById('avgDaily').textContent = `${summary.averageDaily.toFixed(2)} kWh`;
-        document.getElementById('peakUsage').textContent = `${summary.peakUsage.toFixed(2)} kWh`;
-        document.getElementById('activeMeters').textContent = summary.activeMeters;
+        try {
+            document.getElementById('totalConsumption').textContent = `${summary.totalConsumption.toFixed(2)} kWh`;
+            document.getElementById('avgDaily').textContent = `${summary.averageDaily.toFixed(2)} kWh`;
+            document.getElementById('peakUsage').textContent = `${summary.peakUsage.toFixed(2)} kWh`;
+            document.getElementById('activeMeters').textContent = summary.activeMeters;
+        } catch (error) {
+            console.error('Error updating summary cards:', error);
+        }
     }
 
-    // Reset filters
     function resetFilters() {
         document.getElementById('dateFilter').value = 'monthly';
         document.getElementById('tenantFilter').value = '';
@@ -266,28 +415,31 @@
         loadChartData();
     }
 
-    // Show/hide loading spinner
+    // ✅ OPTIMIZATION 7: Improved loading states
     function showLoading(show) {
         const spinner = document.getElementById('loadingSpinner');
-        const chart = document.getElementById('consumptionChart');
+        const chartCanvas = document.getElementById('consumptionChart');
 
         if (show) {
-            spinner.classList.remove('d-none');
-            chart.style.display = 'none';
+            if (spinner) spinner.classList.remove('d-none');
+            if (chartCanvas) chartCanvas.style.opacity = '0.5';
         } else {
-            spinner.classList.add('d-none');
-            chart.style.display = 'block';
+            if (spinner) spinner.classList.add('d-none');
+            if (chartCanvas) chartCanvas.style.opacity = '1';
         }
     }
 
-    // Show notification
-    function showNotification(message, type) {
-        // Simple alert for now - you can implement a better notification system
-        console.log(`${type}: ${message}`);
+    // ✅ OPTIMIZATION 8: Better notification system
+    function showNotification(message, type = 'info') {
+        console.log(`${type.toUpperCase()}: ${message}`);
 
-        // Create a temporary alert div
+        // Remove existing notifications
+        const existingAlerts = document.querySelectorAll('.dashboard-alert');
+        existingAlerts.forEach(alert => alert.remove());
+
+        // Create new notification
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show`;
+        alertDiv.className = `alert alert-${getBootstrapAlertClass(type)} alert-dismissible fade show dashboard-alert`;
         alertDiv.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -295,12 +447,25 @@
 
         // Insert at the top of the container
         const container = document.querySelector('.container-fluid');
-        container.insertBefore(alertDiv, container.firstChild);
+        if (container) {
+            container.insertBefore(alertDiv, container.firstChild);
 
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 5000);
+            // Auto-remove after delay
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, type === 'error' ? 8000 : 5000);
+        }
+    }
+
+    function getBootstrapAlertClass(type) {
+        switch (type) {
+            case 'error': return 'danger';
+            case 'warning': return 'warning';
+            case 'success': return 'success';
+            default: return 'info';
+        }
     }
 
 })();
