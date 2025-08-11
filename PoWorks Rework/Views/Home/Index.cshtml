@@ -29,7 +29,7 @@
                 <div class="card-body">
                     <div class="row">
                         <!-- Date Filter -->
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <div class="form-group">
                                 <label for="dateFilter">Date Range</label>
                                 <select id="dateFilter" class="form-control">
@@ -40,34 +40,65 @@
                             </div>
                         </div>
 
-                        <!-- Tenant Filter -->
-                        <div class="col-md-3">
+                        <!-- Tenant Filter (Optional) -->
+                        <div class="col-md-2">
                             <div class="form-group">
-                                <label for="tenantFilter">Tenant</label>
+                                <label for="tenantFilter">Tenant (Optional)</label>
                                 <select id="tenantFilter" class="form-control">
                                     <option value="">All Tenants</option>
                                 </select>
                             </div>
                         </div>
 
-                        <!-- Meter Filter -->
+                        <!-- Meter Filter (Now Independent) -->
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label for="meterFilter">Meter</label>
-                                <select id="meterFilter" class="form-control" disabled>
-                                    <option value="">Select Tenant First</option>
+                                <div class="input-group">
+                                    <select id="meterFilter" class="form-control">
+                                        <option value="">All Meters (Loading...)</option>
+                                    </select>
+                                    <button id="loadMoreMeters" class="btn btn-outline-secondary" type="button" style="display: none;">
+                                        Load More
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: Meter Limit Control -->
+                        <div class="col-md-2">
+                            <div class="form-group">
+                                <label for="meterLimit">Meter Limit</label>
+                                <select id="meterLimit" class="form-control">
+                                    <option value="5" selected>5 meters</option>
+                                    <option value="10">10 meters</option>
+                                    <option value="25">25 meters</option>
+                                    <option value="50">50 meters</option>
+                                    <option value="100">100 meters</option>
                                 </select>
                             </div>
                         </div>
 
                         <!-- Chart Type -->
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <div class="form-group">
                                 <label for="chartType">Chart Type</label>
                                 <select id="chartType" class="form-control">
                                     <option value="bar">Bar Chart</option>
                                     <option value="line">Line Chart</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- NEW: Quick Actions -->
+                        <div class="col-md-1">
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <div class="d-flex flex-column">
+                                    <button id="refreshMeters" class="btn btn-sm btn-outline-info mb-1" title="Refresh Meter List">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -88,6 +119,15 @@
                             <button id="resetFilters" class="btn btn-secondary">Reset</button>
                         </div>
                     </div>
+
+                    <!-- NEW: Data Status Information -->
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <div id="dataStatus" class="alert alert-info" style="display: none;">
+                                <small id="dataStatusText">Loading meter information...</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -97,14 +137,24 @@
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Energy Consumption Chart</h5>
+                    <!-- NEW: Chart Controls -->
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button id="autoRefresh" class="btn btn-outline-secondary" type="button" title="Auto Refresh (30s)">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                        <button id="exportChart" class="btn btn-outline-secondary" type="button" title="Export Chart">
+                            <i class="bi bi-download"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div id="loadingSpinner" class="text-center d-none">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
+                        <p class="mt-2 text-muted">Loading chart data...</p>
                     </div>
                     <canvas id="consumptionChart" style="max-height: 400px;"></canvas>
                 </div>
@@ -119,6 +169,7 @@
                 <div class="card-body">
                     <h5 class="card-title">Total Consumption</h5>
                     <h3 id="totalConsumption">0 kWh</h3>
+                    <small id="totalConsumptionDetail" class="text-light opacity-75"></small>
                 </div>
             </div>
         </div>
@@ -127,6 +178,7 @@
                 <div class="card-body">
                     <h5 class="card-title">Average Daily</h5>
                     <h3 id="avgDaily">0 kWh</h3>
+                    <small id="avgDailyDetail" class="text-light opacity-75">Per day average</small>
                 </div>
             </div>
         </div>
@@ -135,6 +187,7 @@
                 <div class="card-body">
                     <h5 class="card-title">Peak Usage</h5>
                     <h3 id="peakUsage">0 kWh</h3>
+                    <small id="peakUsageDetail" class="text-light opacity-75">Maximum recorded</small>
                 </div>
             </div>
         </div>
@@ -143,6 +196,46 @@
                 <div class="card-body">
                     <h5 class="card-title">Active Meters</h5>
                     <h3 id="activeMeters">0</h3>
+                    <small id="activeMetersDetail" class="text-light opacity-75">Out of total available</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Meter Information Panel -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Meter Information</h5>
+                </div>
+                <div class="card-body">
+                    <div id="meterInfo" class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="h4 text-primary" id="totalAvailableMeters">0</div>
+                                <small class="text-muted">Total Available</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="h4 text-success" id="metersWithTenants">0</div>
+                                <small class="text-muted">With Tenants</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="h4 text-warning" id="metersWithoutTenants">0</div>
+                                <small class="text-muted">Without Tenants</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <div class="h4 text-info" id="totalReadings">0</div>
+                                <small class="text-muted">Total Readings</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

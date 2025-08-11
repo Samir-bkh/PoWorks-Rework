@@ -1,6 +1,6 @@
-﻿using System.Data;
+﻿// Controllers/DashboardApiController.cs - FIXED: Date Filtering and Filter Dependencies
 using Microsoft.AspNetCore.Mvc;
-using Npgsql;
+using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
@@ -8,148 +8,337 @@ namespace PoWorks_Rework.Controllers
     public class DashboardController : BaseController
     {
         private readonly ILogger<DashboardController> _logger;
+        private readonly DashboardDataService _dashboardDataService;
 
-        public DashboardController(DatabaseService databaseService, ILogger<DashboardController> logger)
+        public DashboardController(
+            DatabaseService databaseService,
+            ILogger<DashboardController> logger,
+            DashboardDataService dashboardDataService)
             : base(databaseService)
         {
             _logger = logger;
+            _dashboardDataService = dashboardDataService;
         }
 
+        /// <summary>
+        /// UNCHANGED: Get tenants for dropdown
+        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetTenants()
         {
             try
             {
-                if (!_databaseService.IsInitialized)
-                {
-                    return Json(new List<object>());
-                }
-
-                using var connection = GetDatabaseConnection();
-
-                var query = @"
-                    SELECT t.""TenantID"" as Id, 
-                           td.""CompanyName"" as Name,
-                           td.""Active""
-                    FROM ""Tenants"" t
-                    INNER JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                    WHERE td.""Active"" = true
-                    ORDER BY td.""CompanyName""";
-
-                using var cmd = new NpgsqlCommand(query, connection);
-                using var reader = await cmd.ExecuteReaderAsync();
-
-                var tenants = new List<object>();
-                while (await reader.ReadAsync())
-                {
-                    tenants.Add(new
-                    {
-                        id = reader.GetInt32("Id"),
-                        name = reader.GetString("Name")
-                    });
-                }
-
+                var tenants = await _dashboardDataService.GetTenantsAsync();
                 return Json(tenants);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching tenants");
+                _logger.LogError(ex, "Error in GetTenants");
                 return Json(new List<object>());
             }
         }
 
+        /// <summary>
+        /// NEW: Get intelligent date range suggestions based on available data
+        /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetMetersByTenant(int tenantId)
+        public async Task<IActionResult> GetDateRangeSuggestions()
         {
             try
             {
-                if (!_databaseService.IsInitialized)
+                var suggestions = await _dashboardDataService.GetDateRangeSuggestionsAsync();
+
+                return Json(new
                 {
-                    return Json(new List<object>());
+                    success = true,
+                    defaultStartDate = suggestions.DefaultStartDate.ToString("yyyy-MM-dd"),
+                    defaultEndDate = suggestions.DefaultEndDate.ToString("yyyy-MM-dd"),
+                    message = suggestions.Message,
+                    alternatives = suggestions.AlternativeRanges.Select(alt => new
+                    {
+                        name = alt.Name,
+                        startDate = alt.StartDate.ToString("yyyy-MM-dd"),
+                        endDate = alt.EndDate.ToString("yyyy-MM-dd"),
+                        description = alt.Description
+                    }).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting date range suggestions");
+                return Json(new
+                {
+                    success = false,
+                    defaultStartDate = DateTime.Now.AddDays(-30).ToString("yyyy-MM-dd"),
+                    defaultEndDate = DateTime.Now.ToString("yyyy-MM-dd"),
+                    message = "Error determining optimal date range. Using defaults.",
+                    alternatives = new List<object>()
+                });
+            }
+        }
+
+        /// <summary>
+        /// NEW: Get available date ranges in database
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetAvailableDateRanges()
+        {
+            try
+            {
+                var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync();
+
+                return Json(new
+                {
+                    success = true,
+                    hasData = dateInfo.HasData,
+                    earliestReading = dateInfo.EarliestReading?.ToString("yyyy-MM-dd"),
+                    latestReading = dateInfo.LatestReading?.ToString("yyyy-MM-dd"),
+                    totalReadings = dateInfo.TotalReadings,
+                    metersWithData = dateInfo.MetersWithData,
+                    daysWithData = dateInfo.DaysWithData
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting available date ranges");
+                return Json(new { success = false, hasData = false });
+            }
+        }
+
+        /// <summary>
+        /// FIXED: Get meters that have data in specified date range
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> GetMetersWithData([FromBody] GetMetersRequest request)
+        {
+            try
+            {
+                var filters = new MeterReadingFilters
+                {
+                    StartDate = request.StartDate,
+                    EndDate = request.EndDate,
+                    TenantId = request.TenantId,
+                    Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
+                    Offset = Math.Max(0, request.Offset ?? 0),
+                    IncludeNullTenants = request.IncludeNullTenants ?? true,
+                    ActiveOnly = true
+                };
+
+                var meters = await _dashboardDataService.GetActiveMetersWithDataAsync(filters);
+
+                return Json(new
+                {
+                    success = true,
+                    meters = meters.Select(m => new
+                    {
+                        id = m.MeterId,
+                        name = m.Name,
+                        unit = m.Unit,
+                        type = m.Type,
+                        active = m.Active,
+                        tenantName = m.TenantName,
+                        displayName = m.FullDisplayName
+                    }).ToList(),
+                    limit = filters.Limit,
+                    offset = filters.Offset,
+                    hasMore = meters.Count >= filters.Limit,
+                    dateRange = new
+                    {
+                        startDate = filters.StartDate?.ToString("yyyy-MM-dd"),
+                        endDate = filters.EndDate?.ToString("yyyy-MM-dd")
+                    },
+                    message = meters.Count >= filters.Limit
+                        ? $"Found {meters.Count} meters with data in date range (limit: {filters.Limit}). Use 'Load More' for additional meters."
+                        : $"Found {meters.Count} meters with data in the specified date range."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching meters with data");
+                return Json(new
+                {
+                    success = false,
+                    meters = new List<object>(),
+                    error = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// ENHANCED: Get meters by tenant with date range consideration
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetMetersByTenant(int tenantId, int limit = 25, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            try
+            {
+                if (limit <= 0 || limit > 100)
+                {
+                    limit = 25;
                 }
 
-                using var connection = GetDatabaseConnection();
-
-                var query = @"
-                    SELECT ""MeterId"" as id,
-                           ""Name"" as name,
-                           ""Unit"" as unit,
-                           ""Type"" as type,
-                           ""Active"" as active
-                    FROM ""Meters""
-                    WHERE ""TenantID"" = @TenantId AND ""Active"" = true
-                    ORDER BY ""Name""";
-
-                using var cmd = new NpgsqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@TenantId", tenantId);
-                using var reader = await cmd.ExecuteReaderAsync();
-
-                var meters = new List<object>();
-                while (await reader.ReadAsync())
+                // If dates provided, get meters with data in that range
+                if (startDate.HasValue && endDate.HasValue)
                 {
-                    meters.Add(new
+                    var filters = new MeterReadingFilters
                     {
-                        id = reader.GetInt32("id"),
-                        name = reader.GetString("name"),
-                        unit = reader.IsDBNull("unit") ? "kWh" : reader.GetString("unit"),
-                        type = reader.IsDBNull("type") ? "Energy" : reader.GetString("type"),
-                        active = reader.GetBoolean("active")
+                        TenantId = tenantId,
+                        StartDate = startDate,
+                        EndDate = endDate,
+                        Limit = limit,
+                        IncludeNullTenants = false,
+                        ActiveOnly = true
+                    };
+
+                    var metersWithData = await _dashboardDataService.GetActiveMetersWithDataAsync(filters);
+
+                    return Json(new
+                    {
+                        success = true,
+                        meters = metersWithData.Select(m => new
+                        {
+                            id = m.MeterId,
+                            name = m.Name,
+                            unit = m.Unit,
+                            type = m.Type,
+                            active = m.Active,
+                            tenantName = m.TenantName
+                        }).ToList(),
+                        limit = limit,
+                        message = $"Found {metersWithData.Count} meters for tenant with data in specified date range",
+                        hasDateFilter = true
                     });
                 }
+                else
+                {
+                    // Fallback to original method for tenant meters
+                    var meters = await _dashboardDataService.GetMetersByTenantAsync(tenantId, limit);
 
-                return Json(meters);
+                    return Json(new
+                    {
+                        success = true,
+                        meters = meters,
+                        limit = limit,
+                        message = $"Found {meters.Count} meters for tenant",
+                        hasDateFilter = false
+                    });
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error fetching meters for tenant {TenantId}", tenantId);
-                return Json(new List<object>());
+                return Json(new { success = false, meters = new List<object>(), error = ex.Message });
             }
         }
 
+        /// <summary>
+        /// FIXED: Main consumption data endpoint with enhanced date handling
+        /// </summary>
         [HttpPost]
-        public async Task<IActionResult> GetConsumptionData([FromBody] DashboardFilterRequest filters)
+        public async Task<IActionResult> GetConsumptionData([FromBody] DashboardFilterRequest request)
         {
             try
             {
-                _logger.LogInformation("=== DASHBOARD API DEBUG START ===");
+                _logger.LogInformation("=== FIXED DASHBOARD API DEBUG START ===");
                 _logger.LogInformation($"Database IsInitialized: {_databaseService.IsInitialized}");
-                _logger.LogInformation($"Received filters: DateFilter={filters?.DateFilter}, TenantId={filters?.TenantId}, MeterId={filters?.MeterId}, StartDate={filters?.StartDate}, EndDate={filters?.EndDate}");
+                _logger.LogInformation($"Received filters: DateFilter={request?.DateFilter}, TenantId={request?.TenantId}, MeterId={request?.MeterId}, StartDate={request?.StartDate}, EndDate={request?.EndDate}, Limit={request?.Limit}");
 
                 if (!_databaseService.IsInitialized)
                 {
                     _logger.LogWarning("Database service not initialized - returning demo data");
-                    return Json(GenerateDemoChartData());
+                    return Json(_dashboardDataService.GenerateDemoChartData("Database not configured. Showing demo data."));
                 }
 
-                using var connection = GetDatabaseConnection();
-                _logger.LogInformation($"Database connection established: {connection.State}");
-
-                // ✅ OPTIMIZATION 1: Quick data availability check
-                var hasData = await CheckDataAvailability(connection, filters);
-                _logger.LogInformation($"Data availability check: {hasData}");
-
-                if (!hasData)
+                // Convert request to filters model
+                var filters = new MeterReadingFilters
                 {
-                    _logger.LogInformation("No data found - returning demo data with message");
-                    return Json(GenerateDemoChartData("No meter reading data found. This is sample data to demonstrate the chart functionality."));
+                    DateFilter = request.DateFilter ?? "monthly",
+                    TenantId = request.TenantId,
+                    MeterId = request.MeterId,
+                    StartDate = request.StartDate,
+                    EndDate = request.EndDate,
+                    Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 25)),
+                    ActiveOnly = true,
+                    IncludeNullTenants = true
+                };
+
+                // FIXED: Check data availability for the specific date range
+                var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
+                _logger.LogInformation("Data availability for date range: {Message}", availability.GetAvailabilityMessage());
+
+                if (!availability.IsDataAvailable)
+                {
+                    _logger.LogInformation("No data available for date range - suggesting alternatives");
+
+                    // Suggest better date range
+                    var suggestions = await _dashboardDataService.GetDateRangeSuggestionsAsync();
+
+                    return Json(new
+                    {
+                        chartData = new { labels = new List<string>(), datasets = new List<object>() },
+                        summary = new { totalConsumption = 0, averageDaily = 0, peakUsage = 0, activeMeters = 0 },
+                        message = availability.GetAvailabilityMessage(),
+                        noDataInRange = true,
+                        suggestions = new
+                        {
+                            defaultStartDate = suggestions.DefaultStartDate.ToString("yyyy-MM-dd"),
+                            defaultEndDate = suggestions.DefaultEndDate.ToString("yyyy-MM-dd"),
+                            message = suggestions.Message,
+                            alternatives = suggestions.AlternativeRanges.Select(alt => new
+                            {
+                                name = alt.Name,
+                                startDate = alt.StartDate.ToString("yyyy-MM-dd"),
+                                endDate = alt.EndDate.ToString("yyyy-MM-dd"),
+                                description = alt.Description
+                            }).ToList()
+                        }
+                    });
                 }
 
-                // ✅ OPTIMIZATION 2: Use simplified, faster queries
-                var consumptionData = await GetOptimizedConsumptionData(connection, filters);
+                // FIXED: Get consumption data using fixed date filtering
+                var consumptionData = await _dashboardDataService.GetMeterReadingsAsync(filters);
                 _logger.LogInformation($"Raw consumption data records retrieved: {consumptionData.Count}");
 
-                // Process data for charts
-                var chartData = ProcessChartData(consumptionData);
-                var summary = CalculateSummary(consumptionData);
+                if (!consumptionData.Any())
+                {
+                    return Json(new
+                    {
+                        chartData = new { labels = new List<string>(), datasets = new List<object>() },
+                        summary = new { totalConsumption = 0, averageDaily = 0, peakUsage = 0, activeMeters = 0 },
+                        message = $"No consumption data found for the selected criteria in date range {filters.StartDate?.ToString("yyyy-MM-dd")} to {filters.EndDate?.ToString("yyyy-MM-dd")}. Try expanding the date range.",
+                        noDataInRange = true
+                    });
+                }
+
+                // Process chart data and calculate summary
+                var chartData = _dashboardDataService.ProcessChartData(consumptionData);
+                var summary = _dashboardDataService.CalculateSummary(consumptionData);
+
+                // Update summary with total meter count from availability check
+                summary.TotalMeters = availability.ActiveMeterCount;
 
                 var result = new
                 {
-                    chartData = chartData,
-                    summary = summary,
-                    message = consumptionData.Any() ? "" : "No data found for the selected criteria"
+                    chartData = chartData.ToApiResponse(),
+                    summary = summary.ToDisplayObject(),
+                    message = $"Showing data for {summary.ActiveMeters} meters out of {availability.ActiveMeterCount} available meters with data in the selected date range (limit: {filters.Limit})",
+                    dataInfo = new
+                    {
+                        availableMeters = availability.ActiveMeterCount,
+                        shownMeters = summary.ActiveMeters,
+                        metersWithTenants = availability.MetersWithTenants,
+                        metersWithoutTenants = availability.MetersWithoutTenants,
+                        totalReadings = availability.TotalReadings,
+                        appliedLimit = filters.Limit,
+                        dateRange = new
+                        {
+                            startDate = filters.StartDate?.ToString("yyyy-MM-dd"),
+                            endDate = filters.EndDate?.ToString("yyyy-MM-dd")
+                        }
+                    }
                 };
 
-                _logger.LogInformation("=== DASHBOARD API DEBUG END ===");
+                _logger.LogInformation("=== FIXED DASHBOARD API DEBUG END ===");
                 return Json(result);
             }
             catch (Exception ex)
@@ -157,280 +346,84 @@ namespace PoWorks_Rework.Controllers
                 _logger.LogError(ex, "ERROR in GetConsumptionData: {Message}", ex.Message);
                 _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
 
-                // ✅ OPTIMIZATION 3: Return demo data on error instead of failing
-                return Json(GenerateDemoChartData($"Error loading data: {ex.Message}. Showing demo data."));
+                return Json(_dashboardDataService.GenerateDemoChartData($"Error loading data: {ex.Message}. Showing demo data."));
             }
         }
 
-        // ✅ OPTIMIZATION 4: Fast data availability check
-        private async Task<bool> CheckDataAvailability(NpgsqlConnection connection, DashboardFilterRequest filters)
+        /// <summary>
+        /// ENHANCED: Dashboard statistics with date range info
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetDashboardStats(DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
-                // Quick check: Do we have any active meters?
-                var meterCountQuery = "SELECT COUNT(*) FROM \"Meters\" WHERE \"Active\" = true";
-                if (filters.TenantId.HasValue)
+                var filters = new MeterReadingFilters
                 {
-                    meterCountQuery += " AND \"TenantID\" = @TenantId";
-                }
+                    Limit = 1,
+                    IncludeNullTenants = true,
+                    StartDate = startDate,
+                    EndDate = endDate
+                };
 
-                using var meterCmd = new NpgsqlCommand(meterCountQuery, connection);
-                if (filters.TenantId.HasValue)
+                var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
+                var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync();
+
+                return Json(new
                 {
-                    meterCmd.Parameters.AddWithValue("@TenantId", filters.TenantId.Value);
-                }
-
-                var meterCount = (long)await meterCmd.ExecuteScalarAsync();
-                if (meterCount == 0)
-                {
-                    _logger.LogInformation("No active meters found");
-                    return false;
-                }
-
-                // Quick check: Do we have any readings data?
-                var readingsCountQuery = "SELECT COUNT(*) FROM \"MeterReadings\" LIMIT 1";
-                using var readingsCmd = new NpgsqlCommand(readingsCountQuery, connection);
-                var readingsCount = (long)await readingsCmd.ExecuteScalarAsync();
-
-                _logger.LogInformation($"Found {meterCount} active meters and {readingsCount} readings");
-                return readingsCount > 0;
+                    totalMeters = availability.ActiveMeterCount,
+                    metersWithTenants = availability.MetersWithTenants,
+                    metersWithoutTenants = availability.MetersWithoutTenants,
+                    totalReadings = availability.TotalReadings,
+                    hasData = availability.IsDataAvailable,
+                    message = availability.GetAvailabilityMessage(),
+                    dateRange = startDate.HasValue && endDate.HasValue ? new
+                    {
+                        startDate = startDate?.ToString("yyyy-MM-dd"),
+                        endDate = endDate?.ToString("yyyy-MM-dd"),
+                        hasDataInRange = availability.HasReadings
+                    } : null,
+                    availableDateRange = dateInfo.HasData ? new
+                    {
+                        earliest = dateInfo.EarliestReading?.ToString("yyyy-MM-dd"),
+                        latest = dateInfo.LatestReading?.ToString("yyyy-MM-dd"),
+                        totalReadings = dateInfo.TotalReadings,
+                        metersWithData = dateInfo.MetersWithData,
+                        daysWithData = dateInfo.DaysWithData
+                    } : null
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking data availability");
-                return false;
+                _logger.LogError(ex, "Error getting dashboard stats");
+                return Json(new { error = ex.Message });
             }
-        }
-
-        // ✅ OPTIMIZATION 5: Simplified, faster queries
-        private async Task<List<ConsumptionData>> GetOptimizedConsumptionData(NpgsqlConnection connection, DashboardFilterRequest filters)
-        {
-            var data = new List<ConsumptionData>();
-
-            try
-            {
-                // Use direct query on MeterReadings if aggregated tables are empty
-                var query = @"
-                    SELECT 
-                        m.""MeterId"",
-                        m.""Name"" as MeterName,
-                        COALESCE(m.""Unit"", 'kWh') as Unit,
-                        DATE(mr.""Timestamp"") as ReadingDate,
-                        SUM(mr.""Value"") as TotalConsumption,
-                        AVG(mr.""Value"") as AvgConsumption,
-                        MAX(mr.""Value"") as MaxConsumption
-                    FROM ""MeterReadings"" mr
-                    INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                    WHERE m.""Active"" = true";
-
-                var parameters = new List<NpgsqlParameter>();
-
-                // Add filters
-                if (filters.TenantId.HasValue)
-                {
-                    query += " AND m.\"TenantID\" = @TenantId";
-                    parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
-                }
-
-                if (filters.MeterId.HasValue)
-                {
-                    query += " AND m.\"MeterId\" = @MeterId";
-                    parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
-                }
-
-                // Add date filters (default to last 30 days if none specified)
-                var endDate = filters.EndDate ?? DateTime.Now;
-                var startDate = filters.StartDate ?? endDate.AddDays(-30);
-
-                query += " AND mr.\"Timestamp\" >= @StartDate AND mr.\"Timestamp\" <= @EndDate";
-                parameters.Add(new NpgsqlParameter("@StartDate", startDate));
-                parameters.Add(new NpgsqlParameter("@EndDate", endDate));
-
-                query += @"
-                    GROUP BY m.""MeterId"", m.""Name"", m.""Unit"", DATE(mr.""Timestamp"")
-                    ORDER BY DATE(mr.""Timestamp""), m.""Name""
-                    LIMIT 100"; // Limit results for performance
-
-                _logger.LogInformation($"OPTIMIZED SQL QUERY: {query}");
-                _logger.LogInformation($"Parameters: StartDate={startDate}, EndDate={endDate}");
-
-                using var cmd = new NpgsqlCommand(query, connection);
-                foreach (var param in parameters)
-                {
-                    cmd.Parameters.Add(param);
-                }
-
-                // ✅ OPTIMIZATION 6: Add command timeout
-                cmd.CommandTimeout = 30; // 30 second timeout
-
-                using var reader = await cmd.ExecuteReaderAsync();
-
-                int rowCount = 0;
-                while (await reader.ReadAsync() && rowCount < 100) // Limit processing
-                {
-                    rowCount++;
-                    var item = new ConsumptionData
-                    {
-                        MeterId = reader.GetInt32(0),
-                        MeterName = reader.GetString(1),
-                        Unit = reader.GetString(2),
-                        ReadingDate = reader.GetDateTime(3).ToString("yyyy-MM-dd"),
-                        TotalConsumption = Convert.ToDouble(reader.GetDecimal(4)),
-                        AvgConsumption = Convert.ToDouble(reader.GetDecimal(5)),
-                        MaxConsumption = Convert.ToDouble(reader.GetDecimal(6))
-                    };
-
-                    data.Add(item);
-                }
-
-                _logger.LogInformation($"Retrieved {rowCount} optimized data rows");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in optimized consumption data query");
-                throw;
-            }
-
-            return data;
-        }
-
-        // ✅ OPTIMIZATION 7: Generate demo data for better UX
-        private object GenerateDemoChartData(string message = "This is sample data to demonstrate the chart functionality.")
-        {
-            var labels = new List<string>();
-            var sampleData1 = new List<double>();
-            var sampleData2 = new List<double>();
-
-            // Generate 7 days of sample data
-            for (int i = 6; i >= 0; i--)
-            {
-                var date = DateTime.Now.AddDays(-i);
-                labels.Add(date.ToString("yyyy-MM-dd"));
-
-                // Generate realistic sample consumption data
-                var baseValue1 = 150 + (i * 10);
-                var baseValue2 = 200 + (i * 15);
-                sampleData1.Add(baseValue1 + (new Random().NextDouble() * 50));
-                sampleData2.Add(baseValue2 + (new Random().NextDouble() * 80));
-            }
-
-            var chartData = new
-            {
-                labels = labels,
-                datasets = new object[]
-                {
-                    new
-                    {
-                        label = "Sample Meter 1 (kWh)",
-                        data = sampleData1
-                    },
-                    new
-                    {
-                        label = "Sample Meter 2 (kWh)",
-                        data = sampleData2
-                    }
-                }
-            };
-
-            var summary = new
-            {
-                totalConsumption = sampleData1.Sum() + sampleData2.Sum(),
-                averageDaily = (sampleData1.Sum() + sampleData2.Sum()) / 7,
-                peakUsage = Math.Max(sampleData1.Max(), sampleData2.Max()),
-                activeMeters = 2
-            };
-
-            return new
-            {
-                chartData = chartData,
-                summary = summary,
-                message = message,
-                isDemoData = true
-            };
-        }
-
-        private object ProcessChartData(List<ConsumptionData> data)
-        {
-            if (!data.Any())
-            {
-                return new
-                {
-                    labels = new List<string>(),
-                    datasets = new List<object>()
-                };
-            }
-
-            var labels = data.Select(d => d.ReadingDate).Distinct().OrderBy(x => x).ToList();
-            var meterGroups = data.GroupBy(d => new { d.MeterId, d.MeterName, d.Unit });
-
-            var datasets = new List<object>();
-
-            foreach (var meterGroup in meterGroups)
-            {
-                var dataset = new
-                {
-                    label = $"{meterGroup.Key.MeterName} ({meterGroup.Key.Unit})",
-                    data = labels.Select(label =>
-                        meterGroup.FirstOrDefault(d => d.ReadingDate == label)?.TotalConsumption ?? 0).ToList()
-                };
-
-                datasets.Add(dataset);
-            }
-
-            return new
-            {
-                labels = labels,
-                datasets = datasets
-            };
-        }
-
-        private object CalculateSummary(List<ConsumptionData> data)
-        {
-            if (!data.Any())
-            {
-                return new
-                {
-                    totalConsumption = 0,
-                    averageDaily = 0,
-                    peakUsage = 0,
-                    activeMeters = 0
-                };
-            }
-
-            var totalConsumption = data.Sum(d => d.TotalConsumption);
-            var peakUsage = data.Max(d => d.MaxConsumption);
-            var activeMeters = data.Select(d => d.MeterId).Distinct().Count();
-
-            var uniqueDates = data.Select(d => d.ReadingDate).Distinct().Count();
-            var averageDaily = uniqueDates > 0 ? totalConsumption / uniqueDates : 0;
-
-            return new
-            {
-                totalConsumption = Math.Round(totalConsumption, 2),
-                averageDaily = Math.Round(averageDaily, 2),
-                peakUsage = Math.Round(peakUsage, 2),
-                activeMeters = activeMeters
-            };
         }
     }
 
+    /// <summary>
+    /// ENHANCED: Dashboard filter request with date validation
+    /// </summary>
     public class DashboardFilterRequest
     {
-        public string DateFilter { get; set; }
+        public string DateFilter { get; set; } = "monthly";
         public int? TenantId { get; set; }
         public int? MeterId { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
+        public int? Limit { get; set; } = 5;
     }
 
-    public class ConsumptionData
+    /// <summary>
+    /// NEW: Request model for getting meters with data
+    /// </summary>
+    public class GetMetersRequest
     {
-        public int MeterId { get; set; }
-        public string MeterName { get; set; }
-        public string Unit { get; set; }
-        public string ReadingDate { get; set; }
-        public double TotalConsumption { get; set; }
-        public double AvgConsumption { get; set; }
-        public double MaxConsumption { get; set; }
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public int? TenantId { get; set; }
+        public int? Limit { get; set; } = 5;
+        public int? Offset { get; set; } = 0;
+        public bool? IncludeNullTenants { get; set; } = true;
     }
 }

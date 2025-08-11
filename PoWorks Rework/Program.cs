@@ -1,3 +1,4 @@
+// Program.cs - Updated to register DashboardDataService
 using PoWorks_Rework.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,8 +11,12 @@ builder.Services.AddScoped<PoWorks_Rework.Repositories.MeterRepository>();
 // Register the DatabaseService as a singleton
 builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<SqlServerService>();
-builder.Services.AddScoped<VarexpParserService>();
 
+// PHASE 1: Register the new DashboardDataService
+builder.Services.AddScoped<DashboardDataService>();
+
+// Existing services
+builder.Services.AddScoped<VarexpParserService>();
 builder.Services.AddScoped<VariableBrowseParsingService>();
 
 // Register HttpClient and PCVueWebService
@@ -29,7 +34,7 @@ builder.Services.AddHttpClient<PCVueWebService>(client =>
     return handler;
 });
 
-// NEW: Register TrendsService (depends on PCVueWebService)
+// Register TrendsService (depends on PCVueWebService)
 builder.Services.AddScoped<TrendsService>();
 
 var app = builder.Build();
