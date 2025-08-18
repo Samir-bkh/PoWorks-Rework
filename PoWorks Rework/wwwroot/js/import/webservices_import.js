@@ -131,6 +131,20 @@ function browseVariables(connectionId) {
     const branchFilter = document.getElementById('branchFilter').value.trim();
     const includeSystemVariables = document.getElementById('includeSystemVariables').checked;
 
+    // GET connection name for storage
+    const connectionSelect = document.getElementById('webServiceConnection');
+    const selectedOption = connectionSelect.querySelector(`option[value="${connectionId}"]`);
+    const connectionName = selectedOption ? selectedOption.textContent : connectionId;
+
+    // STORE connection info for later use in import
+    const connectionInfo = {
+        connectionId: connectionId,
+        connectionName: connectionName
+    };
+    storeWebServiceConnectionInfo(connectionInfo);
+
+    console.log('🔗 Stored connection info:', connectionInfo);
+
     // GET DATE RANGE - ADD THIS
     const startDateInput = document.getElementById('webServiceStartDate');
     const endDateInput = document.getElementById('webServiceEndDate');
@@ -182,6 +196,16 @@ function browseVariables(connectionId) {
             return response.json();
         })
         .then(data => {
+            // STORE additional connection info from response
+            if (data.connectionInfo) {
+                const enhancedConnectionInfo = {
+                    connectionId: data.connectionInfo.connectionId,
+                    connectionName: data.connectionInfo.connectionName
+                };
+                storeWebServiceConnectionInfo(enhancedConnectionInfo);
+                console.log('🔗 Updated connection info from response:', enhancedConnectionInfo);
+            }
+
             handleWebServiceBrowseResponse(data);
         })
         .catch(error => {
@@ -506,10 +530,24 @@ function importWebServiceVariables() {
     const skipExisting = confirm('Skip existing meters? (OK = skip, Cancel = update)');
     const updateExisting = !skipExisting && confirm('Update existing meters with new information?');
 
+    // Get date range for trends
+    const dateRange = getSelectedDateRange();
+    const connectionInfo = getStoredWebServiceConnectionInfo();
+
+    console.log('🔧 Import request data:', {
+        variables: selectedVariables.length,
+        dateRange: dateRange,
+        connectionInfo: connectionInfo
+    });
+
     const requestData = {
         variables: selectedVariables,
         skipExisting,
-        updateExisting
+        updateExisting,
+        // ADD date range and connection for trends
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        connectionId: connectionInfo.connectionId
     };
 
     const importBtn = document.getElementById('importSelectedBtn');
@@ -517,8 +555,10 @@ function importWebServiceVariables() {
 
     if (importBtn) {
         importBtn.disabled = true;
-        importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing...';
+        importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing + Getting Trends...';
     }
+
+    console.log('📤 Sending import request:', requestData);
 
     fetch('/WebServicesImport/ImportWebServiceMeters', {
         method: 'POST',
@@ -527,8 +567,23 @@ function importWebServiceVariables() {
     })
         .then(response => response.json())
         .then(data => {
+            console.log('📥 Import response:', data);
+
             if (data.success) {
-                alert(`✅ Web Service import completed successfully!\nImported: ${data.importedCount}\nUpdated: ${data.updatedCount}\nSkipped: ${data.skippedCount}\nErrors: ${data.errorCount}`);
+                let message = `✅ Web Service import completed successfully!\n`;
+                message += `Imported: ${data.importedCount}\n`;
+                message += `Updated: ${data.updatedCount}\n`;
+                message += `Skipped: ${data.skippedCount}\n`;
+                message += `Errors: ${data.errorCount}`;
+
+                // Add trends results if available
+                if (data.trendsSuccessCount !== undefined || data.trendsFailedCount !== undefined) {
+                    message += `\n\n📊 Trends Processing:\n`;
+                    message += `Success: ${data.trendsSuccessCount || 0}\n`;
+                    message += `Failed: ${data.trendsFailedCount || 0}`;
+                }
+
+                alert(message);
             } else {
                 let errorMsg = `❌ Web Service import failed: ${data.error}\n\n`;
                 if (data.detailedErrors) {
@@ -541,6 +596,7 @@ function importWebServiceVariables() {
             }
         })
         .catch(err => {
+            console.error('❌ Import error:', err);
             alert('❌ Network error while importing Web Service variables.');
         })
         .finally(() => {
@@ -550,6 +606,7 @@ function importWebServiceVariables() {
             }
         });
 }
+
 
 // =====================================================
 // DATA COLLECTION
@@ -608,13 +665,50 @@ function collectSelectedWebServiceVariables() {
  */
 function storeWebServiceConnectionInfo(connectionInfo) {
     window.webServiceConnectionInfo = connectionInfo;
+    console.log('💾 Stored connection info:', connectionInfo);
+
+    // Also store in sessionStorage as backup
+    try {
+        sessionStorage.setItem('webServiceConnectionInfo', JSON.stringify(connectionInfo));
+    } catch (e) {
+        console.warn('⚠️ Could not store in sessionStorage:', e);
+    }
 }
 
 /**
  * Retrieves stored Web Service connection info.
  */
 function getStoredWebServiceConnectionInfo() {
-    return window.webServiceConnectionInfo || {};
+    let connectionInfo = window.webServiceConnectionInfo;
+
+    // If not in memory, try sessionStorage
+    if (!connectionInfo) {
+        try {
+            const stored = sessionStorage.getItem('webServiceConnectionInfo');
+            if (stored) {
+                connectionInfo = JSON.parse(stored);
+                window.webServiceConnectionInfo = connectionInfo; // Restore to memory
+            }
+        } catch (e) {
+            console.warn('⚠️ Could not retrieve from sessionStorage:', e);
+        }
+    }
+
+    // If still not available, try to get from current selection
+    if (!connectionInfo) {
+        const connectionSelect = document.getElementById('webServiceConnection');
+        if (connectionSelect && connectionSelect.value) {
+            const selectedOption = connectionSelect.querySelector(`option[value="${connectionSelect.value}"]`);
+            connectionInfo = {
+                connectionId: connectionSelect.value,
+                connectionName: selectedOption ? selectedOption.textContent : connectionSelect.value
+            };
+            storeWebServiceConnectionInfo(connectionInfo); // Store it
+        }
+    }
+
+    console.log('🔗 Retrieved connection info:', connectionInfo);
+    return connectionInfo || {};
 }
 
 
@@ -803,6 +897,32 @@ function validateWebServiceDateRange() {
     return true;
 }
 
+function validateImportRequest() {
+    const selectedVariables = collectSelectedWebServiceVariables();
+    const dateRange = getSelectedDateRange();
+    const connectionInfo = getStoredWebServiceConnectionInfo();
+
+    console.log('🔧 Validating import request...');
+
+    if (!selectedVariables.length) {
+        console.warn('⚠️ No variables selected');
+        return false;
+    }
+
+    if (!connectionInfo.connectionId) {
+        console.warn('⚠️ No connection ID available');
+        // This is okay for meter-only import, just warn
+    }
+
+    if (!dateRange.startDate || !dateRange.endDate) {
+        console.warn('⚠️ Date range not set - trends will be skipped');
+        // This is okay, just importing meters without trends
+    }
+
+    console.log('✅ Import request validation passed');
+    return true;
+}
+
 /**
  * Get selected date range for WebServices (reusable function)
  */
@@ -810,11 +930,28 @@ function getSelectedDateRange() {
     const startDateInput = document.getElementById('webServiceStartDate');
     const endDateInput = document.getElementById('webServiceEndDate');
 
-    return {
+    const dateRange = {
         startDate: startDateInput?.value || null,
         endDate: endDateInput?.value || null
     };
+
+    // Validate date range
+    if (dateRange.startDate && dateRange.endDate) {
+        const start = new Date(dateRange.startDate);
+        const end = new Date(dateRange.endDate);
+
+        if (start >= end) {
+            console.warn('⚠️ Invalid date range: start date must be before end date');
+        } else {
+            const duration = (end - start) / (1000 * 60 * 60 * 24);
+            console.log(`📅 Date range: ${duration.toFixed(1)} days`);
+        }
+    }
+
+    console.log('📅 Getting date range:', dateRange);
+    return dateRange;
 }
+
 
 function buildWebServicePrintRequest(selectedVariables) {
     const connectionInfo = getStoredWebServiceConnectionInfo();

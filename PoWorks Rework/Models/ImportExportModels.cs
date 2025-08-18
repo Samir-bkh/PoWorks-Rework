@@ -345,6 +345,9 @@ public class ImportWebServiceMetersRequest
     public List<WebServiceVariableItem> Variables { get; set; } = new();
     public bool SkipExisting { get; set; }
     public bool UpdateExisting { get; set; }
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
+    public string? ConnectionId { get; set; }
 }
 
 // General Models

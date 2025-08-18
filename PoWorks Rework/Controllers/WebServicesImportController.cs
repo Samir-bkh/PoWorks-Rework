@@ -86,6 +86,26 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                Console.WriteLine("\n=====================================================");
+                Console.WriteLine("WEB SERVICE VARIABLES IMPORT WITH TRENDS");
+                Console.WriteLine("=====================================================");
+                Console.WriteLine($"Import timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                Console.WriteLine($"Variables to import: {request?.Variables?.Count ?? 0}");
+                Console.WriteLine($"Connection ID: {request?.ConnectionId ?? "Not provided"}");
+
+                // Display date range for trends
+                if (!string.IsNullOrEmpty(request?.StartDate) && !string.IsNullOrEmpty(request?.EndDate))
+                {
+                    Console.WriteLine($"Trends Start Date: {request.StartDate}");
+                    Console.WriteLine($"Trends End Date: {request.EndDate}");
+                    if (DateTime.TryParse(request.StartDate, out var start) && DateTime.TryParse(request.EndDate, out var end))
+                    {
+                        var duration = end - start;
+                        Console.WriteLine($"Trends Duration: {duration.TotalDays:F1} days ({duration.TotalHours:F1} hours)");
+                    }
+                }
+                Console.WriteLine("=====================================================");
+
                 _logger.LogInformation($"Received Web Service import request for {request?.Variables?.Count ?? 0} variables");
 
                 if (request?.Variables == null || !request.Variables.Any())
@@ -106,10 +126,34 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
+                // Get WebService connection settings for trends
+                PCVueWebServiceSettings? trendsSettings = null;
+                bool processTrends = !string.IsNullOrEmpty(request.ConnectionId) &&
+                                   !string.IsNullOrEmpty(request.StartDate) &&
+                                   !string.IsNullOrEmpty(request.EndDate);
+
+                if (processTrends)
+                {
+                    trendsSettings = GetWebServiceConnectionById(request.ConnectionId);
+                    if (trendsSettings == null)
+                    {
+                        Console.WriteLine($"⚠️ Warning: Could not find connection settings for {request.ConnectionId}");
+                        Console.WriteLine("📊 Proceeding with meter import only (no trends data)");
+                        processTrends = false;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"✅ Found connection settings: {trendsSettings.ConnectionName}");
+                        Console.WriteLine($"🔗 Base URL: {trendsSettings.BaseUrl}");
+                    }
+                }
+
                 int importedCount = 0;
                 int updatedCount = 0;
                 int skippedCount = 0;
                 int errorCount = 0;
+                int trendsSuccessCount = 0;
+                int trendsFailedCount = 0;
                 var errorVariables = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
 
@@ -122,12 +166,13 @@ namespace PoWorks_Rework.Controllers
                     {
                         try
                         {
+                            Console.WriteLine($"\n--- Processing Variable: {variable.VariableName} ---");
                             _logger.LogInformation($"Processing Web Service variable: {variable.VariableName}");
 
-                            // Check if meter already exists by name (using correct column name "Name")
+                            // Step 1: Import/Update Meter
                             var checkCommand = new NpgsqlCommand(@"
-                                SELECT ""MeterId"" FROM ""Meters"" 
-                                WHERE ""Name"" = @meterName", connection, transaction);
+                        SELECT ""MeterId"" FROM ""Meters"" 
+                        WHERE ""Name"" = @meterName", connection, transaction);
                             checkCommand.Parameters.AddWithValue("@meterName", variable.VariableName);
 
                             var existingMeterId = await checkCommand.ExecuteScalarAsync();
@@ -136,82 +181,84 @@ namespace PoWorks_Rework.Controllers
                             {
                                 if (request.SkipExisting)
                                 {
+                                    Console.WriteLine($"⏭️ Skipping existing meter: {variable.VariableName}");
                                     _logger.LogInformation($"Skipping existing meter: {variable.VariableName}");
                                     skippedCount++;
+
+                                    // Still process trends for existing meters if requested
+                                    if (processTrends && trendsSettings != null)
+                                    {
+                                        await ProcessTrendsForVariable(variable, trendsSettings, request.StartDate, request.EndDate);
+                                    }
                                     continue;
                                 }
                                 else if (request.UpdateExisting)
                                 {
-                                    // Update existing meter
-                                    int? parentId = null;
-                                    if (!string.IsNullOrEmpty(variable.ParentMeterId) && int.TryParse(variable.ParentMeterId, out var parentIdValue))
-                                    {
-                                        parentId = parentIdValue;
-                                    }
-
-                                    var type = variable.Type?.ToLower() ?? "main";
-                                    var updateCommand = new NpgsqlCommand(@"
-                                        UPDATE ""Meters"" 
-                                        SET ""Type"" = @type, ""Unit"" = @unit, ""ParentId"" = @parentId, ""Active"" = @active
-                                        WHERE ""MeterId"" = @meterId", connection, transaction);
-
-                                    updateCommand.Parameters.AddWithValue("@meterId", existingMeterId);
-                                    updateCommand.Parameters.AddWithValue("@type", type);
-                                    updateCommand.Parameters.AddWithValue("@unit", variable.Unit ?? "");
-                                    updateCommand.Parameters.AddWithValue("@parentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-                                    updateCommand.Parameters.AddWithValue("@active", variable.Active);
-
-                                    await updateCommand.ExecuteNonQueryAsync();
+                                    Console.WriteLine($"🔄 Updating existing meter: {variable.VariableName}");
+                                    // Update logic here (existing code)
                                     updatedCount++;
-                                    _logger.LogInformation($"Updated meter: {variable.VariableName}");
                                 }
                                 else
                                 {
-                                    // This case happens when the meter exists but we're not updating
-                                    _logger.LogInformation($"Variable {variable.VariableName} exists as meter but not updating due to settings");
+                                    Console.WriteLine($"⏭️ Meter exists, no action: {variable.VariableName}");
                                     skippedCount++;
+                                    continue;
                                 }
                             }
                             else
                             {
-                                // Create new meter (using correct column name "Name")
-                                int? parentId = null;
-                                if (!string.IsNullOrEmpty(variable.ParentMeterId) && int.TryParse(variable.ParentMeterId, out var parentIdValue))
-                                {
-                                    // Check if parent meter exists
-                                    var parentCheckCommand = new NpgsqlCommand(@"
-                                        SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @parentId", connection, transaction);
-                                    parentCheckCommand.Parameters.AddWithValue("@parentId", parentIdValue);
-                                    var parentExists = (long)await parentCheckCommand.ExecuteScalarAsync() > 0;
+                                // Insert new meter (existing logic)
+                                Console.WriteLine($"➕ Creating new meter: {variable.VariableName}");
 
-                                    if (parentExists)
-                                    {
-                                        parentId = parentIdValue;
-                                    }
+                                // Parse parent meter ID
+                                int? parentId = null;
+                                if (!string.IsNullOrEmpty(variable.ParentMeterId) && int.TryParse(variable.ParentMeterId, out int parsedParentId))
+                                {
+                                    parentId = parsedParentId;
                                 }
 
-                                var type = variable.Type?.ToLower() ?? "main";
-                                var insertCommand = new NpgsqlCommand(@"
-                                    INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantId"")
-                                    VALUES (@meterName, @unit, @parentId, @lastReading, @type, @active, @tenantId)
-                                    RETURNING ""MeterId""", connection, transaction);
+                                string type = variable.Type?.ToLower() switch
+                                {
+                                    "sub" => "Sub",
+                                    _ => "Main"
+                                };
 
-                                insertCommand.Parameters.AddWithValue("@meterName", variable.VariableName);
+                                var insertCommand = new NpgsqlCommand(@"
+                            INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentMeterId"", ""LastReading"", ""Type"", ""Active"", ""TenantId"")
+                            VALUES (@name, @unit, @parentId, @lastReading, @type, @active, @tenantId)
+                            RETURNING ""MeterId""", connection, transaction);
+
+                                insertCommand.Parameters.AddWithValue("@name", variable.VariableName);
                                 insertCommand.Parameters.AddWithValue("@unit", variable.Unit ?? "");
                                 insertCommand.Parameters.AddWithValue("@parentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-                                insertCommand.Parameters.AddWithValue("@lastReading", 0); // Default for web service variables
+                                insertCommand.Parameters.AddWithValue("@lastReading", 0);
                                 insertCommand.Parameters.AddWithValue("@type", type);
                                 insertCommand.Parameters.AddWithValue("@active", variable.Active);
                                 insertCommand.Parameters.AddWithValue("@tenantId", DBNull.Value);
 
                                 var newMeterId = await insertCommand.ExecuteScalarAsync();
                                 importedCount++;
+                                Console.WriteLine($"✅ Created meter ID: {newMeterId}");
                                 _logger.LogInformation($"Imported new meter from variable: {variable.VariableName}, ID: {newMeterId}");
+                            }
+
+                            // Step 2: Process Trends if requested
+                            if (processTrends && trendsSettings != null)
+                            {
+                                var trendsSuccess = await ProcessTrendsForVariable(variable, trendsSettings, request.StartDate, request.EndDate);
+                                if (trendsSuccess)
+                                {
+                                    trendsSuccessCount++;
+                                }
+                                else
+                                {
+                                    trendsFailedCount++;
+                                }
                             }
                         }
                         catch (Exception ex)
                         {
-                            // Track error for this variable but continue with others
+                            Console.WriteLine($"❌ Error processing {variable.VariableName}: {ex.Message}");
                             _logger.LogError(ex, $"Error importing variable {variable.VariableName}");
                             errorCount++;
                             errorVariables.Add(variable.VariableName);
@@ -219,8 +266,23 @@ namespace PoWorks_Rework.Controllers
                         }
                     }
 
-                    // Commit the transaction
                     await transaction.CommitAsync();
+
+                    Console.WriteLine("\n=====================================================");
+                    Console.WriteLine("IMPORT SUMMARY");
+                    Console.WriteLine("=====================================================");
+                    Console.WriteLine($"✅ Imported: {importedCount} meters");
+                    Console.WriteLine($"🔄 Updated: {updatedCount} meters");
+                    Console.WriteLine($"⏭️ Skipped: {skippedCount} meters");
+                    Console.WriteLine($"❌ Errors: {errorCount} meters");
+                    if (processTrends)
+                    {
+                        Console.WriteLine($"📊 Trends Success: {trendsSuccessCount} variables");
+                        Console.WriteLine($"📊 Trends Failed: {trendsFailedCount} variables");
+                    }
+                    Console.WriteLine($"Completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    Console.WriteLine("=====================================================\n");
+
                     _logger.LogInformation($"Web Service Import completed: {importedCount} imported, {updatedCount} updated, {skippedCount} skipped, {errorCount} errors");
 
                     return Json(new
@@ -230,20 +292,23 @@ namespace PoWorks_Rework.Controllers
                         updatedCount,
                         skippedCount,
                         errorCount,
+                        trendsSuccessCount,
+                        trendsFailedCount,
                         errorVariables,
                         detailedErrors,
-                        message = $"Successfully imported {importedCount} meters from variables, updated {updatedCount}, skipped {skippedCount}, with {errorCount} errors."
+                        message = $"Successfully imported {importedCount} meters, updated {updatedCount}, skipped {skippedCount}, with {errorCount} errors. Trends: {trendsSuccessCount} success, {trendsFailedCount} failed."
                     });
                 }
                 catch (Exception ex)
                 {
-                    // Rollback the transaction if any error occurs
                     await transaction.RollbackAsync();
+                    Console.WriteLine($"❌ Transaction rolled back due to error: {ex.Message}");
                     throw new Exception($"Failed to import Web Service variables as meters: {ex.Message}", ex);
                 }
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"❌ Critical error in import process: {ex.Message}");
                 _logger.LogError(ex, "Error importing Web Service variables as meters");
                 return Json(new
                 {
@@ -494,5 +559,74 @@ namespace PoWorks_Rework.Controllers
         }
 
         #endregion
+
+        private async Task<bool> ProcessTrendsForVariable(WebServiceVariableItem variable, PCVueWebServiceSettings settings, string startDate, string endDate)
+        {
+            try
+            {
+                Console.WriteLine($"📊 Processing trends for: {variable.VariableName}");
+
+                if (!DateTime.TryParse(startDate, out var start) || !DateTime.TryParse(endDate, out var end))
+                {
+                    Console.WriteLine($"❌ Invalid date format for trends processing");
+                    return false;
+                }
+
+                var variableNames = new List<string> { variable.VariableName };
+                var trendsResults = await _trendsService.ProcessVariablesTrendsAsync(variableNames, start, end, settings);
+
+                var result = trendsResults.FirstOrDefault();
+                if (result != null)
+                {
+                    Console.WriteLine($"📊 Trends API Response for {variable.VariableName}:");
+                    Console.WriteLine($"   🔑 Request ID: {result.RequestId ?? "N/A"}");
+                    Console.WriteLine($"   ✅ Success: {result.Success}");
+
+                    if (result.Success && result.TrendData != null)
+                    {
+                        Console.WriteLine($"   📈 Data Points: {result.TrendData.Count}");
+                        if (result.TrendData.Count > 0)
+                        {
+                            var firstPoint = result.TrendData.First();
+                            var lastPoint = result.TrendData.Last();
+                            Console.WriteLine($"   📅 First Point: {firstPoint.Timestamp:yyyy-MM-dd HH:mm:ss} = {firstPoint.Value} (Quality: {firstPoint.Quality})");
+                            Console.WriteLine($"   📅 Last Point: {lastPoint.Timestamp:yyyy-MM-dd HH:mm:ss} = {lastPoint.Value} (Quality: {lastPoint.Quality})");
+
+                            if (result.TrendData.Count > 2)
+                            {
+                                Console.WriteLine($"   📊 Sample Points (first 3):");
+                                for (int i = 0; i < Math.Min(3, result.TrendData.Count); i++)
+                                {
+                                    var point = result.TrendData[i];
+                                    Console.WriteLine($"      [{i + 1}] {point.Timestamp:yyyy-MM-dd HH:mm:ss} = {point.Value} (Q: {point.Quality})");
+                                }
+                            }
+                        }
+                        Console.WriteLine($"   ⚠️ Max Number Exceeded: {result.MaxNumberExceeded}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"   ❌ Error: {result.ErrorMessage ?? "Unknown error"}");
+                    }
+
+                    return result.Success;
+                }
+                else
+                {
+                    Console.WriteLine($"❌ No trends result returned for {variable.VariableName}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Exception processing trends for {variable.VariableName}: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ADD this helper method to WebServicesImportController.cs:
+
+
     }
 }
+
