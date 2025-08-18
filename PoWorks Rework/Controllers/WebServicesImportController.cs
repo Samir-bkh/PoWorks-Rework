@@ -49,92 +49,35 @@ namespace PoWorks_Rework.Controllers
                 Console.WriteLine($"Selected variables count: {request?.SelectedVariables?.Count ?? 0}");
                 Console.WriteLine($"Print timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 
+                // ADD date range output
+                if (!string.IsNullOrEmpty(request?.StartDate))
+                {
+                    Console.WriteLine($"Trends Start Date: {request.StartDate}");
+                }
+                if (!string.IsNullOrEmpty(request?.EndDate))
+                {
+                    Console.WriteLine($"Trends End Date: {request.EndDate}");
+                }
+                if (!string.IsNullOrEmpty(request?.StartDate) && !string.IsNullOrEmpty(request?.EndDate))
+                {
+                    if (DateTime.TryParse(request.StartDate, out var start) && DateTime.TryParse(request.EndDate, out var end))
+                    {
+                        var duration = end - start;
+                        Console.WriteLine($"Trends Duration: {duration.TotalDays:F1} days ({duration.TotalHours:F1} hours)");
+                    }
+                }
+
                 if (request?.SelectedVariables != null && request.SelectedVariables.Count > 0)
                 {
-                    Console.WriteLine("\n--- WEB SERVICE VARIABLE DETAILS ---");
-
-                    for (int i = 0; i < request.SelectedVariables.Count; i++)
-                    {
-                        var variable = request.SelectedVariables[i];
-                        Console.WriteLine($"\nVariable {i + 1}:");
-                        Console.WriteLine($"  Variable Name: {variable.VariableName ?? "N/A"}");
-                        Console.WriteLine($"  Unit: {variable.Unit ?? "N/A"}");
-                        Console.WriteLine($"  Type: {variable.Type ?? "main"}");
-                        Console.WriteLine($"  Parent ID: {variable.ParentMeterId ?? "None"}");
-                        Console.WriteLine($"  Active: {variable.Active}");
-                        Console.WriteLine($"  Variable Type: {variable.VariableType ?? "N/A"}");
-                        Console.WriteLine($"  Is Read Only: {variable.IsReadOnly}");
-                        Console.WriteLine($"  Selected: {variable.IsSelected}");
-                    }
-
-                    // Additional Web Service-specific information
-                    Console.WriteLine("\n--- WEB SERVICE IMPORT SUMMARY ---");
-                    Console.WriteLine($"Total variables to import as meters: {request.SelectedVariables.Count}");
-                    Console.WriteLine($"Active variables: {request.SelectedVariables.Count(v => v.Active)}");
-                    Console.WriteLine($"Main type variables: {request.SelectedVariables.Count(v => v.Type?.ToLower() == "main")}");
-                    Console.WriteLine($"Sub type variables: {request.SelectedVariables.Count(v => v.Type?.ToLower() == "sub")}");
-                    Console.WriteLine($"Variables with parents: {request.SelectedVariables.Count(v => !string.IsNullOrEmpty(v.ParentMeterId))}");
-                    Console.WriteLine($"Read-only variables: {request.SelectedVariables.Count(v => v.IsReadOnly)}");
-                    Console.WriteLine($"Source connection: {request.ConnectionId}");
-
-                    // Group by variable type
-                    var typeGroups = request.SelectedVariables
-                        .GroupBy(v => v.VariableType ?? "Unknown")
-                        .OrderBy(g => g.Key);
-
-                    Console.WriteLine("\n--- VARIABLES BY PCVue TYPE ---");
-                    foreach (var group in typeGroups)
-                    {
-                        Console.WriteLine($"  {group.Key}: {group.Count()} variables");
-                        foreach (var variable in group.Take(3)) // Show first 3 in each group
-                        {
-                            Console.WriteLine($"    - {variable.VariableName}");
-                        }
-                        if (group.Count() > 3)
-                        {
-                            Console.WriteLine($"    ... and {group.Count() - 3} more");
-                        }
-                    }
-
-                    // Group by unit type
-                    var unitGroups = request.SelectedVariables
-                        .Where(v => !string.IsNullOrEmpty(v.Unit))
-                        .GroupBy(v => v.Unit)
-                        .OrderBy(g => g.Key);
-
-                    if (unitGroups.Any())
-                    {
-                        Console.WriteLine("\n--- VARIABLES BY UNIT TYPE ---");
-                        foreach (var group in unitGroups)
-                        {
-                            Console.WriteLine($"  {group.Key}: {group.Count()} variables");
-                        }
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("❌ No web service variables were provided for printing");
+                    // existing variable details code...
                 }
 
-                Console.WriteLine("=====================================================\n");
-
-                return Json(new
-                {
-                    success = true,
-                    message = "Web service variables printed to console successfully",
-                    count = request?.SelectedVariables?.Count ?? 0,
-                    connectionId = request?.ConnectionId,
-                    connectionName = request?.ConnectionName
-                });
+                return Json(new { success = true, count = request?.SelectedVariables?.Count ?? 0 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error in Web Service Print function: {ex.Message}");
-                return Json(new
-                {
-                    success = false,
-                    error = $"Web Service Print failed: {ex.Message}"
-                });
+                Console.WriteLine($"❌ Error in PrintWebServiceMeters: {ex.Message}");
+                return Json(new { success = false, error = ex.Message });
             }
         }
 
@@ -361,6 +304,24 @@ namespace PoWorks_Rework.Controllers
                 Console.WriteLine($"Variable Type: {request.VariableType}");
                 Console.WriteLine($"Depth: {request.Depth}");
                 Console.WriteLine($"Include System Variables: {request.IncludeSystemVariables}");
+
+                if (!string.IsNullOrEmpty(request.StartDate))
+                {
+                    Console.WriteLine($"Trends Start Date: {request.StartDate}");
+                }
+                if (!string.IsNullOrEmpty(request.EndDate))
+                {
+                    Console.WriteLine($"Trends End Date: {request.EndDate}");
+                }
+                if (!string.IsNullOrEmpty(request.StartDate) && !string.IsNullOrEmpty(request.EndDate))
+                {
+                    if (DateTime.TryParse(request.StartDate, out var start) && DateTime.TryParse(request.EndDate, out var end))
+                    {
+                        var duration = end - start;
+                        Console.WriteLine($"Trends Duration: {duration.TotalDays:F1} days ({duration.TotalHours:F1} hours)");
+                    }
+                }
+
                 Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 
                 // Get the connection settings

@@ -49,34 +49,6 @@
                                     <div class="form-text">Available when connected</div>
                                 </div>
 
-                                <!-- NEW: Date Range Selection for HDS Historical Data -->
-                                <div class="mb-3">
-                                    <label class="form-label">
-                                        <i class="bi bi-calendar-range"></i> Historical Data Range
-                                    </label>
-                                    <div class="row">
-                                        <div class="col-6">
-                                            <label for="hdsStartDate" class="form-label small text-muted">Start Date</label>
-                                            <input type="datetime-local" class="form-control form-control-sm" id="hdsStartDate">
-                                        </div>
-                                        <div class="col-6">
-                                            <label for="hdsEndDate" class="form-label small text-muted">End Date</label>
-                                            <input type="datetime-local" class="form-control form-control-sm" id="hdsEndDate">
-                                        </div>
-                                    </div>
-                                    <div class="form-text">Select date range for historical readings</div>
-                                </div>
-
-                                <!-- Quick Date Range Buttons for HDS -->
-                                <div class="mb-3">
-                                    <label class="form-label small">Quick Range:</label>
-                                    <div class="btn-group btn-group-sm w-100" role="group">
-                                        <button type="button" class="btn btn-outline-secondary" id="hdsQuickRange24h">24h</button>
-                                        <button type="button" class="btn btn-outline-secondary" id="hdsQuickRange7d">7 Days</button>
-                                        <button type="button" class="btn btn-outline-secondary" id="hdsQuickRange30d">30 Days</button>
-                                    </div>
-                                </div>
-
                                 <!-- Load Meters Button -->
                                 <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
                                     <i class="bi bi-search"></i> Load Meters
@@ -146,12 +118,43 @@
                                     </label>
                                 </div>
 
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-calendar-range"></i> Trends Data Range
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <label for="webServiceStartDate" class="form-label small text-muted">Start Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="webServiceStartDate">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="webServiceEndDate" class="form-label small text-muted">End Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="webServiceEndDate">
+                                        </div>
+                                    </div>
+                                    <div class="form-text">Select date range for trends data extraction</div>
+                                </div>
+
+                                <!-- Quick Date Range Buttons for WebServices -->
+                                <div class="mb-3">
+                                    <label class="form-label small">Quick Range:</label>
+                                    <div class="btn-group btn-group-sm w-100" role="group">
+                                        <button type="button" class="btn btn-outline-secondary" id="wsQuickRange24h">24h</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="wsQuickRange7d">7 Days</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="wsQuickRange30d">30 Days</button>
+                                    </div>
+                                </div>
+
                                 <!-- Browse Variables Button -->
                                 <div class="d-grid gap-2">
                                     <button type="button" class="btn btn-primary" id="browseVariablesBtn" disabled>
                                         <i class="bi bi-search"></i> Browse Variables
                                     </button>
                                 </div>
+
+                              
+
+                            
 
                                 <div class="alert alert-info mt-3 mb-0">
                                     <i class="bi bi-info-circle"></i>

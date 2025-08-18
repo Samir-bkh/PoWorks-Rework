@@ -15,16 +15,24 @@
  * Initialize WebService functionality when DOM is ready
  */
 document.addEventListener('DOMContentLoaded', function () {
+    console.log('🔧 WebService import module loading...');
+
     // Load connections on startup
     loadWebServiceConnections();
 
     // Set up WebService-specific event listeners
     setupWebServiceEventListeners();
-});
 
+    // Set up WebService date range functionality - DELAY to ensure elements exist
+    setTimeout(() => {
+        setupWebServiceDateRange();
+        console.log('✅ WebService date range setup completed');
+    }, 100);
+});
 /**
  * Set up WebService-specific event listeners
  */
+
 function setupWebServiceEventListeners() {
     // Web Service Connection dropdown change
     const webServiceConnection = document.getElementById('webServiceConnection');
@@ -123,6 +131,20 @@ function browseVariables(connectionId) {
     const branchFilter = document.getElementById('branchFilter').value.trim();
     const includeSystemVariables = document.getElementById('includeSystemVariables').checked;
 
+    // GET DATE RANGE - ADD THIS
+    const startDateInput = document.getElementById('webServiceStartDate');
+    const endDateInput = document.getElementById('webServiceEndDate');
+    const startDate = startDateInput?.value || null;
+    const endDate = endDateInput?.value || null;
+
+    // DEBUG CONSOLE LOG - ADD THIS
+    console.log('📅 Date Range Debug:', {
+        startDate: startDate,
+        endDate: endDate,
+        startDateInput: !!startDateInput,
+        endDateInput: !!endDateInput
+    });
+
     const systemMsg = includeSystemVariables
         ? " (including System variables)"
         : " (System variables filtered out)";
@@ -139,8 +161,14 @@ function browseVariables(connectionId) {
         branchFilter,
         variableType: 'Any',
         depth: 0,
-        includeSystemVariables
+        includeSystemVariables,
+        // ADD DATE RANGE TO REQUEST
+        startDate: startDate,
+        endDate: endDate
     };
+
+    // DEBUG CONSOLE LOG - ADD THIS
+    console.log('🔍 Request Data:', requestData);
 
     fetch('/WebServicesImport/BrowseVariablesWebService', {
         method: 'POST',
@@ -532,6 +560,7 @@ function importWebServiceVariables() {
  */
 function collectSelectedWebServiceVariables() {
     const selectedVariables = [];
+    const dateRange = getSelectedDateRange();
 
     document.querySelectorAll('.web-service-variable-checkbox:checked').forEach(checkbox => {
         const index = checkbox.getAttribute('data-variable-index');
@@ -559,10 +588,14 @@ function collectSelectedWebServiceVariables() {
             active,
             variableType,
             isReadOnly,
-            isSelected: true
+            isSelected: true,
+            // ADD date range to each variable
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate
         };
         selectedVariables.push(variableData);
     });
+
     return selectedVariables;
 }
 
@@ -582,4 +615,216 @@ function storeWebServiceConnectionInfo(connectionInfo) {
  */
 function getStoredWebServiceConnectionInfo() {
     return window.webServiceConnectionInfo || {};
+}
+
+
+/**
+* Set up WebService date range functionality
+*/
+function setupWebServiceDateRange() {
+    console.log('🔧 Setting up WebService date range...');
+
+    // Initialize default date range
+    initializeWebServiceDateRange();
+
+    // Setup quick range buttons
+    setupWebServiceQuickRangeButtons();
+
+    // Setup date validation
+    setupWebServiceDateValidation();
+}
+
+/**
+* Initialize default WebService date range (last 24 hours)
+*/
+function initializeWebServiceDateRange() {
+    const endDateInput = document.getElementById('webServiceEndDate');
+    const startDateInput = document.getElementById('webServiceStartDate');
+
+    if (!endDateInput || !startDateInput) {
+        console.warn('⚠️ WebService date inputs not found');
+        return;
+    }
+
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    endDateInput.value = formatDateTimeLocal(now);
+    startDateInput.value = formatDateTimeLocal(yesterday);
+
+    console.log('✅ WebService date range initialized');
+}
+
+
+/**
+ * Format Date object to HTML datetime-local string
+ */
+function formatDateTimeLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function setupWebServiceQuickRangeButtons() {
+    const btn24h = document.getElementById('wsQuickRange24h');
+    const btn7d = document.getElementById('wsQuickRange7d');
+    const btn30d = document.getElementById('wsQuickRange30d');
+
+    console.log('🔧 Setting up quick range buttons...', {
+        btn24h: !!btn24h,
+        btn7d: !!btn7d,
+        btn30d: !!btn30d
+    });
+
+    if (btn24h) {
+        btn24h.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('📅 24h button clicked');
+            setWebServiceQuickRange(24, 'hours');
+            highlightActiveWebServiceQuickRange('wsQuickRange24h');
+        });
+    } else {
+        console.warn('⚠️ 24h button not found');
+    }
+
+    if (btn7d) {
+        btn7d.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('📅 7d button clicked');
+            setWebServiceQuickRange(7, 'days');
+            highlightActiveWebServiceQuickRange('wsQuickRange7d');
+        });
+    } else {
+        console.warn('⚠️ 7d button not found');
+    }
+
+    if (btn30d) {
+        btn30d.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('📅 30d button clicked');
+            setWebServiceQuickRange(30, 'days');
+            highlightActiveWebServiceQuickRange('wsQuickRange30d');
+        });
+    } else {
+        console.warn('⚠️ 30d button not found');
+    }
+}
+
+
+
+
+/**
+ * Set WebService start and end dates to a quick range
+ */
+function setWebServiceQuickRange(amount, unit) {
+    console.log(`📅 Setting quick range: ${amount} ${unit}`);
+
+    const now = new Date();
+    const startDate = new Date();
+
+    if (unit === 'hours') {
+        startDate.setHours(startDate.getHours() - amount);
+    } else if (unit === 'days') {
+        startDate.setDate(startDate.getDate() - amount);
+    }
+
+    const endDateInput = document.getElementById('webServiceEndDate');
+    const startDateInput = document.getElementById('webServiceStartDate');
+
+    if (endDateInput && startDateInput) {
+        endDateInput.value = formatDateTimeLocal(now);
+        startDateInput.value = formatDateTimeLocal(startDate);
+
+        console.log('✅ Date range set:', {
+            start: startDateInput.value,
+            end: endDateInput.value
+        });
+
+        validateWebServiceDateRange();
+    } else {
+        console.error('❌ Date inputs not found');
+    }
+}
+
+/**
+ * Highlight the active quick-range button
+ */
+function highlightActiveWebServiceQuickRange(activeId) {
+    ['wsQuickRange24h', 'wsQuickRange7d', 'wsQuickRange30d'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.classList.toggle('btn-secondary', id === activeId);
+            btn.classList.toggle('btn-outline-secondary', id !== activeId);
+        }
+    });
+}
+
+/**
+ * Setup date validation for WebService inputs
+ */
+function setupWebServiceDateValidation() {
+    const startDateInput = document.getElementById('webServiceStartDate');
+    const endDateInput = document.getElementById('webServiceEndDate');
+
+    if (startDateInput) startDateInput.addEventListener('change', validateWebServiceDateRange);
+    if (endDateInput) endDateInput.addEventListener('change', validateWebServiceDateRange);
+}
+
+/**
+ * Validate WebService date range selection
+ */
+function validateWebServiceDateRange() {
+    const startDateInput = document.getElementById('webServiceStartDate');
+    const endDateInput = document.getElementById('webServiceEndDate');
+
+    if (!startDateInput || !endDateInput) return true;
+
+    const startDate = new Date(startDateInput.value);
+    const endDate = new Date(endDateInput.value);
+
+    startDateInput.classList.remove('is-invalid');
+    endDateInput.classList.remove('is-invalid');
+
+    if (startDate >= endDate) {
+        endDateInput.classList.add('is-invalid');
+        console.warn('Invalid WebService date range');
+        return false;
+    }
+
+    const oneYear = 365 * 24 * 60 * 60 * 1000;
+    if (endDate - startDate > oneYear) {
+        startDateInput.classList.add('is-invalid');
+        endDateInput.classList.add('is-invalid');
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Get selected date range for WebServices (reusable function)
+ */
+function getSelectedDateRange() {
+    const startDateInput = document.getElementById('webServiceStartDate');
+    const endDateInput = document.getElementById('webServiceEndDate');
+
+    return {
+        startDate: startDateInput?.value || null,
+        endDate: endDateInput?.value || null
+    };
+}
+
+function buildWebServicePrintRequest(selectedVariables) {
+    const connectionInfo = getStoredWebServiceConnectionInfo();
+    const dateRange = getSelectedDateRange();
+
+    return {
+        connectionId: connectionInfo.connectionId || '',
+        connectionName: connectionInfo.connectionName || '',
+        selectedVariables: selectedVariables,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+    };
 }

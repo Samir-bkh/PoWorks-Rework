@@ -311,10 +311,12 @@ public class BrowseVariablesRequest
 {
     public string ConnectionId { get; set; } = "";
     public int MaxVariables { get; set; } = 100000;
-    public string? BranchFilter { get; set; } = "";
+    public string? BranchFilter { get; set; }
     public string VariableType { get; set; } = "Any";
     public int Depth { get; set; } = 0;
     public bool IncludeSystemVariables { get; set; } = false;
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
 }
 
 public class PrintWebServiceMetersRequest
@@ -322,6 +324,8 @@ public class PrintWebServiceMetersRequest
     public string ConnectionId { get; set; } = "";
     public string ConnectionName { get; set; } = "";
     public List<WebServiceVariableItem> SelectedVariables { get; set; } = new();
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
 }
 
 public class WebServiceVariableItem
