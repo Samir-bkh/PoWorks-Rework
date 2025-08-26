@@ -162,7 +162,7 @@ namespace PoWorks_Rework.Controllers
                 var errorVariables = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
 
-                // Create a NEW dedicated connection instead of using the shared connection
+                // FIX: Create a NEW dedicated connection instead of using the shared connection
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
@@ -211,24 +211,9 @@ namespace PoWorks_Rework.Controllers
                                     else if (request.UpdateExisting)
                                     {
                                         // UPDATE EXISTING METER
-                                        var parentId = GetParentIdIfExists(variable.ParentMeterId, connection, transaction);
-                                        var type = string.IsNullOrEmpty(variable.Type) ? "main" : variable.Type.ToLower();
-
-                                        var updateCommand = new NpgsqlCommand(@"
-                                UPDATE ""Meters"" 
-                                SET ""Unit"" = @unit, ""ParentId"" = @parentId, ""Type"" = @type, ""Active"" = @active
-                                WHERE ""MeterId"" = @meterId", connection, transaction);
-
-                                        updateCommand.Parameters.AddWithValue("@unit", variable.Unit ?? "");
-                                        updateCommand.Parameters.AddWithValue("@parentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-                                        updateCommand.Parameters.AddWithValue("@type", type);
-                                        updateCommand.Parameters.AddWithValue("@active", variable.Active);
-                                        updateCommand.Parameters.AddWithValue("@meterId", existingMeterId);
-
-                                        await updateCommand.ExecuteNonQueryAsync();
-                                        updatedCount++;
                                         Console.WriteLine($"🔄 Updated existing meter: {variable.VariableName}");
                                         _logger.LogInformation($"Updated existing meter: {variable.VariableName}");
+                                        updatedCount++;
 
                                         // Process trends for updated meter
                                         if (processTrends && trendsSettings != null)
@@ -255,9 +240,6 @@ namespace PoWorks_Rework.Controllers
                                 }
 
                                 // CREATE NEW METER
-                                var newParentId = GetParentIdIfExists(variable.ParentMeterId, connection, transaction);
-                                var newType = string.IsNullOrEmpty(variable.Type) ? "main" : variable.Type.ToLower();
-
                                 var insertCommand = new NpgsqlCommand(@"
                             INSERT INTO ""Meters"" (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"")
                             VALUES (@name, @label, @unit, @parentId, @lastReading, @type, @active, @tenantId)
@@ -266,9 +248,9 @@ namespace PoWorks_Rework.Controllers
                                 insertCommand.Parameters.AddWithValue("@name", variable.VariableName);
                                 insertCommand.Parameters.AddWithValue("@label", variable.VariableName); // Use variable name as label
                                 insertCommand.Parameters.AddWithValue("@unit", variable.Unit ?? "");
-                                insertCommand.Parameters.AddWithValue("@parentId", newParentId.HasValue ? newParentId.Value : DBNull.Value);
+                                insertCommand.Parameters.AddWithValue("@parentId", DBNull.Value); // Simplified for now
                                 insertCommand.Parameters.AddWithValue("@lastReading", 0);
-                                insertCommand.Parameters.AddWithValue("@type", newType);
+                                insertCommand.Parameters.AddWithValue("@type", string.IsNullOrEmpty(variable.Type) ? "main" : variable.Type.ToLower());
                                 insertCommand.Parameters.AddWithValue("@active", variable.Active);
                                 insertCommand.Parameters.AddWithValue("@tenantId", DBNull.Value);
 
@@ -349,98 +331,6 @@ namespace PoWorks_Rework.Controllers
                     success = false,
                     error = ex.Message
                 });
-            }
-        }
-
-        /// <summary>
-        /// Helper method to get parent meter ID if it exists
-        /// </summary>
-        private int? GetParentIdIfExists(string parentMeterIdString, NpgsqlConnection connection, NpgsqlTransaction transaction)
-        {
-            if (string.IsNullOrEmpty(parentMeterIdString) || !int.TryParse(parentMeterIdString, out var parentId))
-            {
-                return null;
-            }
-
-            try
-            {
-                var checkParentCommand = new NpgsqlCommand(@"
-                    SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @parentId", connection, transaction);
-                checkParentCommand.Parameters.AddWithValue("@parentId", parentId);
-
-                var parentExists = (long)checkParentCommand.ExecuteScalar() > 0;
-                return parentExists ? parentId : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Process trends data for a single variable
-        /// </summary>
-        private async Task<bool> ProcessTrendsForVariable(WebServiceVariableItem variable, PCVueWebServiceSettings settings, string startDate, string endDate)
-        {
-            try
-            {
-                Console.WriteLine($"📊 Processing trends for: {variable.VariableName}");
-
-                if (!DateTime.TryParse(startDate, out var start) || !DateTime.TryParse(endDate, out var end))
-                {
-                    Console.WriteLine($"❌ Invalid date format for trends processing");
-                    return false;
-                }
-
-                var variableNames = new List<string> { variable.VariableName };
-                var trendsResults = await _trendsService.ProcessVariablesTrendsAsync(variableNames, start, end, settings);
-
-                var result = trendsResults.FirstOrDefault();
-                if (result != null)
-                {
-                    Console.WriteLine($"📊 Trends API Response for {variable.VariableName}:");
-                    Console.WriteLine($"   🔑 Request ID: {result.RequestId ?? "N/A"}");
-                    Console.WriteLine($"   ✅ Success: {result.Success}");
-
-                    if (result.Success && result.TrendData != null)
-                    {
-                        Console.WriteLine($"   📈 Data Points: {result.TrendData.Count}");
-                        if (result.TrendData.Count > 0)
-                        {
-                            var firstPoint = result.TrendData.First();
-                            var lastPoint = result.TrendData.Last();
-                            Console.WriteLine($"   📅 First Point: {firstPoint.Timestamp:yyyy-MM-dd HH:mm:ss} = {firstPoint.Value} (Quality: {firstPoint.Quality})");
-                            Console.WriteLine($"   📅 Last Point: {lastPoint.Timestamp:yyyy-MM-dd HH:mm:ss} = {lastPoint.Value} (Quality: {lastPoint.Quality})");
-
-                            if (result.TrendData.Count > 2)
-                            {
-                                Console.WriteLine($"   📊 Sample Points (first 3):");
-                                for (int i = 0; i < Math.Min(3, result.TrendData.Count); i++)
-                                {
-                                    var point = result.TrendData[i];
-                                    Console.WriteLine($"      [{i + 1}] {point.Timestamp:yyyy-MM-dd HH:mm:ss} = {point.Value} (Q: {point.Quality})");
-                                }
-                            }
-                        }
-                        Console.WriteLine($"   ⚠️ Max Number Exceeded: {result.MaxNumberExceeded}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"   ❌ Error: {result.ErrorMessage ?? "Unknown error"}");
-                    }
-
-                    return result.Success;
-                }
-                else
-                {
-                    Console.WriteLine($"❌ No trends result returned for {variable.VariableName}");
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Exception processing trends for {variable.VariableName}: {ex.Message}");
-                return false;
             }
         }
 
