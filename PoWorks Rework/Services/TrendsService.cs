@@ -48,7 +48,11 @@ namespace PoWorks_Rework.Services
                 var jsonContent = JsonSerializer.Serialize(payload);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                using var httpClient = new HttpClient();
+                // CREATE HTTPCLIENT WITH SSL BYPASS (for development environments)
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                using var httpClient = new HttpClient(handler);
                 httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
 
                 _logger.LogInformation("Sending POST request to: {Endpoint}", endpoint);
@@ -141,7 +145,11 @@ namespace PoWorks_Rework.Services
 
                 var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends/{requestId}?Start={Uri.EscapeDataString(startStr)}&End={Uri.EscapeDataString(endStr)}";
 
-                using var httpClient = new HttpClient();
+                // CREATE HTTPCLIENT WITH SSL BYPASS (for development environments)
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+
+                using var httpClient = new HttpClient(handler);
                 httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
 
                 _logger.LogInformation("Sending GET request to: {Endpoint}", endpoint);

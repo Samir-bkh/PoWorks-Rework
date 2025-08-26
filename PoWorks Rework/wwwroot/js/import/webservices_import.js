@@ -334,11 +334,18 @@ window.showWebServiceMeterSelection = function (variables, parentOptions, connec
 
 /**
  * Creates HTML for the meter table from Web Service variables.
+ * Fixed to properly display full variable paths and handle malformed paths.
  */
 function createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo) {
 
     if (!variables.length) {
         return '<p class="text-warning">No variables found to display.</p>';
+    }
+
+    // Log structure for debugging if needed
+    if (variables.length > 0) {
+        console.log('📊 Variables loaded:', variables.length);
+        console.log('🔍 Sample variable fullPath:', variables[0].fullPath);
     }
 
     let parentOptionsHtml = '<option value="">None</option>';
@@ -379,7 +386,10 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
         let badgeClass = 'bg-secondary';
         let typeBadge = 'TXT';
 
-        switch ((variable.variableType || '').toLowerCase()) {
+        // Try both camelCase and PascalCase for variableType
+        const varType = variable.variableType || variable.VariableType || '';
+
+        switch (varType.toLowerCase()) {
             case 'numeric':
             case 'real':
             case 'double':
@@ -397,11 +407,27 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
                 typeBadge = 'TXT';
                 break;
             default:
-                if (variable.variableType) {
+                if (varType) {
                     badgeClass = 'bg-info';
-                    typeBadge = variable.variableType.substring(0, 4).toUpperCase();
+                    typeBadge = varType.substring(0, 4).toUpperCase();
                 }
         }
+
+        // Get the proper display name, handling malformed fullPath
+        let displayName;
+
+        if (variable.fullPath && variable.fullPath !== variable.variableName) {
+            // Clean up fullPath that starts with dot (e.g., ".Date" -> "Date")
+            displayName = variable.fullPath.startsWith('.') ?
+                variable.fullPath.substring(1) :
+                variable.fullPath;
+        } else {
+            // Fall back to variable name if fullPath is missing or same as variableName
+            displayName = variable.variableName || 'Unknown';
+        }
+
+        // Check if we're getting the full path or just variable name
+        const isFullPath = displayName.includes('.') && displayName !== variable.variableName;
 
         tableHtml += `
             <tr class="web-service-variable-row" data-variable-index="${index}">
@@ -412,7 +438,7 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
                     <span class="badge ${badgeClass}">${typeBadge}</span>
                 </td>
                 <td class="text-break">
-                    <small>${variable.variableName || 'Unknown'}</small>
+                    <small>${displayName}</small>
                 </td>
                 <td>
                     <input type="text" class="form-control form-control-sm web-service-unit-input" placeholder="Enter unit (e.g., kWh, °C)" data-variable-index="${index}">
@@ -434,10 +460,10 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
                     </div>
                 </td>
                 <td>
-                    <small class="text-muted">${variable.variableType || 'Unknown'}</small>
+                    <small class="text-muted">${varType || 'Unknown'}</small>
                 </td>
                 <td>
-                    <small class="text-muted">${variable.isReadOnly ? 'Yes' : 'No'}</small>
+                    <small class="text-muted">${(variable.isReadOnly || variable.IsReadOnly) ? 'Yes' : 'No'}</small>
                 </td>
             </tr>`;
     });
