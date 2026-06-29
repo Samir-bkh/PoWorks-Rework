@@ -1,4 +1,7 @@
-﻿// Controllers/PaymentsController.cs
+﻿
+
+
+// Controllers/PaymentsController.cs
 using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
@@ -58,7 +61,11 @@ namespace PoWorks_Rework.Controllers
                 RemainingAmount = 0
             };
 
+
             return View("Index", viewModel);
         }
     }
 }
+
+
+

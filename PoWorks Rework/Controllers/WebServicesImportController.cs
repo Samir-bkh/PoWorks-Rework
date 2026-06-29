@@ -5,6 +5,7 @@ using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
 using PoWorks_Rework.Repositories;
 using System.Text.Json;
+using System.Security.Authentication;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -17,19 +18,22 @@ namespace PoWorks_Rework.Controllers
         private readonly VariableBrowseParsingService _variableBrowseParsingService;
         private readonly TrendsService _trendsService;
         private readonly MeterRepository _meterRepository;
+        private readonly PCVueWebService _pcvueWebService;
 
         public WebServicesImportController(
             ILogger<WebServicesImportController> logger,
             DatabaseService databaseService,
             VariableBrowseParsingService variableBrowseParsingService,
             TrendsService trendsService,
-            MeterRepository meterRepository)
+            MeterRepository meterRepository,
+            PCVueWebService pcvueWebService)   
         {
             _logger = logger;
             _databaseService = databaseService;
             _variableBrowseParsingService = variableBrowseParsingService;
             _trendsService = trendsService;
             _meterRepository = meterRepository;
+            _pcvueWebService = pcvueWebService;  // ← AJOUTE ÇA
         }
 
         #endregion
@@ -416,14 +420,7 @@ namespace PoWorks_Rework.Controllers
                 Console.WriteLine($"Connection Name: {connection.ConnectionName}");
 
                 // Create HttpClient with SSL bypass
-                var handler = new HttpClientHandler();
-                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-
-                using var httpClient = new HttpClient(handler);
-                httpClient.Timeout = TimeSpan.FromSeconds(connection.TimeoutSeconds);
-
-                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<PCVueWebService>>();
-                var webService = new PCVueWebService(httpClient, logger);
+                var webService = _pcvueWebService;
 
                 // Get authentication token
                 Console.WriteLine("\n--- AUTHENTICATION ---");
@@ -459,7 +456,7 @@ namespace PoWorks_Rework.Controllers
                 httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
                 httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-                var response = await httpClient.SendAsync(httpRequest);
+                var response = await _pcvueWebService.HttpClient.SendAsync(httpRequest);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 Console.WriteLine($"Response Status: {response.StatusCode}");

@@ -9,6 +9,8 @@ namespace PoWorks_Rework.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<PCVueWebService> _logger;
 
+        public HttpClient HttpClient => _httpClient;
+
         // Token storage
         private string? _accessToken;
         private string? _refreshToken;  // FIXED: Added missing refresh token storage
@@ -76,11 +78,10 @@ namespace PoWorks_Rework.Services
             {
                 _logger.LogInformation("Requesting new OAuth token for PCVue Web Services");
 
-                // Configure HttpClient
-                _httpClient.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+         
 
                 // Prepare token endpoint URL
-                var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/Token";
+                var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/token";
                 _logger.LogInformation("=== API CALL DEBUG ===");
                 _logger.LogInformation("Token endpoint: {TokenEndpoint}", tokenEndpoint);
 

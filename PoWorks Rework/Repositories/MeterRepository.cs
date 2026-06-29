@@ -25,13 +25,13 @@ namespace PoWorks_Rework.Repositories
             try
             {
                 // Create a brand new connection for this operation
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
                 {
                     await connection.OpenAsync();
                     _logger.LogInformation("Database connection opened for GetMetersAsync");
 
                     var whereClause = string.Empty;
-                    if (!string.IsNullOrEmpty(criteria.SearchTerm))
+                  if (!string.IsNullOrEmpty(criteria.SearchTerm))
                     {
                         switch (criteria.SearchField)
                         {
@@ -365,6 +365,7 @@ namespace PoWorks_Rework.Repositories
                     }
 
                     var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
+
 
                     string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
 

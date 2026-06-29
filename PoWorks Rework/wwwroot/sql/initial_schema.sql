@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_tenantdetails_tenantid ON "TenantDetails"("Tenant
 --Company Logic
 --##########################################################
 
-CREATE TABLE "CompanyInfo" (
+CREATE TABLE IF NOT EXISTS "CompanyInfo" (
     "CompanyInfoId" SERIAL PRIMARY KEY,
     "CompanyName" VARCHAR(100) NOT NULL,
     "RegistrationNumber" VARCHAR(50),
@@ -62,7 +62,7 @@ CREATE TABLE "CompanyInfo" (
 -- Create Meters table if it doesn't exist
 CREATE TABLE IF NOT EXISTS "Meters" (
     "MeterId" SERIAL PRIMARY KEY,
-    "Name" VARCHAR(100) NOT NULL
+    "Name" VARCHAR(100) NOT NULL,
     "Label" VARCHAR(150),
     "Unit" VARCHAR(20) NOT NULL DEFAULT '',
     "ParentId" INTEGER REFERENCES "Meters"("MeterId"),
@@ -77,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_meters_parentid ON "Meters"("ParentId");
 CREATE INDEX IF NOT EXISTS idx_meters_label ON "Meters"("Label");
 
 
-CREATE TABLE "MeterReadings" (
+CREATE TABLE IF NOT EXISTS "MeterReadings" (
   "ReadingId" SERIAL PRIMARY KEY,
   "MeterId" INTEGER REFERENCES "Meters"("MeterId"),
   "Timestamp" TIMESTAMP NOT NULL,
@@ -86,9 +86,11 @@ CREATE TABLE "MeterReadings" (
 );
 
 -- Add indices for better performance
-CREATE INDEX idx_meterreadings_meterid ON "MeterReadings"("MeterId");
-CREATE INDEX idx_meterreadings_timestamp ON "MeterReadings"("Timestamp");
+CREATE INDEX IF NOT EXISTS idx_meterreadings_meterid ON "MeterReadings"("MeterId");
+CREATE INDEX IF NOT EXISTS idx_meterreadings_timestamp ON "MeterReadings"("Timestamp");
 
+ALTER TABLE "MeterReadings" 
+DROP CONSTRAINT IF EXISTS unique_meter_timestamp;
 ALTER TABLE "MeterReadings" 
 ADD CONSTRAINT unique_meter_timestamp 
 UNIQUE ("MeterId", "Timestamp"); -- add value ###############################
@@ -136,14 +138,14 @@ CREATE TABLE IF NOT EXISTS "MeterReadingsYearly" (
 );
 
 -- Add indices for better performance
-CREATE INDEX idx_meterreadingsdaily_meterid ON "MeterReadingsDaily"("MeterId");
-CREATE INDEX idx_meterreadingsdaily_date ON "MeterReadingsDaily"("ReadingDate");
+CREATE INDEX IF NOT EXISTS idx_meterreadingsdaily_meterid ON "MeterReadingsDaily"("MeterId");
+CREATE INDEX IF NOT EXISTS idx_meterreadingsdaily_date ON "MeterReadingsDaily"("ReadingDate");
 
-CREATE INDEX idx_meterreadingsmonthly_meterid ON "MeterReadingsMonthly"("MeterId");
-CREATE INDEX idx_meterreadingsmonthly_year_month ON "MeterReadingsMonthly"("Year", "Month");
+CREATE INDEX IF NOT EXISTS idx_meterreadingsmonthly_meterid ON "MeterReadingsMonthly"("MeterId");
+CREATE INDEX IF NOT EXISTS idx_meterreadingsmonthly_year_month ON "MeterReadingsMonthly"("Year", "Month");
 
-CREATE INDEX idx_meterreadingsyearly_meterid ON "MeterReadingsYearly"("MeterId");
-CREATE INDEX idx_meterreadingsyearly_year ON "MeterReadingsYearly"("Year");
+CREATE INDEX IF NOT EXISTS idx_meterreadingsyearly_meterid ON "MeterReadingsYearly"("MeterId");
+CREATE INDEX IF NOT EXISTS idx_meterreadingsyearly_year ON "MeterReadingsYearly"("Year");
 
 -- Function to aggregate readings into daily table
 CREATE OR REPLACE FUNCTION aggregate_daily_readings()
@@ -240,22 +242,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Add unique constraint to MeterReadingsDaily
+ALTER TABLE "MeterReadingsDaily" DROP CONSTRAINT IF EXISTS unique_meter_day;
 ALTER TABLE "MeterReadingsDaily" ADD CONSTRAINT unique_meter_day UNIQUE("MeterId", "ReadingDate");
 
 -- Create trigger for daily aggregation
-CREATE TRIGGER trigger_aggregate_daily_readings
+CREATE OR REPLACE TRIGGER trigger_aggregate_daily_readings
 AFTER INSERT ON "MeterReadings"
 FOR EACH ROW
 EXECUTE FUNCTION aggregate_daily_readings();
 
 -- Create trigger for monthly aggregation
-CREATE TRIGGER trigger_aggregate_monthly_readings
+CREATE OR REPLACE TRIGGER trigger_aggregate_monthly_readings
 AFTER INSERT ON "MeterReadings"
 FOR EACH ROW
 EXECUTE FUNCTION aggregate_monthly_readings();
 
 -- Create trigger for yearly aggregation
-CREATE TRIGGER trigger_aggregate_yearly_readings
+CREATE OR REPLACE TRIGGER trigger_aggregate_yearly_readings
 AFTER INSERT ON "MeterReadings"
 FOR EACH ROW
 EXECUTE FUNCTION aggregate_yearly_readings();

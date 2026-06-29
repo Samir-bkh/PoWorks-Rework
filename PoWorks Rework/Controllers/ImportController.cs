@@ -118,7 +118,7 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 // Get connection settings
-                var settings = GetWebServiceSettings(request.ConnectionId);
+                var settings = GetWebServiceConnectionById(request.ConnectionId);
                 if (settings == null)
                 {
                     return Json(new ProcessTrendsResponse
@@ -168,6 +168,7 @@ namespace PoWorks_Rework.Controllers
 
                 _logger.LogInformation("Trends processing completed. Success: {Success}/{Total}, Total Data Points: {DataPoints}",
                     summary.SuccessfulVariables, summary.TotalVariables, summary.TotalDataPoints);
+
 
                 return Json(new ProcessTrendsResponse
                 {

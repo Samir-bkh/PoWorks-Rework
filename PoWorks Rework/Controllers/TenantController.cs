@@ -24,6 +24,7 @@ namespace PoWorks_Rework.Controllers
         /// Main tenant management page
         /// </summary>
         public IActionResult Management(int? id = null)
+
         {
             // Check if database is initialized
             if (!_databaseService.IsInitialized)
