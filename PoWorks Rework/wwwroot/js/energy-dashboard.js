@@ -358,9 +358,13 @@
         }
     }
 
-    // Enhanced meter dropdown population
+    // Enhanced meter dropdown population (FIXED: Memorize selection)
     function populateMeterDropdown() {
         const meterSelect = document.getElementById('meterFilter');
+        
+        // 1. Sauvegarder le compteur actuellement sélectionné avant de tout détruire
+        const currentSelectedMeter = meterSelect.value;
+
         meterSelect.innerHTML = '<option value="">All Meters</option>';
 
         if (meters.length === 0) {
@@ -385,6 +389,15 @@
 
             meterSelect.appendChild(option);
         });
+
+        // 2. Restaurer la sélection !
+        if (currentSelectedMeter) {
+            // On vérifie si l'ancien compteur existe toujours dans la nouvelle liste
+            const optionExists = Array.from(meterSelect.options).some(opt => opt.value === currentSelectedMeter);
+            if (optionExists) {
+                meterSelect.value = currentSelectedMeter; // On le re-sélectionne
+            }
+        }
     }
 
     // Meter limit change handler (updated)
@@ -548,6 +561,13 @@
 
             currentData = data.chartData;
             updateChart(data.chartData);
+            
+            // On déclenche la mise à jour du Top 5 !
+            if (data.chartData && data.chartData.datasets) {
+                renderTopConsumers(data.chartData.datasets);
+            }
+            
+            updateSummaryCards(data.summary);
             updateSummaryCards(data.summary);
             showLoading(false);
 
@@ -947,5 +967,67 @@
             dateFilter.dispatchEvent(new Event('change')); 
         }
     };
+
+    // NOUVEAU : Calculer et afficher le Top 5 (Avec Titre Dynamique)
+    function renderTopConsumers(datasets) {
+        const container = document.getElementById('topConsumersList');
+        const titleElement = document.getElementById('topConsumersTitle'); // On attrape le titre
+        if (!container) return; 
+
+        // --- GESTION DU TITRE DYNAMIQUE ---
+        const tenantSelect = document.getElementById('tenantFilter');
+        let tenantName = "Vue Globale"; // Par défaut
+        
+        // Si la liste existe et qu'on a sélectionné autre chose que le 1er choix ("All Tenants")
+        if (tenantSelect && tenantSelect.selectedIndex > 0) {
+            tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; // On récupère le texte ("Société Beta")
+        }
+
+        if (titleElement) {
+            titleElement.innerHTML = `<i class="bi bi-fire"></i> Top 5 des compteurs (${tenantName})`;
+        }
+        // ----------------------------------
+
+        // Si le graphique est vide OU s'il n'y a qu'un seul compteur affiché
+        if (!datasets || datasets.length <= 1) {
+            container.innerHTML = `
+                <div class="alert alert-light text-center border mt-2">
+                    <i class="bi bi-info-circle text-primary"></i> 
+                    Sélectionnez <strong>All Meters</strong> (ou augmentez la limite) pour voir le classement comparatif.
+                </div>`;
+            return;
+        }
+
+        // 1. Calculer la somme totale pour chaque compteur
+        const totals = datasets.map(ds => {
+            const sum = ds.data.reduce((a, b) => a + (b || 0), 0); 
+            return { name: ds.label, total: sum };
+        });
+
+        // 2. Trier du plus grand au plus petit (DESC)
+        totals.sort((a, b) => b.total - a.total);
+
+        // 3. Garder uniquement les 5 premiers
+        const top5 = totals.slice(0, 5);
+
+        // 4. Trouver le record absolu pour que sa barre soit à 100% de largeur
+        const maxTotal = top5[0].total > 0 ? top5[0].total : 1;
+
+        // 5. Créer le code HTML des barres de progression
+        container.innerHTML = top5.map(item => {
+            const percent = (item.total / maxTotal) * 100;
+            return `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="fw-bold text-secondary">${item.name}</span>
+                        <span class="fw-bold">${item.total.toFixed(2)} kWh</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-danger" role="progressbar" style="width: ${percent}%"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 
 })();
