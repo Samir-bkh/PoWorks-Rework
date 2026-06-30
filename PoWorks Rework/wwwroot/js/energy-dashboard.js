@@ -134,7 +134,15 @@
         document.getElementById('tabDaily')?.addEventListener('click', () => switchTab('daily', 'line', 'tabDaily'));
         document.getElementById('tabMonthly')?.addEventListener('click', () => switchTab('monthly', 'bar', 'tabMonthly'));
         document.getElementById('tabYearly')?.addEventListener('click', () => switchTab('yearly', 'bar', 'tabYearly'));
+
+        document.getElementById('resetZoomBtn')?.addEventListener('click', () => {
+            if (chart) {
+                chart.resetZoom();
+            }
+        }); 
     }
+
+    // Load tenants (unchanged)
 
     // Load tenants (unchanged)
     async function loadTenants() {
@@ -688,6 +696,10 @@
         showLoading(false);
     }
 
+    if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
+    Chart.register(ChartZoom);
+    }
+
     function updateChart(data) {
         console.log('📈 Updating chart with data:', data);
 
@@ -763,27 +775,38 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    
-                    // Comportement au survol de la souris
                     interaction: {
-                        mode: 'index', // Affiche la valeur de toutes les courbes en même temps pour une même date
-                        intersect: false, // Pas besoin d'être pile poil sur le pixel de la ligne
+                        mode: 'index',
+                        intersect: false,
                     },
-                    
                     plugins: {
                         legend: { 
-                            position: 'bottom', // On met la légende en bas comme EmVue
-                            labels: {
-                                usePointStyle: true, // Fait des petits ronds mignons au lieu de gros rectangles
-                                padding: 20
-                            }
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 20 }
                         },
-                        title: { 
-                            display: false // 
+                        title: { display: false },
+                        
+                        // --- NOUVEAU : Configuration du Zoom ---
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true, // Zoom avec la molette de la souris
+                                },
+                                drag: {
+                                    enabled: true, // Zoom en dessinant un rectangle
+                                    backgroundColor: 'rgba(233, 30, 99, 0.2)' // Un fond rose transparent façon EmVue
+                                },
+                                mode: 'x', // On ne zoome que sur l'axe horizontal (le temps)
+                            },
+                            pan: {
+                                enabled: true, // Permet de glisser de gauche à droite quand on est zoomé
+                                mode: 'x'
+                            }
                         }
+                        // ----------------------------------------
                     },
-                    
                     scales: {
+                       
                         y: {
                             beginAtZero: true,
                             grid: { 
@@ -827,7 +850,7 @@
             `rgba(153, 102, 255, ${alpha})`,
             `rgba(255, 159, 64, ${alpha})`
         ];
-        return colors[index % colors.Length];
+        return colors[index % colors.length]; 
     }
 
     function updateSummaryCards(summary) {

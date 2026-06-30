@@ -140,7 +140,13 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Energy Consumption Chart</h5>
                     <!-- NEW: Chart Controls -->
+               
                     <div class="btn-group btn-group-sm" role="group">
+                        <!-- NOUVEAU BOUTON RESET ZOOM -->
+                        <button id="resetZoomBtn" class="btn btn-outline-primary" type="button" title="Réinitialiser le zoom">
+                            <i class="bi bi-arrows-angle-expand"></i> Reset Zoom
+                        </button>
+                        
                         <button id="autoRefresh" class="btn btn-outline-secondary" type="button" title="Auto Refresh (30s)">
                             <i class="bi bi-arrow-repeat"></i>
                         </button>
@@ -270,5 +276,7 @@
 
 @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="~/js/energy-dashboard.js"></script>
 }
