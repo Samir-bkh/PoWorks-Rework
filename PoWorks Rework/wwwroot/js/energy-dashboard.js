@@ -692,14 +692,42 @@
         }
 
         try {
-            const processedDatasets = data.datasets.map((dataset, index) => ({
-                label: dataset.label,
-                data: dataset.data,
-                backgroundColor: chartType === 'bar' ? getColor(index, 0.6) : getColor(index, 0.2),
-                borderColor: getColor(index, 1),
-                borderWidth: chartType === 'line' ? 2 : 1,
-                fill: chartType === 'line' ? false : true
-            }));
+            const processedDatasets = data.datasets.map((dataset, index) => {
+                // On récupère la couleur standard (pour les barres)
+                const defaultColor = getColor(index, 1);
+                
+                return {
+                    label: dataset.label,
+                    data: dataset.data,
+                    
+                    // --- NOUVEAU STYLE  ---
+                    
+                    // 1. Couleur de fond (remplissage)
+                    // Si c'est une ligne, on ne met pas de fond (transparent). 
+                    // Si c'est une barre, on met la couleur avec un peu de transparence (0.7)
+                    backgroundColor: chartType === 'line' ? 'transparent' : getColor(index, 0.7),
+                    
+                    // 2. Couleur de la bordure (le trait de la courbe ou le contour de la barre)
+                    // Si c'est une ligne et que c'est la 1ère courbe (index 0), on met le rose EmVue (#e91e63).
+                    // Sinon on garde la couleur par défaut.
+                    borderColor: (chartType === 'line' && index === 0) ? '#e91e63' : defaultColor,
+                    
+                    // 3. Épaisseur du trait
+                    borderWidth: chartType === 'line' ? 2.5 : 1, 
+                    
+                
+                    fill: false, 
+                    
+                    // 5. Tension de la courbe (0 = traits droits et cassés, 0.4 = courbe douce et lissée )
+                    tension: 0.4, 
+                    
+                    // 6. Les points sur la courbe (on les cache par défaut pour faire propre)
+                    pointRadius: chartType === 'line' ? 0 : 3, 
+                    
+                    // 7. Mais on affiche un gros point quand on passe la souris dessus !
+                    pointHoverRadius: 6 
+                };
+            });
 
             chart = new Chart(ctx, {
                 type: chartType,
@@ -710,27 +738,41 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    
+                    // Comportement au survol de la souris
+                    interaction: {
+                        mode: 'index', // Affiche la valeur de toutes les courbes en même temps pour une même date
+                        intersect: false, // Pas besoin d'être pile poil sur le pixel de la ligne
+                    },
+                    
                     plugins: {
-                        legend: {
-                            position: 'top',
+                        legend: { 
+                            position: 'bottom', // On met la légende en bas comme EmVue
+                            labels: {
+                                usePointStyle: true, // Fait des petits ronds mignons au lieu de gros rectangles
+                                padding: 20
+                            }
                         },
-                        title: {
-                            display: true,
-                            text: 'Energy Consumption Over Time'
+                        title: { 
+                            display: false // 
                         }
                     },
+                    
                     scales: {
                         y: {
                             beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Consumption (kWh)'
+                            grid: { 
+                                color: '#f0f0f0' // Lignes horizontales gris très clair
+                            }, 
+                            title: { 
+                                display: true, 
+                                text: 'Puissance (kW) / Énergie (kWh)',
+                                color: '#888'
                             }
                         },
                         x: {
-                            title: {
-                                display: true,
-                                text: 'Date'
+                            grid: { 
+                                display: false // On cache les lignes verticales pour épurer le design
                             }
                         }
                     }
