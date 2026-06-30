@@ -29,7 +29,7 @@
                 <div class="card-body">
                     <div class="row">
                         <!-- Date Filter -->
-                        <div class="col-md-2">
+                        <div class="col-md-2 d-none">
                             <div class="form-group">
                                 <label for="dateFilter">Date Range</label>
                                 <select id="dateFilter" class="form-control">
@@ -156,6 +156,15 @@
                         </div>
                         <p class="mt-2 text-muted">Loading chart data...</p>
                     </div>
+                    <div class="row mb-3">
+                        <div class="col-12 d-flex justify-content-center">
+                                <div class="btn-group shadow-sm" role="group" aria-label="Filtres temporels">
+                                    <button type="button" class="btn btn-outline-primary active" id="tabDaily" style="min-width: 150px; font-weight: bold;">JOURNALIER</button>
+                                    <button type="button" class="btn btn-outline-primary" id="tabMonthly" style="min-width: 150px; font-weight: bold;">MENSUEL</button>
+                                     <button type="button" class="btn btn-outline-primary" id="tabYearly" style="min-width: 150px; font-weight: bold;">ANNUEL</button>
+                                </div>
+                                </div>
+                           </div>
                     <canvas id="consumptionChart" style="max-height: 400px;"></canvas>
                 </div>
             </div>

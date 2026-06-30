@@ -129,6 +129,11 @@
         // Auto refresh and export
         document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
         document.getElementById('exportChart').addEventListener('click', exportChart);
+
+        // NOUVEAU : Écouteurs pour les onglets
+        document.getElementById('tabDaily')?.addEventListener('click', () => switchTab('daily', 'line', 'tabDaily'));
+        document.getElementById('tabMonthly')?.addEventListener('click', () => switchTab('monthly', 'bar', 'tabMonthly'));
+        document.getElementById('tabYearly')?.addEventListener('click', () => switchTab('yearly', 'bar', 'tabYearly'));
     }
 
     // Load tenants (unchanged)
@@ -918,5 +923,29 @@
             default: return 'info';
         }
     }
+
+    // NOUVEAU : Fonction pour gérer le clic sur les onglets
+    window.switchTab = function(filterValue, chartTypeValue, activeBtnId) {
+        console.log(`🔘 Onglet cliqué : ${filterValue}`);
+
+        // 1. Changer l'apparence des boutons (mettre le bon en 'active')
+        document.getElementById('tabDaily').classList.remove('active');
+        document.getElementById('tabMonthly').classList.remove('active');
+        document.getElementById('tabYearly').classList.remove('active');
+        document.getElementById(activeBtnId).classList.add('active');
+
+        // 2. Changer le type de graphique (Courbe pour journalier, Barres pour le reste)
+        const chartType = document.getElementById('chartType');
+        if (chartType) chartType.value = chartTypeValue;
+
+        // 3. Changer le filtre de date et déclencher la mise à jour !
+        const dateFilter = document.getElementById('dateFilter');
+        if (dateFilter) {
+            dateFilter.value = filterValue;
+            // On fait croire à la page que l'utilisateur a modifié le menu déroulant
+            // Cela va automatiquement calculer les dates et recharger le graphique !
+            dateFilter.dispatchEvent(new Event('change')); 
+        }
+    };
 
 })();
