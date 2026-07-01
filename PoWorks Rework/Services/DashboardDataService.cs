@@ -438,7 +438,7 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// FIXED: Enhanced meter readings with proper date filtering
+        /// FIXED: Enhanced meter readings with DYNAMIC date grouping (Hourly, Daily, Monthly)
         /// </summary>
         public async Task<List<ConsumptionQueryResult>> GetMeterReadingsAsync(MeterReadingFilters filters)
         {
@@ -456,13 +456,32 @@ namespace PoWorks_Rework.Services
 
                 var (startDate, endDate) = filters.GetDateRange();
 
-                // FIXED: Improved query with better date handling and timezone consistency
-                var query = @"
+                // --- FORMATAGE DYNAMIQUE SELON LA VISION DU DASHBOARD ---
+                string timeGrouping;
+                switch (filters.DateFilter?.ToLower())
+                {
+                    case "yearly":
+                        // Regroupement par Année (1 barre par an : 'YYYY')
+                        timeGrouping = "to_char(DATE_TRUNC('year', mr.\"Timestamp\"), 'YYYY')";
+                        break;
+                    case "monthly":
+                        // Regroupement par Mois (1 barre par mois : 'YYYY-MM')
+                        timeGrouping = "to_char(DATE_TRUNC('month', mr.\"Timestamp\"), 'YYYY-MM')";
+                        break;
+                    case "daily":
+                    default:
+                        // Regroupement par Jour (1 point par jour : 'YYYY-MM-DD')
+                        timeGrouping = "to_char(DATE_TRUNC('day', mr.\"Timestamp\"), 'YYYY-MM-DD')";
+                        break;
+                }
+
+                // La requête SQL utilise maintenant notre timeGrouping dynamique
+                var query = $@"
                     SELECT 
                         m.""MeterId"",
                         m.""Name"" as MeterName,
                         COALESCE(m.""Unit"", 'kWh') as Unit,
-                        mr.""Timestamp""::date as ReadingDate,
+                        {timeGrouping} as ReadingDate,
                         SUM(mr.""Value"") as TotalConsumption,
                         AVG(mr.""Value"") as AvgConsumption,
                         MAX(mr.""Value"") as MaxConsumption,
@@ -499,12 +518,14 @@ namespace PoWorks_Rework.Services
                     parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
                 }
 
-                query += @"
-                    GROUP BY m.""MeterId"", m.""Name"", m.""Unit"", m.""TenantID"", t.""DisplayName"", mr.""Timestamp""::date
-                    ORDER BY mr.""Timestamp""::date DESC, m.""Name""";
+                // --- NOUVEAU : On regroupe et on ordonne par la nouvelle formule de temps ---
+                // IMPORTANT : ASC (Ascendant) permet au graphique de s'afficher de gauche à droite (chronologique)
+                query += $@"
+                    GROUP BY m.""MeterId"", m.""Name"", m.""Unit"", m.""TenantID"", t.""DisplayName"", {timeGrouping}
+                    ORDER BY {timeGrouping} ASC, m.""Name""";
 
-                // Apply limit based on filters
-                var queryLimit = Math.Min(filters.Limit * 30, 1000); // Max 30 days per meter, cap at 1000 records
+                // On augmente un peu la limite de sécurité pour laisser passer les points par heure
+                var queryLimit = Math.Min(filters.Limit * 50, 5000);
                 query += $" LIMIT {queryLimit}";
 
                 _logger.LogInformation("Executing consumption query for date range {StartDate} to {EndDate}",
@@ -524,15 +545,18 @@ namespace PoWorks_Rework.Services
                 {
                     data.Add(new ConsumptionQueryResult
                     {
-                        MeterId = reader.GetInt32("MeterId"),
-                        MeterName = reader.GetString("MeterName"),
-                        Unit = reader.GetString("Unit"),
-                        ReadingDate = reader.GetDateTime("ReadingDate").ToString("yyyy-MM-dd"),
-                        TotalConsumption = Convert.ToDouble(reader.GetDecimal("TotalConsumption")),
-                        AvgConsumption = Convert.ToDouble(reader.GetDecimal("AvgConsumption")),
-                        MaxConsumption = Convert.ToDouble(reader.GetDecimal("MaxConsumption")),
-                        TenantId = reader.IsDBNull("TenantID") ? null : reader.GetInt32("TenantID"),
-                        TenantName = reader.IsDBNull("TenantName") ? string.Empty : reader.GetString("TenantName")
+                        MeterId = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                        MeterName = reader.GetString(reader.GetOrdinal("MeterName")),
+                        Unit = reader.GetString(reader.GetOrdinal("Unit")),
+
+                        // --- CORRECTION : Le SQL renvoie déjà un string grâce à 'to_char', on lit un String directement ---
+                        ReadingDate = reader.GetString(reader.GetOrdinal("ReadingDate")),
+
+                        TotalConsumption = Convert.ToDouble(reader.GetDecimal(reader.GetOrdinal("TotalConsumption"))),
+                        AvgConsumption = Convert.ToDouble(reader.GetDecimal(reader.GetOrdinal("AvgConsumption"))),
+                        MaxConsumption = Convert.ToDouble(reader.GetDecimal(reader.GetOrdinal("MaxConsumption"))),
+                        TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")),
+                        TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? string.Empty : reader.GetString(reader.GetOrdinal("TenantName"))
                     });
                 }
 

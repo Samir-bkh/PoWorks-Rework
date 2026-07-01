@@ -210,15 +210,18 @@
 
             switch (filterType) {
                 case 'daily':
-                    startDate.value = formatDate(new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000));
+                    // Les 30 derniers jours
+                    startDate.value = formatDate(new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000));
                     endDate.value = formatDate(today);
                     break;
                 case 'monthly':
+                    // Les 12 derniers mois (on recule de 11 mois + le mois en cours = 12)
                     startDate.value = formatDate(new Date(today.getFullYear(), today.getMonth() - 11, 1));
                     endDate.value = formatDate(today);
                     break;
                 case 'yearly':
-                    startDate.value = formatDate(new Date(today.getFullYear() - 5, 0, 1));
+                    // Les 5 dernières années (on recule de 4 ans + l'année en cours = 5)
+                    startDate.value = formatDate(new Date(today.getFullYear() - 4, 0, 1));
                     endDate.value = formatDate(today);
                     break;
             }
@@ -496,7 +499,7 @@
     }
 
     // FIXED: Enhanced chart loading with better error handling for date ranges
-    async function loadChartData() {
+    async function loadChartData(forcedChartType = null) {
         console.log('🔧 FIXED: Loading chart data with date validation...');
         showLoading(true);
 
@@ -516,7 +519,8 @@
             meterId: document.getElementById('meterFilter').value || null,
             startDate: document.getElementById('startDate').value,
             endDate: document.getElementById('endDate').value,
-            limit: parseInt(document.getElementById('meterLimit').value) || 5
+            limit: parseInt(document.getElementById('meterLimit').value) || 5, 
+            chartType: forcedChartType
         };
 
         console.log('📋 FIXED Filters:', filters);
@@ -700,7 +704,7 @@
     Chart.register(ChartZoom);
     }
 
-    function updateChart(data) {
+    function updateChart(data, forcedType = null) {
         console.log('📈 Updating chart with data:', data);
 
         const canvas = document.getElementById('consumptionChart');
@@ -710,7 +714,7 @@
         }
 
         const ctx = canvas.getContext('2d');
-        const chartType = document.getElementById('chartType')?.value || 'bar';
+        const chartType = forcedType || document.getElementById('chartType')?.value || 'bar';
 
         if (typeof Chart === 'undefined') {
             console.error('❌ Chart.js not loaded');
@@ -979,14 +983,16 @@
 
         // 2. Changer le type de graphique (Courbe pour journalier, Barres pour le reste)
         const chartType = document.getElementById('chartType');
-        if (chartType) chartType.value = chartTypeValue;
+        if (chartType) {
+            chartType.value = chartTypeValue;
+        }
 
         // 3. Changer le filtre de date et déclencher la mise à jour !
         const dateFilter = document.getElementById('dateFilter');
         if (dateFilter) {
             dateFilter.value = filterValue;
-            // On fait croire à la page que l'utilisateur a modifié le menu déroulant
-            // Cela va automatiquement calculer les dates et recharger le graphique !
+            // Magie : on déclenche le "change" qui va recalculer les bonnes dates 
+            // (30 jours, 12 mois, 5 ans) ET recharger le graphique tout seul !
             dateFilter.dispatchEvent(new Event('change')); 
         }
     };
