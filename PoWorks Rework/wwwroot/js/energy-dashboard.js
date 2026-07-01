@@ -130,10 +130,19 @@
         document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
         document.getElementById('exportChart').addEventListener('click', exportChart);
 
-        // NOUVEAU : Écouteurs pour les onglets
-        document.getElementById('tabDaily')?.addEventListener('click', () => switchTab('daily', 'line', 'tabDaily'));
-        document.getElementById('tabMonthly')?.addEventListener('click', () => switchTab('monthly', 'bar', 'tabMonthly'));
-        document.getElementById('tabYearly')?.addEventListener('click', () => switchTab('yearly', 'bar', 'tabYearly'));
+        // NOUVEAU : Écouteurs pour les onglets (Anti-Rechargement)
+        document.getElementById('tabDaily')?.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            switchTab('daily', 'tabDaily'); 
+        });
+        document.getElementById('tabMonthly')?.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            switchTab('monthly', 'tabMonthly'); 
+        });
+        document.getElementById('tabYearly')?.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            switchTab('yearly', 'tabYearly'); 
+        });
 
         document.getElementById('resetZoomBtn')?.addEventListener('click', () => {
             if (chart) {
@@ -399,12 +408,19 @@
             meterSelect.appendChild(option);
         });
 
-        // 2. Restaurer la sélection !
+        // 2. Restaurer la sélection (Sécurité Anti-Perte) !
         if (currentSelectedMeter) {
-            // On vérifie si l'ancien compteur existe toujours dans la nouvelle liste
+            // On vérifie si l'ancien compteur existe toujours dans le Top 5 de cette nouvelle date
             const optionExists = Array.from(meterSelect.options).some(opt => opt.value === currentSelectedMeter);
             if (optionExists) {
                 meterSelect.value = currentSelectedMeter; // On le re-sélectionne
+            } else {
+                // Le compteur n'est plus dans le Top... On l'ajoute artificiellement pour ne pas perdre le filtre !
+                const extraOption = document.createElement('option');
+                extraOption.value = currentSelectedMeter;
+                extraOption.textContent = "Compteur sélectionné (Hors Top)";
+                meterSelect.appendChild(extraOption);
+                meterSelect.value = currentSelectedMeter;
             }
         }
     }
@@ -969,28 +985,22 @@
         }
     }
 
-    // NOUVEAU : Fonction pour gérer le clic sur les onglets
-    window.switchTab = function(filterValue, chartTypeValue, activeBtnId) {
+    // NOUVEAU : Fonction pour gérer le clic sur les onglets (Adoucie)
+    window.switchTab = function(filterValue, activeBtnId) {
         console.log(`🔘 Onglet cliqué : ${filterValue}`);
 
-        // 1. Changer l'apparence des boutons (mettre le bon en 'active')
+        // 1. Changer l'apparence des boutons
         document.getElementById('tabDaily').classList.remove('active');
         document.getElementById('tabMonthly').classList.remove('active');
         document.getElementById('tabYearly').classList.remove('active');
         document.getElementById(activeBtnId).classList.add('active');
 
-        // 2. Changer le type de graphique (Courbe pour journalier, Barres pour le reste)
-        const chartType = document.getElementById('chartType');
-        if (chartType) {
-            chartType.value = chartTypeValue;
-        }
+        // On NE force PLUS le type de graphique ! L'utilisateur garde son choix.
 
-        // 3. Changer le filtre de date et déclencher la mise à jour !
+        // 2. Changer le filtre de date et déclencher la mise à jour
         const dateFilter = document.getElementById('dateFilter');
         if (dateFilter) {
             dateFilter.value = filterValue;
-            // Magie : on déclenche le "change" qui va recalculer les bonnes dates 
-            // (30 jours, 12 mois, 5 ans) ET recharger le graphique tout seul !
             dateFilter.dispatchEvent(new Event('change')); 
         }
     };
