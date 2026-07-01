@@ -194,85 +194,109 @@
         </div>
     </div>
 
-    <!-- Summary Cards -->
+    <!-- Summary Cards (DESIGN MODERNE) -->
     <div class="row mt-4">
+        <!-- Carte 1 : Total Consumption -->
         <div class="col-md-3">
-            <div class="card text-white bg-primary">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Total Consumption</h5>
-                    <h3 id="totalConsumption">0 kWh</h3>
-                    <small id="totalConsumptionDetail" class="text-light opacity-75"></small>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted fw-normal mb-2">Total Consumption</h6>
+                            <h4 class="mb-0 fw-bold text-dark" id="totalConsumption">0 kWh</h4>
+                            <small id="totalConsumptionDetail" class="text-muted mt-1 d-block"></small>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-lightning-charge-fill text-primary fs-5"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-success">
-                <div class="card-body">
-                    <h5 class="card-title">Average Daily</h5>
-                    <h3 id="avgDaily">0 kWh</h3>
-                    <small id="avgDailyDetail" class="text-light opacity-75">Per day average</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-warning">
-                <div class="card-body">
-                    <h5 class="card-title">Peak Usage</h5>
-                    <h3 id="peakUsage">0 kWh</h3>
-                    <small id="peakUsageDetail" class="text-light opacity-75">Maximum recorded</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-info">
-                <div class="card-body">
-                    <h5 class="card-title">Active Meters</h5>
-                    <h3 id="activeMeters">0</h3>
-                    <small id="activeMetersDetail" class="text-light opacity-75">Out of total available</small>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- NEW: Meter Information Panel -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Meter Information</h5>
-                </div>
+        <!-- Carte 2 : Average Daily -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div id="meterInfo" class="row">
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <div class="h4 text-primary" id="totalAvailableMeters">0</div>
-                                <small class="text-muted">Total Available</small>
-                            </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted fw-normal mb-2">Average Daily</h6>
+                            <h4 class="mb-0 fw-bold text-dark" id="avgDaily">0 kWh</h4>
+                            <small id="avgDailyDetail" class="text-muted mt-1 d-block">Per day average</small>
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <div class="h4 text-success" id="metersWithTenants">0</div>
-                                <small class="text-muted">With Tenants</small>
-                            </div>
+                        <div class="bg-success bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-calendar-event-fill text-success fs-5"></i>
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <div class="h4 text-warning" id="metersWithoutTenants">0</div>
-                                <small class="text-muted">Without Tenants</small>
-                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Carte 3 : Peak Usage -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted fw-normal mb-2">Peak Usage</h6>
+                            <h4 class="mb-0 fw-bold text-dark" id="peakUsage">0 kWh</h4>
+                            <small id="peakUsageDetail" class="text-muted mt-1 d-block">Maximum recorded</small>
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-center">
-                                <div class="h4 text-info" id="totalReadings">0</div>
-                                <small class="text-muted">Total Readings</small>
-                            </div>
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-graph-up-arrow text-warning fs-5"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Carte 4 : Active Meters -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted fw-normal mb-2">Active Meters</h6>
+                            <h4 class="mb-0 fw-bold text-dark" id="activeMeters">0</h4>
+                            <small id="activeMetersDetail" class="text-muted mt-1 d-block">Out of total available</small>
+                        </div>
+                        <div class="bg-info bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-speedometer2 text-info fs-5"></i>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
+
+    <!-- NEW: Meter Information Panel (DESIGN MODERNE) -->
+    <div class="row mt-4 mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h6 class="text-muted mb-4 fw-bold text-uppercase" style="letter-spacing: 1px;"><i class="bi bi-hdd-network"></i> Meter Infrastructure</h6>
+                    <div class="row text-center">
+                        <div class="col-md-3 border-end">
+                            <h3 class="fw-bold text-dark mb-1" id="totalAvailableMeters">0</h3>
+                            <span class="text-muted small">Total Available</span>
+                        </div>
+                        <div class="col-md-3 border-end">
+                            <h3 class="fw-bold text-success mb-1" id="metersWithTenants">0</h3>
+                            <span class="text-muted small">With Tenants</span>
+                        </div>
+                        <div class="col-md-3 border-end">
+                            <h3 class="fw-bold text-warning mb-1" id="metersWithoutTenants">0</h3>
+                            <span class="text-muted small">Without Tenants</span>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="fw-bold text-info mb-1" id="totalReadings">0</h3>
+                            <span class="text-muted small">Total Readings</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
 @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
