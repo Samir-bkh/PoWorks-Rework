@@ -292,12 +292,10 @@
         }
     }
 
-    // Update dashboard statistics display (unchanged from Phase 2)
+   // Update dashboard statistics display (Modifié : on a supprimé le panel d'infrastructure)
     function updateDashboardStats(stats) {
-        document.getElementById('totalAvailableMeters').textContent = stats.totalMeters || 0;
-        document.getElementById('metersWithTenants').textContent = stats.metersWithTenants || 0;
-        document.getElementById('metersWithoutTenants').textContent = stats.metersWithoutTenants || 0;
-        document.getElementById('totalReadings').textContent = stats.totalReadings || 0;
+        // Le panneau "Meter Information" a été supprimé de l'interface car inutile pour l'utilisateur final.
+        // On garde la fonction vide pour ne pas casser la chaîne de chargement (loadDashboardStats).
     }
 
     // FIXED: Load meters that have data in the current date range
