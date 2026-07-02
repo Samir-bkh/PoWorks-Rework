@@ -254,7 +254,8 @@ namespace PoWorks_Rework.Controllers
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 25)),
                     ActiveOnly = true,
                     IncludeNullTenants = true,
-                    IsComparisonMode = request.IsComparisonMode
+                    IsComparisonMode = request.IsComparisonMode,
+                    GroupBy = request.GroupBy
                 };
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
@@ -360,6 +361,7 @@ namespace PoWorks_Rework.Controllers
         public DateTime? EndDate { get; set; }
         public int? Limit { get; set; } = 5;
         public bool IsComparisonMode { get; set; }
+        public string GroupBy { get; set; } = "meter";
     }
 
     /// <summary>

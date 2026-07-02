@@ -18,6 +18,7 @@ namespace PoWorks_Rework.Models
         public bool ActiveOnly { get; set; } = true;
         public bool IncludeNullTenants { get; set; } = true; // Allow meters without tenants
         public bool IsComparisonMode { get; set; }
+        public string GroupBy { get; set; } = "meter";
 
         /// <summary>
         /// Get effective date range with defaults

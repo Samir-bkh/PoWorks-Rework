@@ -438,10 +438,7 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// FIXED: Enhanced meter readings with DYNAMIC date grouping (Hourly, Daily, Monthly)
-        /// </summary>
-        /// <summary>
-        /// FIXED: Get meter readings with dynamic scale support (including EmVue 7-day superposition)
+        /// FIXED: Get meter readings with dynamic superposition (Intraday, MoM, YoY) & Dynamic Grouping
         /// </summary>
         public async Task<List<ConsumptionQueryResult>> GetMeterReadingsAsync(MeterReadingFilters filters)
         {
@@ -457,85 +454,85 @@ namespace PoWorks_Rework.Services
                 string query;
                 var parameters = new List<NpgsqlParameter>();
 
-                if (filters.DateFilter == "daily" && filters.IsComparisonMode)
-                {
-                    // JOURNALIER COMPARAISON : 7 jours superposés heure par heure
-                    query = @"
-        SELECT 
-            m.""MeterId"",
-            CASE EXTRACT(ISODOW FROM mr.""Timestamp"")
-                WHEN 1 THEN 'Lundi' WHEN 2 THEN 'Mardi' WHEN 3 THEN 'Mercredi'
-                WHEN 4 THEN 'Jeudi' WHEN 5 THEN 'Vendredi' WHEN 6 THEN 'Samedi'
-                WHEN 7 THEN 'Dimanche'
-            END as MeterName,
-            COALESCE(m.""Unit"", 'kWh') as Unit,
-            to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00') as ReadingDate,
-            SUM(mr.""Value"") as TotalConsumption,
-            AVG(mr.""Value"") as AvgConsumption,
-            MAX(mr.""Value"") as MaxConsumption,
-            m.""TenantID"",
-            COALESCE(t.""DisplayName"", '') as TenantName
-        FROM ""MeterReadings"" mr
-        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-        WHERE m.""Active"" = true
-        AND mr.""Timestamp"" >= CURRENT_DATE - INTERVAL '7 days'
-        AND mr.""Timestamp"" < CURRENT_DATE + INTERVAL '1 day'";
+                // =========================================================================
+                // 🧠 L'ASTUCE : Variables SQL dynamiques pour le bouton Locataire / Compteur
+                // =========================================================================
+                string idColumn = filters.GroupBy == "tenant" ? "COALESCE(m.\"TenantID\", 0)" : "m.\"MeterId\"";
+                string nameColumn = filters.GroupBy == "tenant" ? "COALESCE(t.\"DisplayName\", 'Zones Communes')" : "m.\"Name\"";
+                // On force le type ::text pour que Npgsql ne plante pas
+                string unitColumn = filters.GroupBy == "tenant" ? "'kWh'::text" : "COALESCE(m.\"Unit\", 'kWh')";
+                string groupColumns = filters.GroupBy == "tenant" ? "m.\"TenantID\", t.\"DisplayName\"" : "m.\"MeterId\", m.\"Name\", m.\"Unit\"";
 
-                    // GROUP BY final pour ce mode
-                    // (ajouté plus bas)
-                }
-                else if (filters.DateFilter == "monthly" && filters.IsComparisonMode)
+                // =========================================================================
+                // 🚀 MODE COMPARAISON : Superposition (Heures, Jours du mois, ou Mois de l'année)
+                // =========================================================================
+                if (filters.IsComparisonMode)
                 {
-                    // MENSUEL COMPARAISON : 12 mois superposés jour par jour (Axe X = 01, 02, 03... 31)
+                    string curveNameSql = "";
+                    string xAxisSql = "";
+
+                    if (filters.DateFilter == "daily")
+                    {
+                        curveNameSql = @"CASE EXTRACT(ISODOW FROM mr.""Timestamp"")
+                            WHEN 1 THEN 'Lundi' WHEN 2 THEN 'Mardi' WHEN 3 THEN 'Mercredi'
+                            WHEN 4 THEN 'Jeudi' WHEN 5 THEN 'Vendredi' WHEN 6 THEN 'Samedi'
+                            WHEN 7 THEN 'Dimanche' END";
+                        xAxisSql = @"to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00')";
+
+                        // Sécurité : Forcer la semaine actuelle
+                        startDate = DateTime.Now.Date.AddDays(-7);
+                        endDate = DateTime.Now.Date.AddDays(1);
+                    }
+                    else if (filters.DateFilter == "monthly")
+                    {
+                        curveNameSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM-YYYY')";
+                        xAxisSql = @"to_char(DATE_TRUNC('day', mr.""Timestamp""), 'DD')";
+                    }
+                    else // yearly
+                    {
+                        curveNameSql = @"to_char(DATE_TRUNC('year', mr.""Timestamp""), 'YYYY')";
+                        xAxisSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM')";
+                    }
+
                     query = $@"
-        SELECT 
-            m.""MeterId"",
-            to_char(mr.""Timestamp"", 'TMMonth') as MeterName,
-            COALESCE(m.""Unit"", 'kWh') as Unit,
-            to_char(mr.""Timestamp"", 'DD') as ReadingDate,
-            SUM(mr.""Value"") as TotalConsumption,
-            AVG(mr.""Value"") as AvgConsumption,
-            MAX(mr.""Value"") as MaxConsumption,
-            m.""TenantID"",
-            COALESCE(t.""DisplayName"", '') as TenantName
-        FROM ""MeterReadings"" mr
-        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-        WHERE m.""Active"" = true
-        AND mr.""Timestamp"" >= @StartDate::timestamp
-        AND mr.""Timestamp"" <= @EndDate::timestamp";
+                        SELECT 
+                            {idColumn} as ""MeterId"",
+                            {curveNameSql} as MeterName,
+                            {unitColumn} as Unit,
+                            {xAxisSql} as ReadingDate,
+                            SUM(mr.""Value"") as TotalConsumption,
+                            AVG(mr.""Value"") as AvgConsumption,
+                            MAX(mr.""Value"") as MaxConsumption,
+                            m.""TenantID"",
+                            COALESCE(t.""DisplayName"", '') as TenantName
+                        FROM ""MeterReadings"" mr
+                        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                        WHERE m.""Active"" = true
+                        AND mr.""Timestamp"" >= @StartDate::timestamp
+                        AND mr.""Timestamp"" <= @EndDate::timestamp";
 
                     parameters.Add(new NpgsqlParameter("@StartDate", startDate));
                     parameters.Add(new NpgsqlParameter("@EndDate", endDate));
-                }
-                else if (filters.DateFilter == "yearly" && filters.IsComparisonMode)
-                {
-                    // ANNUEL COMPARAISON : N années superposées mois par mois (Axe X = Jan, Fév... Déc)
-                    query = $@"
-        SELECT 
-            m.""MeterId"",
-            to_char(mr.""Timestamp"", 'YYYY') as MeterName,
-            COALESCE(m.""Unit"", 'kWh') as Unit,
-            to_char(mr.""Timestamp"", 'TMMonth') as ReadingDate,
-            SUM(mr.""Value"") as TotalConsumption,
-            AVG(mr.""Value"") as AvgConsumption,
-            MAX(mr.""Value"") as MaxConsumption,
-            m.""TenantID"",
-            COALESCE(t.""DisplayName"", '') as TenantName
-        FROM ""MeterReadings"" mr
-        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-        WHERE m.""Active"" = true
-        AND mr.""Timestamp"" >= @StartDate::timestamp
-        AND mr.""Timestamp"" <= @EndDate::timestamp";
 
-                    parameters.Add(new NpgsqlParameter("@StartDate", startDate));
-                    parameters.Add(new NpgsqlParameter("@EndDate", endDate));
+                    if (filters.TenantId.HasValue)
+                    {
+                        query += " AND m.\"TenantID\" = @TenantId";
+                        parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
+                    }
+                    if (filters.MeterId.HasValue)
+                    {
+                        query += " AND m.\"MeterId\" = @MeterId";
+                        parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
+                    }
+
+                    query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {curveNameSql}, {xAxisSql} ORDER BY {xAxisSql} ASC";
                 }
+                // =========================================================================
+                // 📊 MODE STANDARD (L'axe X est une date normale et continue)
+                // =========================================================================
                 else
                 {
-                    // MODE STANDARD (inchangé)
                     string timeGrouping = "to_char(DATE_TRUNC('day', mr.\"Timestamp\"), 'YYYY-MM-DD')";
                     if (filters.DateFilter?.ToLower() == "yearly")
                         timeGrouping = "to_char(DATE_TRUNC('year', mr.\"Timestamp\"), 'YYYY')";
@@ -543,74 +540,43 @@ namespace PoWorks_Rework.Services
                         timeGrouping = "to_char(DATE_TRUNC('month', mr.\"Timestamp\"), 'YYYY-MM')";
 
                     query = $@"
-        SELECT 
-            m.""MeterId"",
-            m.""Name"" as MeterName,
-            COALESCE(m.""Unit"", 'kWh') as Unit,
-            {timeGrouping} as ReadingDate,
-            SUM(mr.""Value"") as TotalConsumption,
-            AVG(mr.""Value"") as AvgConsumption,
-            MAX(mr.""Value"") as MaxConsumption,
-            m.""TenantID"",
-            COALESCE(t.""DisplayName"", '') as TenantName
-        FROM ""MeterReadings"" mr
-        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-        WHERE m.""Active"" = true
-        AND mr.""Timestamp"" >= @StartDate::timestamp
-        AND mr.""Timestamp"" <= @EndDate::timestamp";
+                        SELECT 
+                            {idColumn} as ""MeterId"",
+                            {nameColumn} as MeterName,
+                            {unitColumn} as Unit,
+                            {timeGrouping} as ReadingDate,
+                            SUM(mr.""Value"") as TotalConsumption,
+                            AVG(mr.""Value"") as AvgConsumption,
+                            MAX(mr.""Value"") as MaxConsumption,
+                            m.""TenantID"",
+                            COALESCE(t.""DisplayName"", '') as TenantName
+                        FROM ""MeterReadings"" mr
+                        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                        WHERE m.""Active"" = true
+                        AND mr.""Timestamp"" >= @StartDate::timestamp
+                        AND mr.""Timestamp"" <= @EndDate::timestamp";
 
                     parameters.Add(new NpgsqlParameter("@StartDate", startDate));
                     parameters.Add(new NpgsqlParameter("@EndDate", endDate));
+
+                    if (filters.TenantId.HasValue)
+                    {
+                        query += " AND m.\"TenantID\" = @TenantId";
+                        parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
+                    }
+                    if (filters.MeterId.HasValue)
+                    {
+                        query += " AND m.\"MeterId\" = @MeterId";
+                        parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
+                    }
+
+                    query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {timeGrouping} ORDER BY {timeGrouping} ASC, {nameColumn}";
                 }
 
-                // Filtres communs (tenant, meter)
-                if (filters.TenantId.HasValue)
-                {
-                    query += " AND m.\"TenantID\" = @TenantId";
-                    parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
-                }
-                if (filters.MeterId.HasValue)
-                {
-                    query += " AND m.\"MeterId\" = @MeterId";
-                    parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
-                }
-
-                // GROUP BY selon le mode
-                if (filters.DateFilter == "daily" && filters.IsComparisonMode)
-                {
-                    query += @" GROUP BY m.""MeterId"", m.""Unit"", m.""TenantID"", t.""DisplayName"",
-                EXTRACT(ISODOW FROM mr.""Timestamp""),
-                to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00')
-               ORDER BY ReadingDate ASC";
-                }
-                else if (filters.DateFilter == "monthly" && filters.IsComparisonMode)
-                {
-                    query += @" GROUP BY m.""MeterId"", m.""Unit"", m.""TenantID"", t.""DisplayName"",
-                to_char(mr.""Timestamp"", 'TMMonth'),
-                to_char(mr.""Timestamp"", 'DD'),
-                EXTRACT(MONTH FROM mr.""Timestamp"")
-               ORDER BY ReadingDate ASC";
-                }
-                else if (filters.DateFilter == "yearly" && filters.IsComparisonMode)
-                {
-                    query += @" GROUP BY m.""MeterId"", m.""Unit"", m.""TenantID"", t.""DisplayName"",
-                to_char(mr.""Timestamp"", 'YYYY'),
-                to_char(mr.""Timestamp"", 'TMMonth'),
-                EXTRACT(MONTH FROM mr.""Timestamp"")
-               ORDER BY EXTRACT(MONTH FROM mr.""Timestamp"") ASC";
-                }
-                else
-                {
-                    string tg = filters.DateFilter?.ToLower() == "yearly"
-                        ? "to_char(DATE_TRUNC('year', mr.\"Timestamp\"), 'YYYY')"
-                        : filters.DateFilter?.ToLower() == "monthly"
-                            ? "to_char(DATE_TRUNC('month', mr.\"Timestamp\"), 'YYYY-MM')"
-                            : "to_char(DATE_TRUNC('day', mr.\"Timestamp\"), 'YYYY-MM-DD')";
-
-                    query += $" GROUP BY m.\"MeterId\", m.\"Name\", m.\"Unit\", m.\"TenantID\", t.\"DisplayName\", {tg} ORDER BY {tg} ASC, m.\"Name\"";
-                }
-
+                // =========================================================================
+                // EXÉCUTION DE LA REQUÊTE
+                // =========================================================================
                 using var cmd = new NpgsqlCommand(query, connection);
                 foreach (var param in parameters) cmd.Parameters.Add(param);
                 using var reader = await cmd.ExecuteReaderAsync();

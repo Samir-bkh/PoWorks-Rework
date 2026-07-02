@@ -3,6 +3,34 @@
     Layout = "_Layout";
 }
 
+<style>
+    /* Mode Plein Écran pour le graphique */
+    .chart-fullscreen {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 9999;
+        margin: 0;
+        border-radius: 0;
+    }
+    
+    /* On donne toute la place disponible au graphique */
+    .chart-fullscreen .card-body {
+        height: calc(100vh - 70px) !important;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* On casse la limite de 400px de hauteur quand on est en plein écran */
+    .chart-fullscreen canvas {
+        max-height: none !important; 
+        height: 100% !important;
+        flex-grow: 1;
+    }
+</style>
+
 <div class="container-fluid mt-4">
     <!-- Warning Message -->
     @if (TempData["WarningMessage"] != null)
@@ -148,6 +176,13 @@
                             <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
                             <label class="btn btn-outline-primary" for="modeComparison"><i class="bi bi-layers"></i> Comparaison</label>
                         </div>
+                            <div class="btn-group btn-group-sm ms-2" role="group" aria-label="Groupement">
+                            <input type="radio" class="btn-check" name="groupBy" id="groupMeter" value="meter" autocomplete="off" checked>
+                            <label class="btn btn-outline-info" for="groupMeter"><i class="bi bi-speedometer2"></i> Compteurs</label>
+
+                            <input type="radio" class="btn-check" name="groupBy" id="groupTenant" value="tenant" autocomplete="off">
+                            <label class="btn btn-outline-info" for="groupTenant"><i class="bi bi-people"></i> Locataires</label>
+                        </div>
                     </div>
                     
                     <div class="btn-group btn-group-sm" role="group">
@@ -160,6 +195,9 @@
                         <button id="exportChart" class="btn btn-outline-secondary" type="button" title="Export Chart">
                             <i class="bi bi-download"></i>
                         </button>
+                        <button id="fullscreenChart" class="btn btn-outline-secondary" type="button" title="Plein écran">
+                                <i class="bi bi-arrows-fullscreen"></i>
+                            </button>
                     </div>
                 </div>
                 <div class="card-body">

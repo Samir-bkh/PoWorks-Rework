@@ -130,6 +130,9 @@
         document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
         document.getElementById('exportChart').addEventListener('click', exportChart);
 
+        // NOUVEAU : Écouteur pour le plein écran
+        document.getElementById('fullscreenChart')?.addEventListener('click', toggleFullscreen);
+
         // NOUVEAU : Écouteurs pour les onglets (Anti-Rechargement)
         document.getElementById('tabDaily')?.addEventListener('click', (e) => { 
             e.preventDefault(); 
@@ -155,6 +158,32 @@
             radio.addEventListener('change', () => {
                 console.log(`🔄 Mode d'affichage changé pour : ${radio.value}`);
                 loadChartData(); // On relance le chargement du graphique !
+            });
+        });
+
+        // NOUVEAU : Écouter le changement du groupement
+        document.querySelectorAll('input[name="groupBy"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                console.log(`👥 Groupement changé pour : ${e.target.value}`);
+                
+                const meterSelect = document.getElementById('meterFilter');
+                
+                if (e.target.value === 'tenant') {
+                    // Si un compteur spécifique était sélectionné, on prévient l'utilisateur !
+                    if (meterSelect.value !== '') {
+                        showNotification("Filtre réinitialisé : Affichage de tous les compteurs pour le locataire.", "info");
+                    }
+                    
+                    meterSelect.value = ''; // Force "All Meters"
+                    meterSelect.disabled = true; // Grise le menu déroulant
+                    // Ajoute une infobulle au survol de la souris
+                    meterSelect.title = "Filtre indisponible en vue Locataire (Consommation totale)"; 
+                } else {
+                    meterSelect.disabled = false; // Réactive le menu déroulant
+                    meterSelect.title = ""; // Retire l'infobulle
+                }
+
+                loadChartData(); 
             });
         });
     }
@@ -543,9 +572,8 @@
             endDate: document.getElementById('endDate').value,
             limit: parseInt(document.getElementById('meterLimit').value) || 5,
             chartType: forcedChartType, 
-            
-            // NOUVEAU : On regarde si le bouton "Comparaison" est coché et on l'envoie !
-            isComparisonMode: document.getElementById('modeComparison').checked
+            isComparisonMode: document.getElementById('modeComparison').checked,
+            groupBy: document.querySelector('input[name="groupBy"]:checked')?.value || 'meter'
         };
 
         console.log('📋 FIXED Filters:', filters);
@@ -976,9 +1004,19 @@
         const titleElement = document.getElementById('topConsumersTitle'); // On attrape le titre
         if (!container) return; 
 
-        // --- GESTION DU TITRE DYNAMIQUE ---
+        
         const tenantSelect = document.getElementById('tenantFilter');
-        let tenantName = "Vue Globale"; // Par défaut
+        let tenantName = "Vue Globale"; 
+        if (tenantSelect && tenantSelect.selectedIndex > 0) {
+            tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; 
+        }
+
+        const groupBy = document.querySelector('input[name="groupBy"]:checked')?.value || 'meter';
+        const titleType = groupBy === 'tenant' ? 'locataires' : 'compteurs';
+
+        if (titleElement) {
+            titleElement.innerHTML = `<i class="bi bi-fire"></i> Top 5 des ${titleType} (${tenantName})`;
+        }
         
         // Si la liste existe et qu'on a sélectionné autre chose que le 1er choix ("All Tenants")
         if (tenantSelect && tenantSelect.selectedIndex > 0) {
@@ -1030,6 +1068,28 @@
                 </div>
             `;
         }).join('');
+    }
+
+    // NOUVEAU : Fonction pour mettre le graphique en plein écran
+    function toggleFullscreen() {
+        const chartCard = document.getElementById('consumptionChart').closest('.card');
+        const icon = document.querySelector('#fullscreenChart i');
+        
+        if (chartCard.classList.contains('chart-fullscreen')) {
+            // Quitter le plein écran
+            chartCard.classList.remove('chart-fullscreen');
+            icon.classList.remove('bi-fullscreen-exit');
+            icon.classList.add('bi-arrows-fullscreen');
+            document.body.style.overflow = 'auto'; // Réactiver le défilement de la page
+            showNotification("Mode plein écran désactivé", "info");
+        } else {
+            // Passer en plein écran
+            chartCard.classList.add('chart-fullscreen');
+            icon.classList.remove('bi-arrows-fullscreen');
+            icon.classList.add('bi-fullscreen-exit');
+            document.body.style.overflow = 'hidden'; // Bloquer le défilement de l'arrière-plan
+            showNotification("Mode plein écran activé (Appuyez à nouveau pour quitter)", "success");
+        }
     }
 
 })();
