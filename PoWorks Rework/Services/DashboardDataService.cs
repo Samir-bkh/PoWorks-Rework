@@ -455,16 +455,16 @@ namespace PoWorks_Rework.Services
                 var parameters = new List<NpgsqlParameter>();
 
                 // =========================================================================
-                // 🧠 L'ASTUCE : Variables SQL dynamiques pour le bouton Locataire / Compteur
+                // Dynamic SQL variables for the Tenant / Counter button
                 // =========================================================================
                 string idColumn = filters.GroupBy == "tenant" ? "COALESCE(m.\"TenantID\", 0)" : "m.\"MeterId\"";
                 string nameColumn = filters.GroupBy == "tenant" ? "COALESCE(t.\"DisplayName\", 'Zones Communes')" : "m.\"Name\"";
-                // On force le type ::text pour que Npgsql ne plante pas
+               
                 string unitColumn = filters.GroupBy == "tenant" ? "'kWh'::text" : "COALESCE(m.\"Unit\", 'kWh')";
                 string groupColumns = filters.GroupBy == "tenant" ? "m.\"TenantID\", t.\"DisplayName\"" : "m.\"MeterId\", m.\"Name\", m.\"Unit\"";
 
                 // =========================================================================
-                // 🚀 MODE COMPARAISON : Superposition (Heures, Jours du mois, ou Mois de l'année)
+                // COMPARISON MODE: Overlay (Hours, Days of the Month, or Months of the Year)
                 // =========================================================================
                 if (filters.IsComparisonMode)
                 {
@@ -479,7 +479,7 @@ namespace PoWorks_Rework.Services
                             WHEN 7 THEN 'Dimanche' END";
                         xAxisSql = @"to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00')";
 
-                        // Sécurité : Forcer la semaine actuelle
+                      
                         startDate = DateTime.Now.Date.AddDays(-7);
                         endDate = DateTime.Now.Date.AddDays(1);
                     }
@@ -529,7 +529,7 @@ namespace PoWorks_Rework.Services
                     query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {curveNameSql}, {xAxisSql} ORDER BY {xAxisSql} ASC";
                 }
                 // =========================================================================
-                // 📊 MODE STANDARD (L'axe X est une date normale et continue)
+                // 📊 STANDARD MODE
                 // =========================================================================
                 else
                 {
@@ -575,7 +575,7 @@ namespace PoWorks_Rework.Services
                 }
 
                 // =========================================================================
-                // EXÉCUTION DE LA REQUÊTE
+                // Execution of the Request
                 // =========================================================================
                 using var cmd = new NpgsqlCommand(query, connection);
                 foreach (var param in parameters) cmd.Parameters.Add(param);

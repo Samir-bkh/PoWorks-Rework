@@ -15,7 +15,7 @@
 
     // FIXED: Enhanced initialization with intelligent date defaults
     document.addEventListener('DOMContentLoaded', function () {
-        console.log('🚀 FIXED Dashboard initializing with intelligent date handling...');
+        console.log('FIXED Dashboard initializing with intelligent date handling...');
 
         try {
             attachEventListeners();
@@ -31,15 +31,15 @@
             }).then(() => {
                 return loadChartData();
             }).then(() => {
-                console.log('✅ FIXED Dashboard initialization completed');
+                console.log('FIXED Dashboard initialization completed');
             }).catch(error => {
-                console.error('❌ Dashboard initialization error:', error);
+                console.error('Dashboard initialization error:', error);
                 showNotification('Dashboard initialization failed, showing demo data', 'warning');
                 showDemoChart();
             });
 
         } catch (initError) {
-            console.error('❌ Critical initialization error:', initError);
+            console.error('Critical initialization error:', initError);
             showDemoChart();
         }
     });
@@ -66,7 +66,7 @@
                     addDateRangeAlternatives(suggestions.alternatives);
                 }
 
-                console.log('📅 Set intelligent date defaults:', suggestions.defaultStartDate, 'to', suggestions.defaultEndDate);
+                console.log('Set intelligent date defaults:', suggestions.defaultStartDate, 'to', suggestions.defaultEndDate);
             } else {
                 // Fallback to default date initialization
                 initializeDateFilters();
@@ -130,10 +130,10 @@
         document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
         document.getElementById('exportChart').addEventListener('click', exportChart);
 
-        // NOUVEAU : Écouteur pour le plein écran
+        // FULL SCREEN
         document.getElementById('fullscreenChart')?.addEventListener('click', toggleFullscreen);
 
-        // NOUVEAU : Écouteurs pour les onglets (Anti-Rechargement)
+        
         document.getElementById('tabDaily')?.addEventListener('click', (e) => { 
             e.preventDefault(); 
             switchTab('daily', 'tabDaily'); 
@@ -153,34 +153,34 @@
             }
         }); 
 
-        // NOUVEAU : Écouter le changement du bouton Standard/Comparaison
+        
         document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
             radio.addEventListener('change', () => {
-                console.log(`🔄 Mode d'affichage changé pour : ${radio.value}`);
-                loadChartData(); // On relance le chargement du graphique !
+                console.log(`Display mode changed to : ${radio.value}`);
+                loadChartData(); 
             });
         });
 
-        // NOUVEAU : Écouter le changement du groupement
+        
         document.querySelectorAll('input[name="groupBy"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
-                console.log(`👥 Groupement changé pour : ${e.target.value}`);
+                console.log(`Group changed to : ${e.target.value}`);
                 
                 const meterSelect = document.getElementById('meterFilter');
                 
                 if (e.target.value === 'tenant') {
-                    // Si un compteur spécifique était sélectionné, on prévient l'utilisateur !
+                    
                     if (meterSelect.value !== '') {
-                        showNotification("Filtre réinitialisé : Affichage de tous les compteurs pour le locataire.", "info");
+                        showNotification("Filter reset: Showing all meters for the tenant.", "info");
                     }
                     
                     meterSelect.value = ''; // Force "All Meters"
-                    meterSelect.disabled = true; // Grise le menu déroulant
-                    // Ajoute une infobulle au survol de la souris
-                    meterSelect.title = "Filtre indisponible en vue Locataire (Consommation totale)"; 
+                    meterSelect.disabled = true; 
+                   
+                    meterSelect.title = "Filter unavailable in Tenant view (Total consumption)"; 
                 } else {
-                    meterSelect.disabled = false; // Réactive le menu déroulant
-                    meterSelect.title = ""; // Retire l'infobulle
+                    meterSelect.disabled = false; 
+                    meterSelect.title = ""; 
                 }
 
                 loadChartData(); 
@@ -188,9 +188,9 @@
         });
     }
 
-    // Load tenants (unchanged)
+    
 
-    // Load tenants (unchanged)
+    // Load tenants 
     async function loadTenants() {
         try {
             const controller = new AbortController();
@@ -256,17 +256,17 @@
 
             switch (filterType) {
                 case 'daily':
-                    // Les 30 derniers jours
+                    // The past 30 days
                     startDate.value = formatDate(new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000));
                     endDate.value = formatDate(today);
                     break;
                 case 'monthly':
-                    // Les 12 derniers mois (on recule de 11 mois + le mois en cours = 12)
+                    // The past 12 months
                     startDate.value = formatDate(new Date(today.getFullYear(), today.getMonth() - 11, 1));
                     endDate.value = formatDate(today);
                     break;
                 case 'yearly':
-                    // Les 5 dernières années (on recule de 4 ans + l'année en cours = 5)
+                    // The past 5 years 
                     startDate.value = formatDate(new Date(today.getFullYear() - 4, 0, 1));
                     endDate.value = formatDate(today);
                     break;
@@ -279,7 +279,7 @@
 
     // FIXED: Date range change handler
     async function onDateRangeChange() {
-        console.log('📅 Date range changed, reloading meters and chart...');
+        console.log('Date range changed, reloading meters and chart...');
 
         // Validate date range
         const startDate = new Date(document.getElementById('startDate').value);
@@ -295,7 +295,7 @@
             showNotification('Date range too large (max 365 days). Chart performance may be affected.', 'warning');
         }
 
-        updateDataStatus('Checking for data in new date range...', 'info');
+        updateDataStatus('Checking for data in new date range', 'info');
 
         try {
             // FIXED: Reload meters for the new date range
@@ -338,10 +338,10 @@
         }
     }
 
-   // Update dashboard statistics display (Modifié : on a supprimé le panel d'infrastructure)
+   // Update dashboard statistics display
     function updateDashboardStats(stats) {
-        // Le panneau "Meter Information" a été supprimé de l'interface car inutile pour l'utilisateur final.
-        // On garde la fonction vide pour ne pas casser la chaîne de chargement (loadDashboardStats).
+// The "Meter Information" panel was removed from the interface because it was unnecessary for the end user.
+// We keep the function empty so as not to break the loading chain (loadDashboardStats).
     }
 
     // FIXED: Load meters that have data in the current date range
@@ -391,7 +391,7 @@
 
                 updateDataStatus(data.message, 'success');
 
-                console.log(`📊 Loaded ${meters.length} meters with data in range ${startDate} to ${endDate}`);
+                console.log(`Loaded ${meters.length} meters with data in range ${startDate} to ${endDate}`);
             } else {
                 throw new Error(data.error || 'Failed to load meters');
             }
@@ -417,7 +417,7 @@
     function populateMeterDropdown() {
         const meterSelect = document.getElementById('meterFilter');
         
-        // 1. Sauvegarder le compteur actuellement sélectionné avant de tout détruire
+        // 1. Save the currently selected counter before destroying everything
         const currentSelectedMeter = meterSelect.value;
 
         meterSelect.innerHTML = '<option value="">All Meters</option>';
@@ -445,17 +445,17 @@
             meterSelect.appendChild(option);
         });
 
-        // 2. Restaurer la sélection (Sécurité Anti-Perte) !
+        // 2. Restore selection
         if (currentSelectedMeter) {
-            // On vérifie si l'ancien compteur existe toujours dans le Top 5 de cette nouvelle date
+    
             const optionExists = Array.from(meterSelect.options).some(opt => opt.value === currentSelectedMeter);
             if (optionExists) {
-                meterSelect.value = currentSelectedMeter; // On le re-sélectionne
+                meterSelect.value = currentSelectedMeter; 
             } else {
-                // Le compteur n'est plus dans le Top... On l'ajoute artificiellement pour ne pas perdre le filtre !
+             
                 const extraOption = document.createElement('option');
                 extraOption.value = currentSelectedMeter;
-                extraOption.textContent = "Compteur sélectionné (Hors Top)";
+                extraOption.textContent = "Selected counter";
                 meterSelect.appendChild(extraOption);
                 meterSelect.value = currentSelectedMeter;
             }
@@ -465,7 +465,7 @@
     // Meter limit change handler (updated)
     function onMeterLimitChange(event) {
         const newLimit = parseInt(event.target.value);
-        console.log(`🔧 Meter limit changed to: ${newLimit}`);
+        console.log(`Meter limit changed to: ${newLimit}`);
 
         // Reset and reload with new limit for current date range
         meterOffset = 0;
@@ -551,7 +551,7 @@
 
     // FIXED: Enhanced chart loading with better error handling for date ranges
     async function loadChartData(forcedChartType = null) {
-        console.log('🔧 FIXED: Loading chart data with date validation...');
+        console.log('FIXED: Loading chart data with date validation...');
         showLoading(true);
 
         if (loadingTimeout) {
@@ -559,7 +559,7 @@
         }
 
         loadingTimeout = setTimeout(() => {
-            console.warn('⏰ Chart loading timeout - showing demo data');
+            console.warn('Chart loading timeout - showing demo data');
             showDemoChart();
             showNotification('Chart loading took too long - showing demo data', 'warning');
         }, 15000);
@@ -576,7 +576,7 @@
             groupBy: document.querySelector('input[name="groupBy"]:checked')?.value || 'meter'
         };
 
-        console.log('📋 FIXED Filters:', filters);
+        console.log('FIXED Filters:', filters);
 
         try {
             const controller = new AbortController();
@@ -594,14 +594,14 @@
             clearTimeout(timeoutId);
             clearTimeout(loadingTimeout);
 
-            console.log('🌐 Response Status:', response.status);
+            console.log('Response Status:', response.status);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
             const data = await response.json();
-            console.log('📊 FIXED Received data:', data);
+            console.log('FIXED Received data:', data);
 
             // FIXED: Handle no data in range scenario
             if (data.noDataInRange && data.suggestions) {
@@ -627,7 +627,7 @@
             currentData = data.chartData;
             updateChart(data.chartData);
             
-            // On déclenche la mise à jour du Top 5 !
+
             if (data.chartData && data.chartData.datasets) {
                 renderTopConsumers(data.chartData.datasets);
             }
@@ -636,14 +636,14 @@
             updateSummaryCards(data.summary);
             showLoading(false);
 
-            console.log('✅ FIXED Chart updated successfully');
+            console.log('FIXED Chart updated successfully');
 
         } catch (error) {
             clearTimeout(loadingTimeout);
-            console.error('❌ Chart loading error:', error);
+            console.error('Chart loading error:', error);
 
             if (error.name === 'AbortError') {
-                console.warn('⏰ Request timeout - showing demo data');
+                console.warn('Request timeout - showing demo data');
                 showNotification('Request timeout - showing demo data', 'warning');
             } else {
                 showNotification(`Error: ${error.message} - showing demo data`, 'error');
@@ -658,7 +658,7 @@
         const alertDiv = document.createElement('div');
         alertDiv.className = 'alert alert-info alert-dismissible fade show mt-3';
         alertDiv.innerHTML = `
-            <h6>💡 Suggested Date Ranges:</h6>
+            <h6>Suggested Date Ranges:</h6>
             <p>${suggestions.message}</p>
             <div class="btn-group btn-group-sm" role="group">
                 <button type="button" class="btn btn-outline-primary" onclick="applySuggestedDateRange('${suggestions.defaultStartDate}', '${suggestions.defaultEndDate}')">
@@ -758,11 +758,11 @@
     }
 
    function updateChart(data, forcedType = null) {
-        console.log('📈 Updating chart with data:', data);
+        console.log('Updating chart with data:', data);
 
         const canvas = document.getElementById('consumptionChart');
         if (!canvas) {
-            console.error('❌ Canvas not found');
+            console.error('Canvas not found');
             return;
         }
 
@@ -770,7 +770,7 @@
         const chartType = forcedType || document.getElementById('chartType')?.value || 'bar';
 
         if (typeof Chart === 'undefined') {
-            console.error('❌ Chart.js not loaded');
+            console.error('Chart.js not loaded');
             return;
         }
 
@@ -780,18 +780,18 @@
 
         try {
             const processedDatasets = data.datasets.map((dataset, index) => {
-                // Couleurs de la charte EmVue pour chaque jour de la semaine
+                
                 const emvueColors = {
-                    'Lundi': '#4BC0C0',     // Vert menthe
-                    'Mardi': '#36A2EB',     // Bleu ciel
-                    'Mercredi': '#FF9F40',  // Orange
-                    'Jeudi': '#FFCE56',     // Jaune
-                    'Vendredi': '#9966FF',  // Violet
-                    'Samedi': '#FF6384',    // Rose rouge
-                    'Dimanche': '#C9CBCF'   // Gris
+                    'Monday': '#4BC0C0',     
+                    'Tuesday': '#36A2EB',     
+                    'Wednesday': '#FF9F40', 
+                    'Thursday': '#FFCE56',    
+                    'Friday': '#9966FF',  
+                    'Saturday': '#FF6384',    
+                    'Sunday': '#C9CBCF'   
                 };
 
-                // On cherche si la courbe correspond à un jour de la semaine
+               
                 const colorKey = Object.keys(emvueColors).find(k => dataset.label.includes(k));
                 const finalColor = colorKey ? emvueColors[colorKey] : getColor(index, 1);
                 
@@ -802,7 +802,7 @@
                     borderColor: finalColor,
                     borderWidth: chartType === 'line' ? 2.5 : 1, 
                     fill: false, 
-                    tension: 0.1, // Légers angles comme sur l'image d'EmVue
+                    tension: 0.1, 
                     pointRadius: chartType === 'line' ? 0 : 3, 
                     pointHoverRadius: 6 
                 };
@@ -840,9 +840,9 @@
                     }
                 }
             });
-            console.log('✅ Chart created successfully');
+            console.log('Chart created successfully');
         } catch (chartError) {
-            console.error('❌ Chart creation error:', chartError);
+            console.error('Chart creation error:', chartError);
         }
     }
 
@@ -978,19 +978,19 @@
         }
     }
 
-    // NOUVEAU : Fonction pour gérer le clic sur les onglets (Adoucie)
+    
     window.switchTab = function(filterValue, activeBtnId) {
-        console.log(`🔘 Onglet cliqué : ${filterValue}`);
+        console.log(`Clicked tab : ${filterValue}`);
 
-        // 1. Changer l'apparence des boutons
+        // 1. Change the apparence of the butom 
         document.getElementById('tabDaily').classList.remove('active');
         document.getElementById('tabMonthly').classList.remove('active');
         document.getElementById('tabYearly').classList.remove('active');
         document.getElementById(activeBtnId).classList.add('active');
 
-        // On NE force PLUS le type de graphique ! L'utilisateur garde son choix.
+       
 
-        // 2. Changer le filtre de date et déclencher la mise à jour
+        // 2. Change the date filter and trigger the update
         const dateFilter = document.getElementById('dateFilter');
         if (dateFilter) {
             dateFilter.value = filterValue;
@@ -998,62 +998,61 @@
         }
     };
 
-    // NOUVEAU : Calculer et afficher le Top 5 (Avec Titre Dynamique)
+    //Calculate and show the Top 5
     function renderTopConsumers(datasets) {
         const container = document.getElementById('topConsumersList');
-        const titleElement = document.getElementById('topConsumersTitle'); // On attrape le titre
+        const titleElement = document.getElementById('topConsumersTitle'); 
         if (!container) return; 
 
         
         const tenantSelect = document.getElementById('tenantFilter');
-        let tenantName = "Vue Globale"; 
+        let tenantName = "Globale View"; 
         if (tenantSelect && tenantSelect.selectedIndex > 0) {
             tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; 
         }
 
         const groupBy = document.querySelector('input[name="groupBy"]:checked')?.value || 'meter';
-        const titleType = groupBy === 'tenant' ? 'locataires' : 'compteurs';
+        const titleType = groupBy === 'tenant' ? 'tenants' : 'meters';
 
         if (titleElement) {
-            titleElement.innerHTML = `<i class="bi bi-fire"></i> Top 5 des ${titleType} (${tenantName})`;
+            titleElement.innerHTML = `<i class=""></i> Top 5 of ${titleType} (${tenantName})`;
         }
         
-        // Si la liste existe et qu'on a sélectionné autre chose que le 1er choix ("All Tenants")
+    
         if (tenantSelect && tenantSelect.selectedIndex > 0) {
-            tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; // On récupère le texte ("Société Beta")
+            tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; 
         }
 
         if (titleElement) {
-            titleElement.innerHTML = `<i class="bi bi-fire"></i> Top 5 des compteurs (${tenantName})`;
+            titleElement.innerHTML = `<i class=""></i> Top 5 of Meters (${tenantName})`;
         }
         // ----------------------------------
 
-        // Si le graphique est vide OU s'il n'y a qu'un seul compteur affiché
         if (!datasets || datasets.length <= 1) {
             container.innerHTML = `
                 <div class="alert alert-light text-center border mt-2">
                     <i class="bi bi-info-circle text-primary"></i> 
-                    Sélectionnez <strong>All Meters</strong> (ou augmentez la limite) pour voir le classement comparatif.
+                    Select <strong>All Meters</strong> (or increase the limit) to see the comparative ranking.
                 </div>`;
             return;
         }
 
-        // 1. Calculer la somme totale pour chaque compteur
+        // 1. Calucl the sum for each meter
         const totals = datasets.map(ds => {
             const sum = ds.data.reduce((a, b) => a + (b || 0), 0); 
             return { name: ds.label, total: sum };
         });
 
-        // 2. Trier du plus grand au plus petit (DESC)
+        // 2. (DESC)
         totals.sort((a, b) => b.total - a.total);
 
-        // 3. Garder uniquement les 5 premiers
+        // 3. Keep only the first 5
         const top5 = totals.slice(0, 5);
 
-        // 4. Trouver le record absolu pour que sa barre soit à 100% de largeur
+       
         const maxTotal = top5[0].total > 0 ? top5[0].total : 1;
 
-        // 5. Créer le code HTML des barres de progression
+        //Create the HTML code for progress bars
         container.innerHTML = top5.map(item => {
             const percent = (item.total / maxTotal) * 100;
             return `
@@ -1070,25 +1069,25 @@
         }).join('');
     }
 
-    // NOUVEAU : Fonction pour mettre le graphique en plein écran
+    // Function to make the chart full screen
     function toggleFullscreen() {
         const chartCard = document.getElementById('consumptionChart').closest('.card');
         const icon = document.querySelector('#fullscreenChart i');
         
         if (chartCard.classList.contains('chart-fullscreen')) {
-            // Quitter le plein écran
+            // Exit the full screen
             chartCard.classList.remove('chart-fullscreen');
             icon.classList.remove('bi-fullscreen-exit');
             icon.classList.add('bi-arrows-fullscreen');
-            document.body.style.overflow = 'auto'; // Réactiver le défilement de la page
-            showNotification("Mode plein écran désactivé", "info");
+            document.body.style.overflow = 'auto'; // 
+            showNotification("Full screen mode off", "info");
         } else {
-            // Passer en plein écran
+            // Go full screen
             chartCard.classList.add('chart-fullscreen');
             icon.classList.remove('bi-arrows-fullscreen');
             icon.classList.add('bi-fullscreen-exit');
-            document.body.style.overflow = 'hidden'; // Bloquer le défilement de l'arrière-plan
-            showNotification("Mode plein écran activé (Appuyez à nouveau pour quitter)", "success");
+            document.body.style.overflow = 'hidden'; 
+            showNotification("Full screen mode on (Press again to exit)", "success");
         }
     }
 

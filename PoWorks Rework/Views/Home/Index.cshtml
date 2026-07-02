@@ -4,7 +4,7 @@
 }
 
 <style>
-    /* Mode Plein Écran pour le graphique */
+    /* Full Screen Mode for the chart */
     .chart-fullscreen {
         position: fixed !important;
         top: 0;
@@ -16,14 +16,14 @@
         border-radius: 0;
     }
     
-    /* On donne toute la place disponible au graphique */
+    /* We give the chart all the available space*/
     .chart-fullscreen .card-body {
         height: calc(100vh - 70px) !important;
         display: flex;
         flex-direction: column;
     }
 
-    /* On casse la limite de 400px de hauteur quand on est en plein écran */
+    /* We break the 400px height limit when we're in fullscreen*/
     .chart-fullscreen canvas {
         max-height: none !important; 
         height: 100% !important;
@@ -169,24 +169,24 @@
                     <div class="d-flex align-items-center gap-3">
                         <h5 class="mb-0">Energy Consumption</h5>
                         
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Mode d'affichage">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Display mode">
                             <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
                             <label class="btn btn-outline-primary" for="modeStandard"><i class="bi bi-graph-up"></i> Standard</label>
 
                             <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="modeComparison"><i class="bi bi-layers"></i> Comparaison</label>
+                            <label class="btn btn-outline-primary" for="modeComparison"><i class="bi bi-layers"></i> Comparison</label>
                         </div>
                             <div class="btn-group btn-group-sm ms-2" role="group" aria-label="Groupement">
                             <input type="radio" class="btn-check" name="groupBy" id="groupMeter" value="meter" autocomplete="off" checked>
-                            <label class="btn btn-outline-info" for="groupMeter"><i class="bi bi-speedometer2"></i> Compteurs</label>
+                            <label class="btn btn-outline-info" for="groupMeter"><i class="bi bi-speedometer2"></i> Meters</label>
 
                             <input type="radio" class="btn-check" name="groupBy" id="groupTenant" value="tenant" autocomplete="off">
-                            <label class="btn btn-outline-info" for="groupTenant"><i class="bi bi-people"></i> Locataires</label>
+                            <label class="btn btn-outline-info" for="groupTenant"><i class="bi bi-people"></i> Tenants</label>
                         </div>
                     </div>
                     
                     <div class="btn-group btn-group-sm" role="group">
-                        <button id="resetZoomBtn" class="btn btn-outline-secondary" type="button" title="Réinitialiser le zoom">
+                        <button id="resetZoomBtn" class="btn btn-outline-secondary" type="button" title="Reset the zoom">
                             <i class="bi bi-arrows-angle-expand"></i> Zoom
                         </button>
                         <button id="autoRefresh" class="btn btn-outline-secondary" type="button" title="Auto Refresh (30s)">
@@ -195,20 +195,20 @@
                         <button id="exportChart" class="btn btn-outline-secondary" type="button" title="Export Chart">
                             <i class="bi bi-download"></i>
                         </button>
-                        <button id="fullscreenChart" class="btn btn-outline-secondary" type="button" title="Plein écran">
+                        <button id="fullscreenChart" class="btn btn-outline-secondary" type="button" title="Full Screen">
                                 <i class="bi bi-arrows-fullscreen"></i>
                             </button>
                     </div>
                 </div>
                 <div class="card-body">
                     
-                    <!-- LES ONGLETS SONT BIEN PLACÉS ICI -->
+                    <!-- The tabs are well placed here -->
                     <div class="row mb-3">
                         <div class="col-12 d-flex justify-content-center">
                             <div class="btn-group shadow-sm" role="group">
-                                <button type="button" class="btn btn-outline-primary active" id="tabDaily" style="min-width: 150px; font-weight: bold;">JOURNALIER</button>
-                                <button type="button" class="btn btn-outline-primary" id="tabMonthly" style="min-width: 150px; font-weight: bold;">MENSUEL</button>
-                                <button type="button" class="btn btn-outline-primary" id="tabYearly" style="min-width: 150px; font-weight: bold;">ANNUEL</button>
+                                <button type="button" class="btn btn-outline-primary active" id="tabDaily" style="min-width: 150px; font-weight: bold;">DAILY</button>
+                                <button type="button" class="btn btn-outline-primary" id="tabMonthly" style="min-width: 150px; font-weight: bold;">MONTHLY</button>
+                                <button type="button" class="btn btn-outline-primary" id="tabYearly" style="min-width: 150px; font-weight: bold;">ANNUAL</button>
                             </div>
                         </div>
                     </div>
@@ -232,11 +232,11 @@
                 <div class="card-header bg-white">
 
 
-                    <h5 id="topConsumersTitle" class="mb-0 text-danger"><i class="bi bi-fire"></i> Top 5 des compteurs (Vue Globale)</h5>
+                    <h5 id="topConsumersTitle" class="mb-0 text-danger"><i class="bi bi-fire"></i> Top 5 Counters (Overview)</h5>
                 </div>
                 <div class="card-body">
                     <div id="topConsumersList">
-                        <p class="text-muted text-center">Chargement du classement...</p>
+                        <p class="text-muted text-center">Loading the ranking</p>
                     </div>
                 </div>
             </div>

@@ -2,12 +2,12 @@ using PoWorks_Rework.Services;
 using System;
 using System.Security.Authentication;
 
-// 1er Radar : Tout début du programme
-Console.WriteLine("🚀 1. DÉMARRAGE DU PROGRAMME...");
+// Start of program
+Console.WriteLine("1. PROGRAM START");
 
 var builder = WebApplication.CreateBuilder(args);
 
-Console.WriteLine("⏳ 2. AJOUT DES SERVICES...");
+Console.WriteLine("2. ADDING SERVICES");
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
@@ -50,15 +50,14 @@ System.Net.ServicePointManager.SecurityProtocol =
     System.Net.SecurityProtocolType.Tls11 |
     System.Net.SecurityProtocolType.Tls12 |
     System.Net.SecurityProtocolType.Tls13;
-Console.WriteLine("⏳ 3. CONSTRUCTION DE L'APPLICATION...");
+Console.WriteLine("3. BUILDING THE APP");
 var app = builder.Build();
-Console.WriteLine("✅ 4. CONSTRUCTION TERMINÉE !");
+Console.WriteLine("4. BUILDING FINISHED !");
 
-Console.WriteLine("✅ 4. CONSTRUCTION TERMINÉE !");
 
 try
 {
-    Console.WriteLine("⏳ 4b. Configuration du pipeline HTTP...");
+    Console.WriteLine("4b. HTTP pipeline setup");
 
     if (app.Environment.IsDevelopment())
     {
@@ -70,19 +69,19 @@ try
         app.UseHsts();
     }
 
-    Console.WriteLine("⏳ 4c. UseHttpsRedirection...");
+    Console.WriteLine("4c. UseHttpsRedirection");
     app.UseHttpsRedirection();
 
-    Console.WriteLine("⏳ 4d. UseStaticFiles...");
+    Console.WriteLine("4d. UseStaticFiles");
     app.UseStaticFiles();
 
-    Console.WriteLine("⏳ 4e. UseRouting...");
+    Console.WriteLine("4e. UseRouting");
     app.UseRouting();
 
-    Console.WriteLine("⏳ 4f. UseAuthorization...");
+    Console.WriteLine("4f. UseAuthorization");
     app.UseAuthorization();
 
-    Console.WriteLine("⏳ 4g. MapControllerRoutes...");
+    Console.WriteLine("4g. MapControllerRoutes");
     app.MapControllerRoute(
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}");
@@ -98,14 +97,14 @@ try
         pattern: "WebServicesImport/{action}/{id?}",
         defaults: new { controller = "WebServicesImport" });
 
-    Console.WriteLine("🏁 5. PRÊT À LANCER LE SITE WEB — http://localhost:5101");
+    Console.WriteLine("5. READY TO START THE WEB SITE — http://localhost:5101");
     app.Run();
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"\n❌ ERREUR : {ex.GetType().Name}");
+    Console.WriteLine($"\nERROR : {ex.GetType().Name}");
     Console.WriteLine($"   Message : {ex.Message}");
     Console.WriteLine($"   Cause   : {ex.InnerException?.Message}");
-    Console.WriteLine("\nAppuie sur une touche...");
+    Console.WriteLine("\n Press a key ");
     Console.ReadKey();
 }
