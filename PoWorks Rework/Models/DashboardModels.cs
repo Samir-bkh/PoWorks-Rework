@@ -17,6 +17,7 @@ namespace PoWorks_Rework.Models
         public int Offset { get; set; } = 0;
         public bool ActiveOnly { get; set; } = true;
         public bool IncludeNullTenants { get; set; } = true; // Allow meters without tenants
+        public bool IsComparisonMode { get; set; }
 
         /// <summary>
         /// Get effective date range with defaults
@@ -304,7 +305,7 @@ namespace PoWorks_Rework.Models
     }
 
     /// <summary>
-    /// NEW: Model for date range options
+    /// NEW: Model for date range optionsDashboardFilterRequest
     /// </summary>
     public class DateRangeOption
     {

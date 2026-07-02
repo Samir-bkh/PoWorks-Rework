@@ -232,24 +232,18 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// FIXED: Main consumption data endpoint with enhanced date handling
+        /// FIXED: Main consumption data endpoint
         /// </summary>
         [HttpPost]
         public async Task<IActionResult> GetConsumptionData([FromBody] DashboardFilterRequest request)
         {
             try
             {
-                _logger.LogInformation("=== FIXED DASHBOARD API DEBUG START ===");
-                _logger.LogInformation($"Database IsInitialized: {_databaseService.IsInitialized}");
-                _logger.LogInformation($"Received filters: DateFilter={request?.DateFilter}, TenantId={request?.TenantId}, MeterId={request?.MeterId}, StartDate={request?.StartDate}, EndDate={request?.EndDate}, Limit={request?.Limit}");
-
                 if (!_databaseService.IsInitialized)
                 {
-                    _logger.LogWarning("Database service not initialized - returning demo data");
                     return Json(_dashboardDataService.GenerateDemoChartData("Database not configured. Showing demo data."));
                 }
 
-                // Convert request to filters model
                 var filters = new MeterReadingFilters
                 {
                     DateFilter = request.DateFilter ?? "monthly",
@@ -259,45 +253,14 @@ namespace PoWorks_Rework.Controllers
                     EndDate = request.EndDate,
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 25)),
                     ActiveOnly = true,
-                    IncludeNullTenants = true
+                    IncludeNullTenants = true,
+                    IsComparisonMode = request.IsComparisonMode
                 };
 
-                // FIXED: Check data availability for the specific date range
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
-                _logger.LogInformation("Data availability for date range: {Message}", availability.GetAvailabilityMessage());
 
-                if (!availability.IsDataAvailable)
-                {
-                    _logger.LogInformation("No data available for date range - suggesting alternatives");
-
-                    // Suggest better date range
-                    var suggestions = await _dashboardDataService.GetDateRangeSuggestionsAsync();
-
-                    return Json(new
-                    {
-                        chartData = new { labels = new List<string>(), datasets = new List<object>() },
-                        summary = new { totalConsumption = 0, averageDaily = 0, peakUsage = 0, activeMeters = 0 },
-                        message = availability.GetAvailabilityMessage(),
-                        noDataInRange = true,
-                        suggestions = new
-                        {
-                            defaultStartDate = suggestions.DefaultStartDate.ToString("yyyy-MM-dd"),
-                            defaultEndDate = suggestions.DefaultEndDate.ToString("yyyy-MM-dd"),
-                            message = suggestions.Message,
-                            alternatives = suggestions.AlternativeRanges.Select(alt => new
-                            {
-                                name = alt.Name,
-                                startDate = alt.StartDate.ToString("yyyy-MM-dd"),
-                                endDate = alt.EndDate.ToString("yyyy-MM-dd"),
-                                description = alt.Description
-                            }).ToList()
-                        }
-                    });
-                }
-
-                // FIXED: Get consumption data using fixed date filtering
+                // Appel direct et propre au service
                 var consumptionData = await _dashboardDataService.GetMeterReadingsAsync(filters);
-                _logger.LogInformation($"Raw consumption data records retrieved: {consumptionData.Count}");
 
                 if (!consumptionData.Any())
                 {
@@ -305,48 +268,32 @@ namespace PoWorks_Rework.Controllers
                     {
                         chartData = new { labels = new List<string>(), datasets = new List<object>() },
                         summary = new { totalConsumption = 0, averageDaily = 0, peakUsage = 0, activeMeters = 0 },
-                        message = $"No consumption data found for the selected criteria in date range {filters.StartDate?.ToString("yyyy-MM-dd")} to {filters.EndDate?.ToString("yyyy-MM-dd")}. Try expanding the date range.",
+                        message = "No consumption data found.",
                         noDataInRange = true
                     });
                 }
 
-                // Process chart data and calculate summary
                 var chartData = _dashboardDataService.ProcessChartData(consumptionData);
                 var summary = _dashboardDataService.CalculateSummary(consumptionData);
-
-                // Update summary with total meter count from availability check
                 summary.TotalMeters = availability.ActiveMeterCount;
 
-                var result = new
+                return Json(new
                 {
                     chartData = chartData.ToApiResponse(),
                     summary = summary.ToDisplayObject(),
-                    message = $"Showing data for {summary.ActiveMeters} meters out of {availability.ActiveMeterCount} available meters with data in the selected date range (limit: {filters.Limit})",
+                    message = $"Showing data for {summary.ActiveMeters} meters.",
                     dataInfo = new
                     {
                         availableMeters = availability.ActiveMeterCount,
                         shownMeters = summary.ActiveMeters,
-                        metersWithTenants = availability.MetersWithTenants,
-                        metersWithoutTenants = availability.MetersWithoutTenants,
-                        totalReadings = availability.TotalReadings,
-                        appliedLimit = filters.Limit,
-                        dateRange = new
-                        {
-                            startDate = filters.StartDate?.ToString("yyyy-MM-dd"),
-                            endDate = filters.EndDate?.ToString("yyyy-MM-dd")
-                        }
+                        totalReadings = availability.TotalReadings
                     }
-                };
-
-                _logger.LogInformation("=== FIXED DASHBOARD API DEBUG END ===");
-                return Json(result);
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "ERROR in GetConsumptionData: {Message}", ex.Message);
-                _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
-
-                return Json(_dashboardDataService.GenerateDemoChartData($"Error loading data: {ex.Message}. Showing demo data."));
+                return Json(_dashboardDataService.GenerateDemoChartData($"Error loading data: {ex.Message}"));
             }
         }
 
@@ -412,6 +359,7 @@ namespace PoWorks_Rework.Controllers
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public int? Limit { get; set; } = 5;
+        public bool IsComparisonMode { get; set; }
     }
 
     /// <summary>

@@ -149,6 +149,14 @@
                 chart.resetZoom();
             }
         }); 
+
+        // NOUVEAU : Écouter le changement du bouton Standard/Comparaison
+        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                console.log(`🔄 Mode d'affichage changé pour : ${radio.value}`);
+                loadChartData(); // On relance le chargement du graphique !
+            });
+        });
     }
 
     // Load tenants (unchanged)
@@ -533,8 +541,11 @@
             meterId: document.getElementById('meterFilter').value || null,
             startDate: document.getElementById('startDate').value,
             endDate: document.getElementById('endDate').value,
-            limit: parseInt(document.getElementById('meterLimit').value) || 5, 
-            chartType: forcedChartType
+            limit: parseInt(document.getElementById('meterLimit').value) || 5,
+            chartType: forcedChartType, 
+            
+            // NOUVEAU : On regarde si le bouton "Comparaison" est coché et on l'envoie !
+            isComparisonMode: document.getElementById('modeComparison').checked
         };
 
         console.log('📋 FIXED Filters:', filters);
@@ -718,7 +729,7 @@
     Chart.register(ChartZoom);
     }
 
-    function updateChart(data, forcedType = null) {
+   function updateChart(data, forcedType = null) {
         console.log('📈 Updating chart with data:', data);
 
         const canvas = document.getElementById('consumptionChart');
@@ -732,7 +743,6 @@
 
         if (typeof Chart === 'undefined') {
             console.error('❌ Chart.js not loaded');
-            showNotification('Chart library not loaded', 'error');
             return;
         }
 
@@ -740,46 +750,32 @@
             chart.destroy();
         }
 
-        if (!data || !data.labels || !data.datasets) {
-            console.warn('⚠️ Invalid chart data structure');
-            showDemoChart();
-            return;
-        }
-
         try {
             const processedDatasets = data.datasets.map((dataset, index) => {
-                // On récupère la couleur standard (pour les barres)
-                const defaultColor = getColor(index, 1);
+                // Couleurs de la charte EmVue pour chaque jour de la semaine
+                const emvueColors = {
+                    'Lundi': '#4BC0C0',     // Vert menthe
+                    'Mardi': '#36A2EB',     // Bleu ciel
+                    'Mercredi': '#FF9F40',  // Orange
+                    'Jeudi': '#FFCE56',     // Jaune
+                    'Vendredi': '#9966FF',  // Violet
+                    'Samedi': '#FF6384',    // Rose rouge
+                    'Dimanche': '#C9CBCF'   // Gris
+                };
+
+                // On cherche si la courbe correspond à un jour de la semaine
+                const colorKey = Object.keys(emvueColors).find(k => dataset.label.includes(k));
+                const finalColor = colorKey ? emvueColors[colorKey] : getColor(index, 1);
                 
                 return {
                     label: dataset.label,
                     data: dataset.data,
-                    
-                    // --- NOUVEAU STYLE  ---
-                    
-                    // 1. Couleur de fond (remplissage)
-                    // Si c'est une ligne, on ne met pas de fond (transparent). 
-                    // Si c'est une barre, on met la couleur avec un peu de transparence (0.7)
-                    backgroundColor: chartType === 'line' ? 'transparent' : getColor(index, 0.7),
-                    
-                    // 2. Couleur de la bordure (le trait de la courbe ou le contour de la barre)
-                    // Si c'est une ligne et que c'est la 1ère courbe (index 0), on met le rose EmVue (#e91e63).
-                    // Sinon on garde la couleur par défaut.
-                    borderColor: (chartType === 'line' && index === 0) ? '#e91e63' : defaultColor,
-                    
-                    // 3. Épaisseur du trait
+                    backgroundColor: chartType === 'line' ? 'transparent' : finalColor,
+                    borderColor: finalColor,
                     borderWidth: chartType === 'line' ? 2.5 : 1, 
-                    
-                
                     fill: false, 
-                    
-                    // 5. Tension de la courbe (0 = traits droits et cassés, 0.4 = courbe douce et lissée )
-                    tension: 0.4, 
-                    
-                    // 6. Les points sur la courbe (on les cache par défaut pour faire propre)
+                    tension: 0.1, // Légers angles comme sur l'image d'EmVue
                     pointRadius: chartType === 'line' ? 0 : 3, 
-                    
-                    // 7. Mais on affiche un gros point quand on passe la souris dessus !
                     pointHoverRadius: 6 
                 };
             });
@@ -793,63 +789,32 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: { 
-                            position: 'bottom',
-                            labels: { usePointStyle: true, padding: 20 }
-                        },
+                        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } },
                         title: { display: false },
-                        
-                        // --- NOUVEAU : Configuration du Zoom ---
                         zoom: {
                             zoom: {
-                                wheel: {
-                                    enabled: true, // Zoom avec la molette de la souris
-                                },
-                                drag: {
-                                    enabled: true, // Zoom en dessinant un rectangle
-                                    backgroundColor: 'rgba(233, 30, 99, 0.2)' // Un fond rose transparent façon EmVue
-                                },
-                                mode: 'x', // On ne zoome que sur l'axe horizontal (le temps)
+                                wheel: { enabled: true },
+                                drag: { enabled: true, backgroundColor: 'rgba(233, 30, 99, 0.2)' },
+                                mode: 'x',
                             },
-                            pan: {
-                                enabled: true, // Permet de glisser de gauche à droite quand on est zoomé
-                                mode: 'x'
-                            }
+                            pan: { enabled: true, mode: 'x' }
                         }
-                        // ----------------------------------------
                     },
                     scales: {
-                       
                         y: {
                             beginAtZero: true,
-                            grid: { 
-                                color: '#f0f0f0' // Lignes horizontales gris très clair
-                            }, 
-                            title: { 
-                                display: true, 
-                                text: 'Puissance (kW) / Énergie (kWh)',
-                                color: '#888'
-                            }
+                            grid: { color: '#f0f0f0' }, 
+                            title: { display: true, text: 'Puissance (kW) / Énergie (kWh)', color: '#888' }
                         },
-                        x: {
-                            grid: { 
-                                display: false // On cache les lignes verticales pour épurer le design
-                            }
-                        }
+                        x: { grid: { display: false } }
                     }
                 }
             });
-
             console.log('✅ Chart created successfully');
-
         } catch (chartError) {
             console.error('❌ Chart creation error:', chartError);
-            showNotification('Chart rendering failed', 'error');
         }
     }
 
