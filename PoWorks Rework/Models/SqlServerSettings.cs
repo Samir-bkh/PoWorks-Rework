@@ -34,7 +34,17 @@ namespace PoWorks_Rework.Models
         // Helper method to generate SQL Server connection string
         public string ToConnectionString()
         {
-            return $"Server={Host},{Port};Database={Database};User Id={Username};Password={Password};TrustServerCertificate=True;";
+            // Gère le port vide ou null
+            var server = string.IsNullOrWhiteSpace(Port)
+                ? Host
+                : $"{Host},{Port}";
+
+            return $"Server={server};" +
+                   $"Database={Database};" +
+                   $"User Id={Username};" +
+                   $"Password={Password};" +
+                   $"TrustServerCertificate=True;" +
+                   $"Connection Timeout=30;";
         }
     }
 }

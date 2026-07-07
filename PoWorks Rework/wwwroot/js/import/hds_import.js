@@ -8,6 +8,19 @@
  * - HDS-specific connection management
  */
 
+ // Définition temporaire si hdsMeterSelection.js manque
+function initializeHdsDateRange() {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - 30);
+    
+    const startInput = document.getElementById('hdsStartDate');
+    const endInput = document.getElementById('hdsEndDate');
+    
+    if (startInput) startInput.value = start.toISOString().split('T')[0];
+    if (endInput) endInput.value = today.toISOString().split('T')[0];
+}
+
 // =====================================================
 // INITIALIZATION & EVENT HANDLERS
 // =====================================================
@@ -16,16 +29,14 @@
  * Sets up all DOM event listeners once the document is loaded.
  */
 document.addEventListener('DOMContentLoaded', function () {
-
-    initializeEventDelegation();
-    initializeModalIfAlreadyPresent();
-    initializeHdsDateRange();
-    setupHdsQuickRangeButtons();
-    setupHdsDateValidation();
-
-    // HDS-specific initialization
+    // 1. On charge les connexions EN PREMIER pour être sûr que le menu se remplit
     loadSqlServerConnections();
     setupConnectionEventListeners();
+
+    // 2. Initialisation des événements
+    initializeEventDelegation();
+    initializeModalIfAlreadyPresent();
+
 });
 
 /**
@@ -604,16 +615,23 @@ function handleHDSImport() {
     const meters = extractHDSMeterData(selectedCheckboxes);
     const hdsContext = window.currentHDSContext || {};
 
+    // NOUVEAU : On récupère les dates
+    const startDate = document.getElementById('hdsStartDate')?.value || null;
+    const endDate = document.getElementById('hdsEndDate')?.value || null;
+
     const importData = {
         meters,
         skipExisting,
         updateExisting,
         importReadings,
         connectionId: hdsContext.connectionId,
-        tableName: hdsContext.tableName
+        tableName: hdsContext.tableName,
+        // NOUVEAU : On les ajoute à l'objet envoyé au serveur
+        startDate: startDate,
+        endDate: endDate
     };
 
-    fetch('/Import/ImportHdsMeters', {
+    fetch('/Import/ImportMeters', {  // ATTENTION: j'ai corrigé l'URL ici pour qu'elle matche ton contrôleur C# !
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(importData)

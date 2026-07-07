@@ -1,4 +1,6 @@
-﻿namespace PoWorks_Rework.Models
+﻿using System.Diagnostics.Eventing.Reader;
+
+namespace PoWorks_Rework.Models
 {
     public class SqlServerConnectionCollection
     {
@@ -61,7 +63,8 @@
             {
                 newDefault.IsDefault = true;
                 DefaultConnectionId = connectionId;
-            }
+
+             }
         }
     }
 }

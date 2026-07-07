@@ -1469,49 +1469,38 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                // Read from appsettings.json
-                var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
-                if (!System.IO.File.Exists(appSettingsPath))
+                // Utilisation propre du système de configuration .NET au lieu de lire le fichier texte
+                var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+
+                // On cherche dans la section principale
+                var connectionsSection = config.GetSection("PCVueWebServiceSettings:Connections");
+
+                // Si elle est vide, on tente l'autre nom possible dans ton app
+                if (!connectionsSection.Exists() || !connectionsSection.GetChildren().Any())
                 {
-                    _logger.LogError("appsettings.json not found at: {Path}", appSettingsPath);
-                    return null;
+                    connectionsSection = config.GetSection("WebServiceConnections");
                 }
 
-                var json = System.IO.File.ReadAllText(appSettingsPath);
-                using var document = JsonDocument.Parse(json);
-
-                if (!document.RootElement.TryGetProperty("PCVueWebServiceSettings", out var settingsElement))
+                foreach (var section in connectionsSection.GetChildren())
                 {
-                    _logger.LogError("PCVueWebServiceSettings section not found in appsettings.json");
-                    return null;
-                }
-
-                // Find the connection by ID
-                if (settingsElement.TryGetProperty("Connections", out var connectionsElement))
-                {
-                    foreach (var connectionElement in connectionsElement.EnumerateArray())
+                    if (section["ConnectionId"] == connectionId)
                     {
-                        if (connectionElement.TryGetProperty("ConnectionId", out var idElement) &&
-                            idElement.GetString() == connectionId)
+                        return new PCVueWebServiceSettings
                         {
-                            return new PCVueWebServiceSettings
-                            {
-                                ConnectionId = connectionElement.GetProperty("ConnectionId").GetString() ?? "",
-                                ConnectionName = connectionElement.GetProperty("ConnectionName").GetString() ?? "",
-                                BaseUrl = connectionElement.GetProperty("BaseUrl").GetString() ?? "",
-                                ClientId = connectionElement.GetProperty("ClientId").GetString() ?? "",
-                                ClientSecret = connectionElement.GetProperty("ClientSecret").GetString() ?? "",
-                                Username = connectionElement.GetProperty("Username").GetString() ?? "",
-                                Password = connectionElement.GetProperty("Password").GetString() ?? "",
-                                AuthType = (AuthenticationType)connectionElement.GetProperty("AuthType").GetInt32(),
-                                TimeoutSeconds = connectionElement.GetProperty("TimeoutSeconds").GetInt32(),
-                                ProjectName = connectionElement.GetProperty("ProjectName").GetString() ?? ""
-                            };
-                        }
+                            ConnectionId = section["ConnectionId"] ?? "",
+                            ConnectionName = section["ConnectionName"] ?? "",
+                            BaseUrl = section["BaseUrl"] ?? "",
+                            ClientId = section["ClientId"] ?? "",
+                            ClientSecret = section["ClientSecret"] ?? "",
+                            Username = section["Username"] ?? "",
+                            Password = section["Password"] ?? "",
+                            ProjectName = section["ProjectName"] ?? "",
+                            TimeoutSeconds = int.TryParse(section["TimeoutSeconds"], out int t) ? t : 30
+                        };
                     }
                 }
 
-                _logger.LogWarning("Web service connection not found: {ConnectionId}", connectionId);
+                _logger.LogWarning("Web service connection not found in IConfiguration: {ConnectionId}", connectionId);
                 return null;
             }
             catch (Exception ex)

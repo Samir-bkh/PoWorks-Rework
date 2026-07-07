@@ -566,13 +566,16 @@ function importWebServiceVariables() {
         connectionInfo: connectionInfo
     });
 
+    // ==========================================
+    // CORRECTION : On mappe exactement avec le Modèle C#
+    // ==========================================
     const requestData = {
         variables: selectedVariables,
-        skipExisting,
-        updateExisting,
-        // ADD date range and connection for trends
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
+        skipExisting: skipExisting,
+        updateExisting: updateExisting,
+        importTrendsData: true, // On précise au backend qu'on veut les trends
+        trendsStartDate: dateRange.startDate, // Le C# attend 'TrendsStartDate'
+        trendsEndDate: dateRange.endDate,     // Le C# attend 'TrendsEndDate'
         connectionId: connectionInfo.connectionId
     };
 
@@ -584,9 +587,12 @@ function importWebServiceVariables() {
         importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing + Getting Trends...';
     }
 
-    console.log('📤 Sending import request:', requestData);
+    console.log('Sending import request:', requestData);
 
-    fetch('/WebServicesImport/ImportWebServiceMeters', {
+    // ==========================================
+    // CORRECTION : La VRAIE adresse de ton API C#
+    // ==========================================
+    fetch('/Import/ImportWebServiceVariablesWithTrends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)
@@ -611,7 +617,7 @@ function importWebServiceVariables() {
 
                 alert(message);
             } else {
-                let errorMsg = `❌ Web Service import failed: ${data.error}\n\n`;
+                let errorMsg = `❌ Web Service import failed: ${data.errorMessage || data.error}\n\n`;
                 if (data.detailedErrors) {
                     errorMsg += 'Detailed errors:\n';
                     Object.entries(data.detailedErrors).forEach(([variable, error]) => {

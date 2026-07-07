@@ -156,7 +156,7 @@ namespace PoWorks_Rework.Services
                             ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
                             ConnectionName = connectionSection["ConnectionName"] ?? "",
                             Host = connectionSection["Host"] ?? "localhost",
-                            Port = connectionSection["Port"] ?? "1433",
+                            Port = string.IsNullOrEmpty(connectionSection["Port"]) ? "1433" : connectionSection["Port"],
                             Database = connectionSection["Database"] ?? "",
                             Username = connectionSection["Username"] ?? "",
                             Password = connectionSection["Password"] ?? "",

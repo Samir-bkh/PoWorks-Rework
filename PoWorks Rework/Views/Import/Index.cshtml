@@ -49,6 +49,26 @@
                                     <div class="form-text">Available when connected</div>
                                 </div>
 
+                                <!-- NOUVEAU : Sélection de dates HDS -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-calendar-range"></i> Plage de dates HDS
+                                    </label>
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <label for="hdsStartDate" class="form-label small text-muted">Start Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="hdsStartDate">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="hdsEndDate" class="form-label small text-muted">End Date</label>
+                                            <input type="datetime-local" class="form-control form-control-sm" id="hdsEndDate">
+                                        </div>
+                                    </div>
+                                    <div class="form-text">Optionnel : Laissez vide pour tout importer</div>
+                                </div>
+
+                                <!-- Load Meters Button -->
+
                                 <!-- Load Meters Button -->
                                 <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
                                     <i class="bi bi-search"></i> Load Meters
