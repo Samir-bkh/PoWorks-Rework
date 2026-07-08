@@ -15,7 +15,7 @@
  * Initialize WebService functionality when DOM is ready
  */
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🔧 WebService import module loading...');
+    console.log('WebService import module loading...');
 
     // Load connections on startup
     loadWebServiceConnections();
@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Set up WebService date range functionality - DELAY to ensure elements exist
     setTimeout(() => {
         setupWebServiceDateRange();
-        console.log('✅ WebService date range setup completed');
+        console.log('WebService date range setup completed');
     }, 100);
 });
 /**
@@ -143,7 +143,7 @@ function browseVariables(connectionId) {
     };
     storeWebServiceConnectionInfo(connectionInfo);
 
-    console.log('🔗 Stored connection info:', connectionInfo);
+    console.log('Stored connection info:', connectionInfo);
 
     // GET DATE RANGE - ADD THIS
     const startDateInput = document.getElementById('webServiceStartDate');
@@ -152,7 +152,7 @@ function browseVariables(connectionId) {
     const endDate = endDateInput?.value || null;
 
     // DEBUG CONSOLE LOG - ADD THIS
-    console.log('📅 Date Range Debug:', {
+    console.log('Date Range Debug:', {
         startDate: startDate,
         endDate: endDate,
         startDateInput: !!startDateInput,
@@ -182,7 +182,7 @@ function browseVariables(connectionId) {
     };
 
     // DEBUG CONSOLE LOG - ADD THIS
-    console.log('🔍 Request Data:', requestData);
+    console.log(' Request Data:', requestData);
 
     fetch('/WebServicesImport/BrowseVariablesWebService', {
         method: 'POST',
@@ -203,7 +203,7 @@ function browseVariables(connectionId) {
                     connectionName: data.connectionInfo.connectionName
                 };
                 storeWebServiceConnectionInfo(enhancedConnectionInfo);
-                console.log('🔗 Updated connection info from response:', enhancedConnectionInfo);
+                console.log('Updated connection info from response:', enhancedConnectionInfo);
             }
 
             handleWebServiceBrowseResponse(data);
@@ -344,8 +344,8 @@ function createWebServiceMeterSelectionTable(variables, parentOptions, connectio
 
     // Log structure for debugging if needed
     if (variables.length > 0) {
-        console.log('📊 Variables loaded:', variables.length);
-        console.log('🔍 Sample variable fullPath:', variables[0].fullPath);
+        console.log('Variables loaded:', variables.length);
+        console.log('Sample variable fullPath:', variables[0].fullPath);
     }
 
     let parentOptionsHtml = '<option value="">None</option>';
@@ -514,13 +514,13 @@ function printWebServiceVariables() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert(`✅ Successfully printed ${data.count} Web Service variables to console.`);
+                alert(`Successfully printed ${data.count} Web Service variables to console.`);
             } else {
-                alert(`❌ Error printing Web Service variables: ${data.error}`);
+                alert(`Error printing Web Service variables: ${data.error}`);
             }
         })
         .catch(err => {
-            alert('❌ Network error while printing Web Service variables.');
+            alert('Network error while printing Web Service variables.');
         });
 }
 
@@ -599,10 +599,10 @@ function importWebServiceVariables() {
     })
         .then(response => response.json())
         .then(data => {
-            console.log('📥 Import response:', data);
+            console.log('Import response:', data);
 
             if (data.success) {
-                let message = `✅ Web Service import completed successfully!\n`;
+                let message = `Web Service import completed successfully!\n`;
                 message += `Imported: ${data.importedCount}\n`;
                 message += `Updated: ${data.updatedCount}\n`;
                 message += `Skipped: ${data.skippedCount}\n`;
@@ -610,14 +610,14 @@ function importWebServiceVariables() {
 
                 // Add trends results if available
                 if (data.trendsSuccessCount !== undefined || data.trendsFailedCount !== undefined) {
-                    message += `\n\n📊 Trends Processing:\n`;
+                    message += `\n\nTrends Processing:\n`;
                     message += `Success: ${data.trendsSuccessCount || 0}\n`;
                     message += `Failed: ${data.trendsFailedCount || 0}`;
                 }
 
                 alert(message);
             } else {
-                let errorMsg = `❌ Web Service import failed: ${data.errorMessage || data.error}\n\n`;
+                let errorMsg = `Web Service import failed: ${data.errorMessage || data.error}\n\n`;
                 if (data.detailedErrors) {
                     errorMsg += 'Detailed errors:\n';
                     Object.entries(data.detailedErrors).forEach(([variable, error]) => {
@@ -628,8 +628,8 @@ function importWebServiceVariables() {
             }
         })
         .catch(err => {
-            console.error('❌ Import error:', err);
-            alert('❌ Network error while importing Web Service variables.');
+            console.error('Import error:', err);
+            alert('Network error while importing Web Service variables.');
         })
         .finally(() => {
             if (importBtn) {
@@ -697,13 +697,13 @@ function collectSelectedWebServiceVariables() {
  */
 function storeWebServiceConnectionInfo(connectionInfo) {
     window.webServiceConnectionInfo = connectionInfo;
-    console.log('💾 Stored connection info:', connectionInfo);
+    console.log('Stored connection info:', connectionInfo);
 
     // Also store in sessionStorage as backup
     try {
         sessionStorage.setItem('webServiceConnectionInfo', JSON.stringify(connectionInfo));
     } catch (e) {
-        console.warn('⚠️ Could not store in sessionStorage:', e);
+        console.warn('Could not store in sessionStorage:', e);
     }
 }
 
@@ -722,7 +722,7 @@ function getStoredWebServiceConnectionInfo() {
                 window.webServiceConnectionInfo = connectionInfo; // Restore to memory
             }
         } catch (e) {
-            console.warn('⚠️ Could not retrieve from sessionStorage:', e);
+            console.warn('Could not retrieve from sessionStorage:', e);
         }
     }
 
@@ -739,7 +739,7 @@ function getStoredWebServiceConnectionInfo() {
         }
     }
 
-    console.log('🔗 Retrieved connection info:', connectionInfo);
+    console.log('Retrieved connection info:', connectionInfo);
     return connectionInfo || {};
 }
 
@@ -748,7 +748,7 @@ function getStoredWebServiceConnectionInfo() {
 * Set up WebService date range functionality
 */
 function setupWebServiceDateRange() {
-    console.log('🔧 Setting up WebService date range...');
+    console.log('Setting up WebService date range...');
 
     // Initialize default date range
     initializeWebServiceDateRange();
@@ -768,7 +768,7 @@ function initializeWebServiceDateRange() {
     const startDateInput = document.getElementById('webServiceStartDate');
 
     if (!endDateInput || !startDateInput) {
-        console.warn('⚠️ WebService date inputs not found');
+        console.warn('WebService date inputs not found');
         return;
     }
 
@@ -778,7 +778,7 @@ function initializeWebServiceDateRange() {
     endDateInput.value = formatDateTimeLocal(now);
     startDateInput.value = formatDateTimeLocal(yesterday);
 
-    console.log('✅ WebService date range initialized');
+    console.log('WebService date range initialized');
 }
 
 
@@ -799,7 +799,7 @@ function setupWebServiceQuickRangeButtons() {
     const btn7d = document.getElementById('wsQuickRange7d');
     const btn30d = document.getElementById('wsQuickRange30d');
 
-    console.log('🔧 Setting up quick range buttons...', {
+    console.log('Setting up quick range buttons...', {
         btn24h: !!btn24h,
         btn7d: !!btn7d,
         btn30d: !!btn30d
@@ -808,34 +808,34 @@ function setupWebServiceQuickRangeButtons() {
     if (btn24h) {
         btn24h.addEventListener('click', (e) => {
             e.preventDefault();
-            console.log('📅 24h button clicked');
+            console.log('24h button clicked');
             setWebServiceQuickRange(24, 'hours');
             highlightActiveWebServiceQuickRange('wsQuickRange24h');
         });
     } else {
-        console.warn('⚠️ 24h button not found');
+        console.warn('24h button not found');
     }
 
     if (btn7d) {
         btn7d.addEventListener('click', (e) => {
             e.preventDefault();
-            console.log('📅 7d button clicked');
+            console.log('7d button clicked');
             setWebServiceQuickRange(7, 'days');
             highlightActiveWebServiceQuickRange('wsQuickRange7d');
         });
     } else {
-        console.warn('⚠️ 7d button not found');
+        console.warn('7d button not found');
     }
 
     if (btn30d) {
         btn30d.addEventListener('click', (e) => {
             e.preventDefault();
-            console.log('📅 30d button clicked');
+            console.log('30d button clicked');
             setWebServiceQuickRange(30, 'days');
             highlightActiveWebServiceQuickRange('wsQuickRange30d');
         });
     } else {
-        console.warn('⚠️ 30d button not found');
+        console.warn('30d button not found');
     }
 }
 
@@ -846,7 +846,7 @@ function setupWebServiceQuickRangeButtons() {
  * Set WebService start and end dates to a quick range
  */
 function setWebServiceQuickRange(amount, unit) {
-    console.log(`📅 Setting quick range: ${amount} ${unit}`);
+    console.log(`Setting quick range: ${amount} ${unit}`);
 
     const now = new Date();
     const startDate = new Date();
@@ -864,14 +864,14 @@ function setWebServiceQuickRange(amount, unit) {
         endDateInput.value = formatDateTimeLocal(now);
         startDateInput.value = formatDateTimeLocal(startDate);
 
-        console.log('✅ Date range set:', {
+        console.log('Date range set:', {
             start: startDateInput.value,
             end: endDateInput.value
         });
 
         validateWebServiceDateRange();
     } else {
-        console.error('❌ Date inputs not found');
+        console.error('Date inputs not found');
     }
 }
 
@@ -934,24 +934,24 @@ function validateImportRequest() {
     const dateRange = getSelectedDateRange();
     const connectionInfo = getStoredWebServiceConnectionInfo();
 
-    console.log('🔧 Validating import request...');
+    console.log('Validating import request...');
 
     if (!selectedVariables.length) {
-        console.warn('⚠️ No variables selected');
+        console.warn('No variables selected');
         return false;
     }
 
     if (!connectionInfo.connectionId) {
-        console.warn('⚠️ No connection ID available');
+        console.warn('No connection ID available');
         // This is okay for meter-only import, just warn
     }
 
     if (!dateRange.startDate || !dateRange.endDate) {
-        console.warn('⚠️ Date range not set - trends will be skipped');
+        console.warn('Date range not set - trends will be skipped');
         // This is okay, just importing meters without trends
     }
 
-    console.log('✅ Import request validation passed');
+    console.log('Import request validation passed');
     return true;
 }
 
@@ -973,14 +973,14 @@ function getSelectedDateRange() {
         const end = new Date(dateRange.endDate);
 
         if (start >= end) {
-            console.warn('⚠️ Invalid date range: start date must be before end date');
+            console.warn('Invalid date range: start date must be before end date');
         } else {
             const duration = (end - start) / (1000 * 60 * 60 * 24);
-            console.log(`📅 Date range: ${duration.toFixed(1)} days`);
+            console.log(`Date range: ${duration.toFixed(1)} days`);
         }
     }
 
-    console.log('📅 Getting date range:', dateRange);
+    console.log(' Getting date range:', dateRange);
     return dateRange;
 }
 
