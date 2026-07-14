@@ -120,6 +120,80 @@ namespace PoWorks_Rework.Controllers
             return RedirectToAction("Index");
         }
 
+        [HttpGet]
+        public IActionResult Details(int id)
+        {
+            try
+            {
+                using var connection = GetDatabaseConnection();
+
+                // 1. On récupère les infos principales de la facture
+                string billQuery = @"
+                    SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
+                           b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
+                    WHERE b.""BillId"" = @id";
+
+                using var cmdBill = new NpgsqlCommand(billQuery, connection);
+                cmdBill.Parameters.AddWithValue("id", id);
+
+                using var reader = cmdBill.ExecuteReader();
+                if (!reader.Read())
+                {
+                    TempData["ErrorMessage"] = "Bill not found.";
+                    return RedirectToAction("Index");
+                }
+
+                var bill = new BillEntity
+                {
+                    BillId = reader.GetInt32(0),
+                    TenantName = reader.GetString(1),
+                    PeriodStart = reader.GetDateTime(2),
+                    PeriodEnd = reader.GetDateTime(3),
+                    TotalKWh = reader.GetDecimal(4),
+                    AmountExclTax = reader.GetDecimal(5),
+                    TaxAmount = reader.GetDecimal(6),
+                    AmountInclTax = reader.GetDecimal(7),
+                    Status = reader.GetString(8),
+                    GeneratedAt = reader.GetDateTime(9)
+                };
+
+                // Très important : fermer le premier lecteur avant d'en ouvrir un second
+                reader.Close();
+
+                // 2. On récupère le détail de chaque compteur lié à cette facture
+                string lineQuery = @"
+                    SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
+                    FROM ""BillLineItems""
+                    WHERE ""BillId"" = @id";
+
+                using var cmdLine = new NpgsqlCommand(lineQuery, connection);
+                cmdLine.Parameters.AddWithValue("id", id);
+
+                using var lineReader = cmdLine.ExecuteReader();
+                while (lineReader.Read())
+                {
+                    bill.LineItems.Add(new BillLineItemEntity
+                    {
+                        MeterName = lineReader.GetString(0),
+                        Consumption = lineReader.GetDecimal(1),
+                        Unit = lineReader.GetString(2),
+                        UnitPrice = lineReader.GetDecimal(3),
+                        LineTotalExclTax = lineReader.GetDecimal(4)
+                    });
+                }
+
+                return View(bill);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading bill details");
+                TempData["ErrorMessage"] = "Error loading bill details.";
+                return RedirectToAction("Index");
+            }
+        }
+
         private List<DropdownOption> GetMeters()
         {
             var options = new List<DropdownOption>();

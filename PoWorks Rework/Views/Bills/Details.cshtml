@@ -1,0 +1,107 @@
+@model PoWorks_Rework.Models.BillEntity
+@{
+    ViewData["Title"] = "Bill Details";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Invoice Details</h2>
+    <div>
+        <a asp-action="Index" class="btn btn-secondary me-2"><i class="bi bi-arrow-left"></i> Back to List</a>
+        <button class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+    </div>
+</div>
+
+<div class="card shadow-sm invoice-card">
+    <div class="card-body p-5">
+        <div class="row mb-4">
+            <div class="col-sm-6">
+                <h4 class="text-primary mb-3">PoWorks Energy Management</h4>
+                <div>Petaling Jaya, Selangor</div>
+                <div>Malaysia</div>
+                <div>Email: billing@poworks.com</div>
+            </div>
+            <div class="col-sm-6 text-end">
+                <h4 class="mb-3">
+                    Status: 
+                    @if(Model.Status == "Draft") { <span class="badge bg-warning text-dark">Draft</span> }
+                    else if(Model.Status == "Validated") { <span class="badge bg-info">Validated</span> }
+                    else if(Model.Status == "Paid") { <span class="badge bg-success">Paid</span> }
+                    else { <span class="badge bg-secondary">@Model.Status</span> }
+                </h4>
+                <div><strong>Invoice Date:</strong> @Model.GeneratedAt.ToString("dd MMM yyyy")</div>
+                <div><strong>Billing Period:</strong> @Model.PeriodStart.ToString("dd MMM yyyy") - @Model.PeriodEnd.ToString("dd MMM yyyy")</div>
+            </div>
+        </div>
+
+        <hr class="my-4">
+
+        <div class="row mb-4">
+            <div class="col-sm-12">
+                <h5 class="text-muted">Billed To:</h5>
+                <h3 class="mb-0">@Model.TenantName</h3>
+            </div>
+        </div>
+
+        <div class="table-responsive mb-4">
+            <table class="table table-bordered table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Meter Name</th>
+                        <th class="text-end">Consumption</th>
+                        <th>Unit</th>
+                        <th class="text-end">Unit Price (RM)</th>
+                        <th class="text-end">Line Total (RM)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.LineItems != null && Model.LineItems.Any())
+                    {
+                        foreach (var item in Model.LineItems)
+                        {
+                            <tr>
+                                <td>@item.MeterName</td>
+                                <td class="text-end">@item.Consumption.ToString("N3")</td>
+                                <td>@item.Unit</td>
+                                <td class="text-end">@item.UnitPrice.ToString("N4")</td>
+                                <td class="text-end">@item.LineTotalExclTax.ToString("N2")</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No meter details found for this bill.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-6 col-md-6">
+                <p class="text-muted small">
+                    <em>* SST applies to commercial energy usage as per Malaysian regulations.</em><br />
+                    <em>* Please make the payment within 14 days of the invoice date.</em>
+                </p>
+            </div>
+            <div class="col-lg-6 col-md-6">
+                <table class="table table-clear">
+                    <tbody>
+                        <tr>
+                            <td class="text-end fw-bold">Subtotal (Excl. Tax):</td>
+                            <td class="text-end">RM @Model.AmountExclTax.ToString("N2")</td>
+                        </tr>
+                        <tr>
+                            <td class="text-end fw-bold">SST (8%):</td>
+                            <td class="text-end">RM @Model.TaxAmount.ToString("N2")</td>
+                        </tr>
+                        <tr class="table-success">
+                            <td class="text-end fw-bold fs-5">Grand Total:</td>
+                            <td class="text-end fw-bold fs-5 text-success">RM @Model.AmountInclTax.ToString("N2")</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

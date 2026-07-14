@@ -78,6 +78,7 @@
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover mb-0">
+                        <!-- Dans le thead -->
                         <thead>
                             <tr>
                                 <th>Tenant</th>
@@ -85,8 +86,11 @@
                                 <th>Bill Date</th>
                                 <th>Total Consumption</th>
                                 <th>Net Total (RM)</th>
+                                <th>Actions</th> <!-- NOUVELLE COLONNE -->
                             </tr>
                         </thead>
+                        
+                        <!-- Dans le tbody (la boucle foreach) -->
                         <tbody>
                             @if (Model.SearchResults != null && Model.SearchResults.Any())
                             {
@@ -98,6 +102,12 @@
                                         <td>@bill.BillDate</td>
                                         <td>@bill.TotalConsumption</td>
                                         <td>@bill.NetTotal.ToString("N2")</td>
+                                        <td>
+                                            <!-- NOUVEAU BOUTON -->
+                                            <a href="@Url.Action("Details", "Bills", new { id = bill.Id })" class="btn btn-sm btn-info text-white">
+                                                <i class="bi bi-eye"></i> View Details
+                                            </a>
+                                        </td>
                                     </tr>
                                 }
                             }

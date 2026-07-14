@@ -90,16 +90,14 @@
                                 <th>Outstanding</th>
                                 <th>Overdue</th>
                                 <th>Active</th>
-                            </tr>
+                                <th>Actions</th> </tr>
                         </thead>
                         <tbody>
                             @if (Model.SearchResults != null && Model.SearchResults.Any())
                             {
                                 @foreach (var tenant in Model.SearchResults)
                                 {
-                                    <tr class="@(tenant.Id == Model.SelectedTenant?.Id ? "table-primary" : "")"
-                                        style="cursor: pointer;"
-                                        onclick="window.location='@Url.Action("Management", "Tenant", new { id = tenant.Id })'">
+                                    <tr class="@(tenant.Id == Model.SelectedTenant?.Id ? "table-primary" : "")">
                                         <td>@tenant.CompanyName</td>
                                         <td>@tenant.Contact</td>
                                         <td>@tenant.Email</td>
@@ -107,6 +105,11 @@
                                         <td>@tenant.Outstanding.ToString("C")</td>
                                         <td>@tenant.Overdue.ToString("C")</td>
                                         <td class="text-center">@Html.Raw(tenant.Active ? "<i class=\"bi bi-check\"></i>" : "")</td>
+                                        <td>
+                                            <a href="/Tenant/Management?id=@tenant.Id" class="btn btn-sm btn-primary">
+                                                Select
+                                            </a>
+                                        </td>
                                     </tr>
                                 }
                             }

@@ -70,5 +70,12 @@ namespace PoWorks_Rework.Services
                 _isInitialized = true;
             }
         }
+
+        public NpgsqlConnection CreateNewConnection()
+        {
+            return new NpgsqlConnection(_currentSettings.ToConnectionString());
+        }
     }
+
+
 }
