@@ -1,24 +1,29 @@
-﻿// Controllers/BillsController.cs
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace PoWorks_Rework.Controllers
 {
     public class BillsController : BaseController
     {
         private readonly ILogger<BillsController> _logger;
+        private readonly BillingService _billingService; // 👈 1. Le moteur de calcul est là !
 
-        public BillsController(DatabaseService databaseService, ILogger<BillsController> logger)
+        public BillsController(DatabaseService databaseService, BillingService billingService, ILogger<BillsController> logger)
             : base(databaseService)
         {
             _logger = logger;
+            _billingService = billingService;
         }
 
         public IActionResult Index()
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -27,10 +32,9 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Create view model with initial data
                 var viewModel = new BillsViewModel
                 {
-                    SearchCriteria = "Meter Name",
+                    SearchCriteria = "Tenant",
                     SearchTerm = "",
                     SearchResults = new List<Bill>(),
                     TotalPages = 1,
@@ -38,34 +42,27 @@ namespace PoWorks_Rework.Controllers
                     TotalItems = 0
                 };
 
-                // Load meters for dropdown
                 viewModel.MeterOptions = GetMeters();
-
-                // Load tenants for dropdown
                 viewModel.TenantOptions = GetTenants();
+
+                // Load initial real data
+                var searchResults = SearchBills("Tenant", "", 1, 10);
+                viewModel.SearchResults = searchResults.Items;
+                viewModel.TotalItems = searchResults.TotalCount;
+                viewModel.TotalPages = searchResults.TotalPages;
 
                 return View(viewModel);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading initial bills data");
-
-                // Return basic view model if error occurs
-                return View(new BillsViewModel
-                {
-                    SearchCriteria = "Meter Name",
-                    SearchTerm = "",
-                    SearchResults = new List<Bill>(),
-                    MeterOptions = new List<DropdownOption>(),
-                    TenantOptions = new List<DropdownOption>()
-                });
+                return View(new BillsViewModel());
             }
         }
 
         [HttpPost]
         public IActionResult Search(string searchCriteria, string searchTerm, int page = 1)
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -84,11 +81,9 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Load meters and tenants for dropdowns
                 viewModel.MeterOptions = GetMeters();
                 viewModel.TenantOptions = GetTenants();
 
-                // Perform search for bills
                 var searchResults = SearchBills(searchCriteria, searchTerm, page, 10);
                 viewModel.SearchResults = searchResults.Items;
                 viewModel.TotalItems = searchResults.TotalCount;
@@ -103,79 +98,71 @@ namespace PoWorks_Rework.Controllers
             return View("Index", viewModel);
         }
 
-        // Helper method to get meters for dropdown
+        // 👈 2. NOUVEAU : Une méthode pour déclencher le calcul !
+        [HttpPost]
+        public async Task<IActionResult> GenerateBillTest(int tenantId, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                // 1. Appelle le service pour calculer la facture
+                var newBill = await _billingService.CalculateBillAsync(tenantId, startDate, endDate);
+
+                // 2. Sauvegarde la facture dans la base de données
+                await _billingService.SaveBillAsync(newBill);
+
+                TempData["SuccessMessage"] = $"SUCCESS! Bill calculated AND SAVED for {newBill.TenantName}. Grand Total: RM {newBill.AmountInclTax}";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = $"Calculation Error: {ex.Message}";
+            }
+
+            return RedirectToAction("Index");
+        }
+
         private List<DropdownOption> GetMeters()
         {
             var options = new List<DropdownOption>();
-
             try
             {
-                using (var connection = GetDatabaseConnection())
+                using var connection = GetDatabaseConnection();
+                var command = new NpgsqlCommand(@"SELECT ""MeterId"", ""Name"" FROM ""Meters"" WHERE ""Active"" = true ORDER BY ""Name""", connection);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
                 {
-                    var command = new NpgsqlCommand(@"
-                        SELECT ""MeterId"", ""Name"" 
-                        FROM ""Meters"" 
-                        WHERE ""Active"" = true 
-                        ORDER BY ""Name""", connection);
-
-                    using (var reader = command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            options.Add(new DropdownOption
-                            {
-                                Value = reader.GetInt32(0).ToString(),
-                                Text = reader.GetString(1)
-                            });
-                        }
-                    }
+                    options.Add(new DropdownOption { Value = reader.GetInt32(0).ToString(), Text = reader.GetString(1) });
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting meters for dropdown");
-            }
-
+            catch (Exception ex) { _logger.LogError(ex, "Error getting meters"); }
             return options;
         }
 
-        // Helper method to get tenants for dropdown
         private List<DropdownOption> GetTenants()
         {
             var options = new List<DropdownOption>();
-
             try
             {
-                using (var connection = GetDatabaseConnection())
-                {
-                    var command = new NpgsqlCommand(@"
-                        SELECT t.""TenantID"", td.""CompanyName"" 
-                        FROM ""Tenants"" t
-                        JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                        ORDER BY td.""CompanyName""", connection);
+                using var connection = GetDatabaseConnection();
+                var command = new NpgsqlCommand(@"
+                    SELECT t.""TenantID"", td.""CompanyName"" 
+                    FROM ""Tenants"" t
+                    JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
+                    ORDER BY td.""CompanyName""", connection);
 
-                    using (var reader = command.ExecuteReader())
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    options.Add(new DropdownOption
                     {
-                        while (reader.Read())
-                        {
-                            options.Add(new DropdownOption
-                            {
-                                Value = reader.GetInt32(0).ToString(),
-                                Text = !reader.IsDBNull(1) ? reader.GetString(1) : "Unknown"
-                            });
-                        }
-                    }
+                        Value = reader.GetInt32(0).ToString(),
+                        Text = !reader.IsDBNull(1) ? reader.GetString(1) : "Unknown"
+                    });
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting tenants for dropdown");
-            }
-
+            catch (Exception ex) { _logger.LogError(ex, "Error getting tenants"); }
             return options;
         }
 
-        // Helper class for search results pagination
         private class SearchResult
         {
             public List<Bill> Items { get; set; } = new List<Bill>();
@@ -183,57 +170,57 @@ namespace PoWorks_Rework.Controllers
             public int TotalPages { get; set; }
         }
 
-        // Helper method to search for bills
+        // 👈 3. CORRECTION : On lit les vraies données SQL
         private SearchResult SearchBills(string searchCriteria, string searchTerm, int page, int pageSize)
         {
             var result = new SearchResult();
+            var bills = new List<Bill>();
 
             try
             {
-                // For demo/prototype, we'll just create some sample bills
-                // In a real application, this would query a Bills table in the database
+                using var connection = GetDatabaseConnection();
 
-                // Create sample bills (replace this with actual database query in production)
-                var bills = new List<Bill>();
-                bills.Add(new Bill
-                {
-                    Id = 1,
-                    Tenant = "PoWorks",
-                    Meter = "Meter1000",
-                    BillDate = "07/02/2022",
-                    TotalConsumption = 250,
-                    NetTotal = 265
-                });
+                // Requête pour lire la vraie table "Bills"
+                string query = @"
+                    SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""TotalKWh"", b.""GrandTotal""
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
+                    WHERE 1=1 ";
 
-                // If search term isn't empty, filter the results
+                // Ajout des filtres si besoin
                 if (!string.IsNullOrEmpty(searchTerm))
                 {
-                    if (searchCriteria == "Meter Name")
-                    {
-                        bills = bills.FindAll(b => b.Meter.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
-                    }
-                    else if (searchCriteria == "Tenant")
-                    {
-                        bills = bills.FindAll(b => b.Tenant.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
-                    }
-                    else if (searchCriteria == "Bill Date")
-                    {
-                        bills = bills.FindAll(b => b.BillDate.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
-                    }
+                    if (searchCriteria == "Tenant")
+                        query += $" AND t.\"DisplayName\" ILIKE '%{searchTerm}%'";
                 }
 
-                // Calculate pagination
+                query += " ORDER BY b.\"GeneratedAt\" DESC";
+
+                using var command = new NpgsqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    bills.Add(new Bill
+                    {
+                        Id = reader.GetInt32(0),
+                        Tenant = reader.GetString(1),
+                        Meter = "Multi-Meter", // Une facture regroupe désormais plusieurs compteurs
+                        BillDate = reader.GetDateTime(2).ToString("yyyy-MM-dd"),
+                        TotalConsumption = reader.IsDBNull(3) ? 0 : reader.GetDecimal(3),
+                        NetTotal = reader.IsDBNull(4) ? 0 : reader.GetDecimal(4)
+                    });
+                }
+
                 result.TotalCount = bills.Count;
                 result.TotalPages = (int)Math.Ceiling(result.TotalCount / (double)pageSize);
 
-                // Apply pagination
                 int startIndex = (page - 1) * pageSize;
                 result.Items = bills.Skip(startIndex).Take(pageSize).ToList();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching bills");
-                throw;
+                _logger.LogError(ex, "Error searching real bills");
             }
 
             return result;

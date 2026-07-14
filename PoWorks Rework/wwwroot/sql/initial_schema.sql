@@ -262,3 +262,45 @@ CREATE OR REPLACE TRIGGER trigger_aggregate_yearly_readings
 AFTER INSERT ON "MeterReadings"
 FOR EACH ROW
 EXECUTE FUNCTION aggregate_yearly_readings();
+
+--##########################################################
+-- Billing Logic (Moteur de facturation)
+--##########################################################
+
+-- 1. Ajouter l'abonnement mensuel fixe aux locataires existants
+ALTER TABLE "TenantDetails" 
+ADD COLUMN IF NOT EXISTS "AbonnementMensuel" NUMERIC(10,2) DEFAULT 0.00;
+
+-- 2. Table principale des factures
+CREATE TABLE IF NOT EXISTS "Bills" (
+    "BillId" SERIAL PRIMARY KEY,
+    "TenantID" INTEGER NOT NULL REFERENCES "Tenants"("TenantID"),
+    "BillNumber" VARCHAR(50) UNIQUE,
+    "PeriodStart" DATE NOT NULL,
+    "PeriodEnd" DATE NOT NULL,
+    "TotalKWh" NUMERIC(12,3) DEFAULT 0,
+    "MontantHT" NUMERIC(10,2) DEFAULT 0,
+    "MontantTVA" NUMERIC(10,2) DEFAULT 0,
+    "MontantTTC" NUMERIC(10,2) DEFAULT 0,
+    "Status" VARCHAR(20) DEFAULT 'Draft', -- Draft, Validated, Paid, Cancelled
+    "GeneratedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ValidatedAt" TIMESTAMP,
+    "PaidAt" TIMESTAMP,
+    "Notes" TEXT
+);
+
+-- 3. Détail des factures (Lignes par compteur)
+CREATE TABLE IF NOT EXISTS "BillLineItems" (
+    "LineItemId" SERIAL PRIMARY KEY,
+    "BillId" INTEGER NOT NULL REFERENCES "Bills"("BillId") ON DELETE CASCADE,
+    "MeterId" INTEGER NOT NULL REFERENCES "Meters"("MeterId"),
+    "MeterName" VARCHAR(100),
+    "Consumption" NUMERIC(12,3),
+    "Unit" VARCHAR(20),
+    "UnitPrice" NUMERIC(10,4),
+    "LineTotalHT" NUMERIC(10,2)
+);
+
+-- Index pour accélérer les recherches de factures
+CREATE INDEX IF NOT EXISTS idx_bills_tenantid ON "Bills"("TenantID");
+CREATE INDEX IF NOT EXISTS idx_bills_status ON "Bills"("Status");

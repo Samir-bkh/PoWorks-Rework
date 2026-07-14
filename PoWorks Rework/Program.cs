@@ -25,6 +25,8 @@ builder.Services.AddScoped<DashboardDataService>();
 builder.Services.AddScoped<VarexpParserService>();
 builder.Services.AddScoped<VariableBrowseParsingService>();
 
+builder.Services.AddScoped<BillingService>();
+
 // Register HttpClient and PCVueWebService
 builder.Services.AddSingleton<PCVueWebService>(sp =>
 {

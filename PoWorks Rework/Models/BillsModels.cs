@@ -1,5 +1,12 @@
-﻿namespace PoWorks_Rework.Models
+﻿using System;
+using System.Collections.Generic;
+
+namespace PoWorks_Rework.Models
 {
+    // ==========================================
+    // 1. VIEW MODELS (For Web UI)
+    // ==========================================
+
     public class BillsViewModel
     {
         public string SearchCriteria { get; set; } = "Meter Name";
@@ -9,11 +16,12 @@
         public int CurrentPage { get; set; } = 1;
         public int TotalItems { get; set; } = 0;
 
-        // Options for dropdowns
+        // Dropdown options
         public List<DropdownOption> MeterOptions { get; set; } = new List<DropdownOption>();
         public List<DropdownOption> TenantOptions { get; set; } = new List<DropdownOption>();
     }
 
+    // Old simplified model used by your HTML table
     public class Bill
     {
         public int Id { get; set; }
@@ -28,5 +36,52 @@
     {
         public string Value { get; set; } = "";
         public string Text { get; set; } = "";
+    }
+
+    // ==========================================
+    // 2. DATABASE ENTITIES (Core Calculation Engine)
+    // ==========================================
+
+    // Represents a full bill in the SQL database
+    public class BillEntity
+    {
+        public int BillId { get; set; }
+        public int TenantID { get; set; }
+        public string? TenantName { get; set; } // Retrieved via SQL join
+        public string? BillNumber { get; set; }
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        public decimal TotalKWh { get; set; }
+        public decimal AmountExclTax { get; set; }
+        public decimal TaxAmount { get; set; }
+        public decimal AmountInclTax { get; set; }
+        public string Status { get; set; } = "Draft";
+        public DateTime GeneratedAt { get; set; }
+        public DateTime? ValidatedAt { get; set; }
+        public DateTime? PaidAt { get; set; }
+        public string? Notes { get; set; }
+
+        public List<BillLineItemEntity> LineItems { get; set; } = new();
+    }
+
+    // Represents a bill line item (e.g., consumption of a single meter)
+    public class BillLineItemEntity
+    {
+        public int LineItemId { get; set; }
+        public int BillId { get; set; }
+        public int MeterId { get; set; }
+        public string MeterName { get; set; } = "";
+        public decimal Consumption { get; set; }
+        public string Unit { get; set; } = "";
+        public decimal UnitPrice { get; set; }
+        public decimal LineTotalExclTax { get; set; }
+    }
+
+    // Request model to generate a new bill
+    public class GenerateBillRequest
+    {
+        public int TenantID { get; set; }
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
     }
 }
