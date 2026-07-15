@@ -298,6 +298,100 @@ namespace PoWorks_Rework.Controllers
             }
 
             return result;
+     
+        
+        
+       }
+
+        [HttpPost]
+        public IActionResult Delete(int id)
+        {
+            try
+            {
+                using var connection = GetDatabaseConnection();
+                if (connection.State == System.Data.ConnectionState.Closed)
+                {
+                    connection.Open();
+                }
+
+                // 1. Sécurité : Vérifier si c'est bien un brouillon
+                string checkQuery = @"SELECT ""Status"" FROM ""Bills"" WHERE ""BillId"" = @id";
+                using var checkCmd = new NpgsqlCommand(checkQuery, connection);
+                checkCmd.Parameters.AddWithValue("id", id);
+                var status = checkCmd.ExecuteScalar()?.ToString();
+
+                if (status != "Draft")
+                {
+                    TempData["ErrorMessage"] = "Only draft invoices can be deleted.";
+                    return RedirectToAction("Details", new { id = id });
+                }
+
+                // 2. Suppression professionnelle via Transaction SQL
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    // On supprime d'abord les lignes de détails (pour éviter l'erreur de clé étrangère)
+                    using var deleteLinesCmd = new NpgsqlCommand(@"DELETE FROM ""BillLineItems"" WHERE ""BillId"" = @id", connection, transaction);
+                    deleteLinesCmd.Parameters.AddWithValue("id", id);
+                    deleteLinesCmd.ExecuteNonQuery();
+
+                    // Ensuite on supprime la facture principale
+                    using var deleteBillCmd = new NpgsqlCommand(@"DELETE FROM ""Bills"" WHERE ""BillId"" = @id", connection, transaction);
+                    deleteBillCmd.Parameters.AddWithValue("id", id);
+                    deleteBillCmd.ExecuteNonQuery();
+
+                    transaction.Commit(); // On valide la destruction
+                    TempData["SuccessMessage"] = "The draft invoice has been successfully deleted.";
+                    return RedirectToAction("Index");
+                }
+                catch
+                {
+                    transaction.Rollback(); // Si erreur, on annule tout
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error while deleting the invoice {id}");
+                TempData["ErrorMessage"] = "Error while deleting the invoice.";
+                return RedirectToAction("Index");
+            }
+        }
+
+        [HttpPost]
+        public IActionResult UpdateStatus(int id, string newStatus)
+        {
+            try
+            {
+                // Sécurité : on n'accepte que ces deux statuts exacts
+                if (newStatus != "Validated" && newStatus != "Paid")
+                {
+                    TempData["ErrorMessage"] = "Statut invalide.";
+                    return RedirectToAction("Details", new { id = id });
+                }
+
+                using var connection = GetDatabaseConnection();
+                if (connection.State == System.Data.ConnectionState.Closed)
+                {
+                    connection.Open();
+                }
+
+                string updateQuery = @"UPDATE ""Bills"" SET ""Status"" = @status WHERE ""BillId"" = @id";
+                using var cmd = new NpgsqlCommand(updateQuery, connection);
+                cmd.Parameters.AddWithValue("status", newStatus);
+                cmd.Parameters.AddWithValue("id", id);
+
+                cmd.ExecuteNonQuery();
+
+                TempData["SuccessMessage"] = $"The invoice status has been successfully updated ({newStatus}).";
+                return RedirectToAction("Details", new { id = id });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating the status of the invoice {id}");
+                TempData["ErrorMessage"] = "Error while updating the invoice.";
+                return RedirectToAction("Details", new { id = id });
+            }
         }
     }
 }
