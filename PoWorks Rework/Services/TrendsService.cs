@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text;
 using PoWorks_Rework.Models;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace PoWorks_Rework.Services
 {
@@ -44,6 +45,9 @@ namespace PoWorks_Rework.Services
                     elementMaxNumber = 100000, // Large default to get all available data
                     properties = new[] { "VariableName", "Description", "StandardLabel" }
                 };
+
+
+                
 
                 var jsonContent = JsonSerializer.Serialize(payload);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");

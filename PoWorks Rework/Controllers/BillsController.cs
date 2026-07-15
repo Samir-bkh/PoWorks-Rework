@@ -199,7 +199,11 @@ namespace PoWorks_Rework.Controllers
             var options = new List<DropdownOption>();
             try
             {
-                using var connection = GetDatabaseConnection();
+                // NOUVELLE CONNEXION ISOLÉE
+                string connString = _databaseService.GetConnectionString();
+                using var connection = new NpgsqlConnection(connString);
+                connection.Open();
+
                 var command = new NpgsqlCommand(@"SELECT ""MeterId"", ""Name"" FROM ""Meters"" WHERE ""Active"" = true ORDER BY ""Name""", connection);
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
@@ -216,7 +220,11 @@ namespace PoWorks_Rework.Controllers
             var options = new List<DropdownOption>();
             try
             {
-                using var connection = GetDatabaseConnection();
+                // NOUVELLE CONNEXION ISOLÉE
+                string connString = _databaseService.GetConnectionString();
+                using var connection = new NpgsqlConnection(connString);
+                connection.Open();
+
                 var command = new NpgsqlCommand(@"
                     SELECT t.""TenantID"", td.""CompanyName"" 
                     FROM ""Tenants"" t
@@ -252,16 +260,17 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                using var connection = GetDatabaseConnection();
+                // NOUVELLE CONNEXION ISOLÉE
+                string connString = _databaseService.GetConnectionString();
+                using var connection = new NpgsqlConnection(connString);
+                connection.Open();
 
-                // Requête pour lire la vraie table "Bills"
                 string query = @"
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""TotalKWh"", b.""GrandTotal""
                     FROM ""Bills"" b
                     JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
                     WHERE 1=1 ";
 
-                // Ajout des filtres si besoin
                 if (!string.IsNullOrEmpty(searchTerm))
                 {
                     if (searchCriteria == "Tenant")
@@ -279,7 +288,7 @@ namespace PoWorks_Rework.Controllers
                     {
                         Id = reader.GetInt32(0),
                         Tenant = reader.GetString(1),
-                        Meter = "Multi-Meter", // Une facture regroupe désormais plusieurs compteurs
+                        Meter = "Multi-Meter",
                         BillDate = reader.GetDateTime(2).ToString("yyyy-MM-dd"),
                         TotalConsumption = reader.IsDBNull(3) ? 0 : reader.GetDecimal(3),
                         NetTotal = reader.IsDBNull(4) ? 0 : reader.GetDecimal(4)
@@ -298,21 +307,16 @@ namespace PoWorks_Rework.Controllers
             }
 
             return result;
-     
-        
-        
-       }
+        }
 
         [HttpPost]
         public IActionResult Delete(int id)
         {
             try
             {
-                using var connection = GetDatabaseConnection();
-                if (connection.State == System.Data.ConnectionState.Closed)
-                {
-                    connection.Open();
-                }
+                string connString = _databaseService.GetConnectionString();
+                using var connection = new NpgsqlConnection(connString);
+                connection.Open();
 
                 // 1. Sécurité : Vérifier si c'est bien un brouillon
                 string checkQuery = @"SELECT ""Status"" FROM ""Bills"" WHERE ""BillId"" = @id";
@@ -363,27 +367,73 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                // Sécurité : on n'accepte que ces deux statuts exacts
                 if (newStatus != "Validated" && newStatus != "Paid")
                 {
                     TempData["ErrorMessage"] = "Statut invalide.";
                     return RedirectToAction("Details", new { id = id });
                 }
 
-                using var connection = GetDatabaseConnection();
-                if (connection.State == System.Data.ConnectionState.Closed)
+                // On utilise notre connexion isolée et sécurisée
+                string connString = _databaseService.GetConnectionString();
+                using var connection = new NpgsqlConnection(connString);
+                connection.Open();
+
+                // On ouvre une transaction (pour s'assurer que tout s'enregistre ou rien)
+                using var transaction = connection.BeginTransaction();
+
+                try
                 {
-                    connection.Open();
+                    // 1. Mise à jour du statut de la facture
+                    string updateQuery = @"UPDATE ""Bills"" SET ""Status"" = @status WHERE ""BillId"" = @id";
+                    using (var cmd = new NpgsqlCommand(updateQuery, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("status", newStatus);
+                        cmd.Parameters.AddWithValue("id", id);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    // 2. LA MAGIE : Si on marque comme "Payé", on encaisse l'argent !
+                    if (newStatus == "Paid")
+                    {
+                        decimal amount = 0;
+                        int tenantId = 0;
+
+                        // Étape A : On lit le montant total et le locataire sur la facture
+                        string getBillInfo = @"SELECT ""GrandTotal"", ""TenantID"" FROM ""Bills"" WHERE ""BillId"" = @id";
+                        using (var cmdInfo = new NpgsqlCommand(getBillInfo, connection, transaction))
+                        {
+                            cmdInfo.Parameters.AddWithValue("id", id);
+                            using var reader = cmdInfo.ExecuteReader();
+                            if (reader.Read())
+                            {
+                                amount = reader.GetDecimal(0);
+                                tenantId = reader.GetInt32(1);
+                            }
+                        }
+
+                        // Étape B : On insère le reçu dans le registre des paiements
+                        string insertPayment = @"
+                            INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"") 
+                            VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, 'Virement')";
+
+                        using (var cmdInsert = new NpgsqlCommand(insertPayment, connection, transaction))
+                        {
+                            cmdInsert.Parameters.AddWithValue("billId", id);
+                            cmdInsert.Parameters.AddWithValue("tenantId", tenantId);
+                            cmdInsert.Parameters.AddWithValue("amount", amount);
+                            cmdInsert.ExecuteNonQuery();
+                        }
+                    }
+
+                    transaction.Commit(); // On valide définitivement les opérations !
+                    TempData["SuccessMessage"] = $"The status has been updated ({newStatus}).";
+                }
+                catch
+                {
+                    transaction.Rollback(); // En cas de pépin, on annule tout
+                    throw;
                 }
 
-                string updateQuery = @"UPDATE ""Bills"" SET ""Status"" = @status WHERE ""BillId"" = @id";
-                using var cmd = new NpgsqlCommand(updateQuery, connection);
-                cmd.Parameters.AddWithValue("status", newStatus);
-                cmd.Parameters.AddWithValue("id", id);
-
-                cmd.ExecuteNonQuery();
-
-                TempData["SuccessMessage"] = $"The invoice status has been successfully updated ({newStatus}).";
                 return RedirectToAction("Details", new { id = id });
             }
             catch (Exception ex)

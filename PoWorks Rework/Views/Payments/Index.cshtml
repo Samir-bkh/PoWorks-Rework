@@ -1,77 +1,122 @@
-﻿@model PoWorks_Rework.Models.PaymentViewModel
+﻿@model PoWorks_Rework.Models.PaymentDashboardViewModel
 @{
-    ViewData["Title"] = "Payment";
+    ViewData["Title"] = "Payment Dashboard";
 }
 
 <div class="container-fluid py-4">
-    <h2 class="mb-4">Payment</h2>
+    <h2 class="mb-4">Financial & Payments Dashboard</h2>
 
-    <div class="card">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">Bill Payment</h5>
+    <div class="row mb-5">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                            Revenue Collected
+                        </span>
+                        <div class="bg-success bg-opacity-10 text-success rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-graph-up-arrow fs-5"></i>
+                        </div>
+                    </div>
+                    <h2 class="fw-bolder text-dark mb-1">RM @Model.TotalCollectedThisMonth.ToString("N2")</h2>
+                    <span class="text-success fw-medium" style="font-size: 0.85rem;">
+                        <i class="bi bi-check2-circle"></i> Successfully processed
+                    </span>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <form asp-action="MakePayment" asp-controller="Payments" method="post">
-                <div class="row mb-3">
-                    <label for="BillNumber" class="col-sm-2 col-form-label text-end">Bill Number</label>
-                    <div class="col-sm-6">
-                        <input type="text" class="form-control" id="BillNumber" asp-for="BillNumber" value="OR20160000007">
-                    </div>
-                    <div class="col-sm-4">
-                        <button type="button" class="btn btn-primary" id="retrieveBtn">Retrieve</button>
-                    </div>
-                </div>
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3 row">
-                            <label for="TenantName" class="col-sm-4 col-form-label text-end">Tenant Name</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" id="TenantName" asp-for="TenantName" value="PoWorks" readonly>
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label for="BillAmount" class="col-sm-4 col-form-label text-end">Bill Amount</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" id="BillAmount" asp-for="BillAmount" value="265" readonly>
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label for="PaidAmount" class="col-sm-4 col-form-label text-end">Paid Amount</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" id="PaidAmount" asp-for="PaidAmount" value="265">
-                            </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                            Pending Payments
+                        </span>
+                        <div class="bg-warning bg-opacity-10 text-warning rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-hourglass-split fs-5"></i>
                         </div>
                     </div>
-
-                    <div class="col-md-6">
-                        <div class="mb-3 row">
-                            <label for="MeterName" class="col-sm-4 col-form-label text-end">Meter Name</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" id="MeterName" asp-for="MeterName" value="Meter1000" readonly>
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label for="BillDate" class="col-sm-4 col-form-label text-end">Bill Date</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" id="BillDate" asp-for="BillDate" value="2017-2-7" readonly>
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label for="RemainingAmount" class="col-sm-4 col-form-label text-end">Remaining Amount</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" id="RemainingAmount" asp-for="RemainingAmount" value="0" readonly>
-                            </div>
-                        </div>
-                    </div>
+                    <h2 class="fw-bolder text-dark mb-1">@Model.PendingBillsCount <span class="fs-5 text-muted fw-normal">bill(s)</span></h2>
+                    <span class="text-warning text-dark fw-medium" style="font-size: 0.85rem;">
+                        <i class="bi bi-clock-history"></i> Validated, awaiting collection
+                    </span>
                 </div>
+            </div>
+        </div>
 
-                <div class="row">
-                    <div class="col-md-6 offset-md-6 text-end">
-                        <button type="submit" class="btn btn-primary">Make Payment</button>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                            Overdue Payments
+                        </span>
+                        <div class="bg-danger bg-opacity-10 text-danger rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-exclamation-triangle fs-5"></i>
+                        </div>
                     </div>
+                    <h2 class="fw-bolder text-dark mb-1">@Model.OverdueBillsCount <span class="fs-5 text-muted fw-normal">bill(s)</span></h2>
+                    <span class="text-danger fw-medium" style="font-size: 0.85rem;">
+                        <i class="bi bi-shield-exclamation"></i> Action required
+                    </span>
                 </div>
-            </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm" style="border-radius: 16px;">
+        <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+            <h5 class="mb-0 fw-bold text-dark"><i class="bi bi-journal-check text-primary me-2"></i>Payment History</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">Payment No.</th>
+                            <th class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">Date</th>
+                            <th class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">Invoice No.</th>
+                            <th class="text-muted text-uppercase" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">Tenant</th>
+                            <th class="text-muted text-uppercase text-end" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">Amount Paid</th>
+                            <th class="text-muted text-uppercase text-center" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px;">Method</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.RecentPayments != null && Model.RecentPayments.Any())
+                        {
+                            foreach (var payment in Model.RecentPayments)
+                            {
+                                <tr>
+                                    <td><span class="fw-medium text-dark">#PAY-@payment.PaymentId.ToString("D4")</span></td>
+                                    <td><span class="text-muted">@(payment.PaymentDate?.ToString("dd MMM yyyy") ?? "-")</span></td>
+                                    <td>
+                                        <a asp-controller="Bills" asp-action="Details" asp-route-id="@payment.BillId" class="text-decoration-none fw-medium">
+                                            BILL-@payment.BillId.ToString("D4")
+                                        </a>
+                                    </td>
+                                    <td>@payment.TenantName</td>
+                                    <td class="text-end text-success fw-bold">RM @payment.AmountPaid.ToString("N2")</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border">@payment.PaymentMethod</span>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-5 text-muted">
+                                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 64px; height: 64px;">
+                                        <i class="bi bi-inbox fs-3 opacity-50"></i>
+                                    </div>
+                                    <p class="mb-0 fw-medium">No payments recorded yet.</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

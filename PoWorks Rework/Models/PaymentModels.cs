@@ -1,13 +1,15 @@
-﻿namespace PoWorks_Rework.Models
+﻿using System.Collections.Generic;
+
+namespace PoWorks_Rework.Models
 {
-    public class PaymentViewModel
+    public class PaymentDashboardViewModel
     {
-        public string BillNumber { get; set; } = "";
-        public string TenantName { get; set; } = "";
-        public decimal BillAmount { get; set; }
-        public decimal PaidAmount { get; set; }
-        public string MeterName { get; set; } = "";
-        public string BillDate { get; set; } = "";
-        public decimal RemainingAmount { get; set; }
+        // --- 1. Les KPI (Cartes en haut de l'écran) ---
+        public decimal TotalCollectedThisMonth { get; set; }
+        public int PendingBillsCount { get; set; }
+        public int OverdueBillsCount { get; set; }
+
+        // --- 2. Le Registre Historique (Tableau central) ---
+        public List<PaymentEntity> RecentPayments { get; set; } = new List<PaymentEntity>();
     }
 }
