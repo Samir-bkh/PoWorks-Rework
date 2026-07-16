@@ -4,7 +4,12 @@
 }
 
 <div class="container-fluid py-4">
-    <h2 class="mb-4">Financial & Payments Dashboard</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Financial & Payments Dashboard</h2>
+        <button type="button" class="btn btn-primary shadow-sm fw-medium" data-bs-toggle="modal" data-bs-target="#recordPaymentModal">
+            <i class="bi bi-plus-lg me-1"></i> Record Payment
+        </button>
+    </div>
 
     <div class="row mb-5">
         <div class="col-md-4">
@@ -117,6 +122,66 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="recordPaymentModal" tabindex="-1" aria-labelledby="recordPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="recordPaymentModalLabel">Record Manual Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <form asp-action="RecordPayment" asp-controller="Payments" method="post">
+                <div class="modal-body p-4">
+                    
+                    <div class="mb-3">
+                        <label for="billId" class="form-label fw-medium text-muted">Select Pending Invoice</label>
+                        <select class="form-select" id="billId" name="billId" required>
+                            <option value="">-- Choose an invoice --</option>
+                            @foreach (var invoice in Model.ActiveInvoices)
+                            {
+                                <option value="@invoice.BillId">
+                                    @invoice.BillNumber - @invoice.TenantName (Remaining: RM @invoice.RemainingAmount.ToString("N2"))
+                                </option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="amountPaid" class="form-label fw-medium text-muted">Amount Received (RM)</label>
+                            <input type="number" step="0.01" min="0.01" class="form-control" id="amountPaid" name="amountPaid" placeholder="0.00" required>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="paymentMethod" class="form-label fw-medium text-muted">Payment Method</label>
+                            <select class="form-select" id="paymentMethod" name="paymentMethod" required>
+                                <option value="Transfer">Bank Transfer</option>
+                                <option value="Check">Check</option>
+                                <option value="Cash">Cash</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="reference" class="form-label fw-medium text-muted">Transaction Reference (Optional)</label>
+                        <input type="text" class="form-control" id="reference" name="reference" placeholder="e.g., Check #12345 or TXN-9876">
+                    </div>
+
+                    <div class="mb-0">
+                        <label for="notes" class="form-label fw-medium text-muted">Internal Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Any details about this payment..."></textarea>
+                    </div>
+
+                </div>
+                <div class="modal-footer bg-light border-top-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4">Record Payment</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

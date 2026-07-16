@@ -740,79 +740,50 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// Map database reader to MeterReading object - FIXED Quality handling
+        /// Map database reader to MeterReading object - FIXED Quality & Aggregation handling
         /// </summary>
         private MeterReading MapReaderToMeterReading(NpgsqlDataReader reader, string viewType)
         {
             var reading = new MeterReading
             {
-                ReadingId = reader.GetInt32("ReadingId"),
-                MeterId = reader.GetInt32("MeterId"),
-                MeterName = reader.GetString("MeterName"),
-                Timestamp = reader.GetDateTime("Timestamp"),
-                Value = reader.GetDecimal("Value")
+                ReadingId = reader.GetInt32(reader.GetOrdinal("ReadingId")),
+                MeterId = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                MeterName = reader.IsDBNull(reader.GetOrdinal("MeterName")) ? "Unknown" : reader.GetString(reader.GetOrdinal("MeterName")),
+                Timestamp = reader.GetDateTime(reader.GetOrdinal("Timestamp")),
+                Value = reader.GetDecimal(reader.GetOrdinal("Value"))
             };
 
-            // Add aggregated data for non-raw views
-            if (viewType != "raw")
+            // Les colonnes Min, Max, Sum n'existent que pour les vues agrégées
+            if (viewType == "daily" || viewType == "monthly" || viewType == "yearly")
             {
-                if (!reader.IsDBNull(reader.GetOrdinal("MinValue")))
-                    reading.MinValue = reader.GetDecimal("MinValue");
-                if (!reader.IsDBNull(reader.GetOrdinal("MaxValue")))
-                    reading.MaxValue = reader.GetDecimal("MaxValue");
-                if (!reader.IsDBNull(reader.GetOrdinal("SumValue")))
-                    reading.SumValue = reader.GetDecimal("SumValue");
-                if (!reader.IsDBNull(reader.GetOrdinal("ReadingCount")))
-                    reading.ReadingCount = reader.GetInt32("ReadingCount");
+                reading.MinValue = reader.IsDBNull(reader.GetOrdinal("MinValue")) ? 0 : reader.GetDecimal(reader.GetOrdinal("MinValue"));
+                reading.MaxValue = reader.IsDBNull(reader.GetOrdinal("MaxValue")) ? 0 : reader.GetDecimal(reader.GetOrdinal("MaxValue"));
+                reading.SumValue = reader.IsDBNull(reader.GetOrdinal("SumValue")) ? 0 : reader.GetDecimal(reader.GetOrdinal("SumValue"));
+                reading.ReadingCount = reader.IsDBNull(reader.GetOrdinal("ReadingCount")) ? 0 : reader.GetInt32(reader.GetOrdinal("ReadingCount"));
 
                 // Monthly readings have Year and Month
                 if (viewType == "monthly")
                 {
-                    if (!reader.IsDBNull(reader.GetOrdinal("Year")))
-                        reading.Year = reader.GetInt32("Year");
-                    if (!reader.IsDBNull(reader.GetOrdinal("Month")))
-                        reading.Month = reader.GetInt32("Month");
+                    reading.Year = reader.IsDBNull(reader.GetOrdinal("Year")) ? 0 : reader.GetInt32(reader.GetOrdinal("Year"));
+                    reading.Month = reader.IsDBNull(reader.GetOrdinal("Month")) ? 0 : reader.GetInt32(reader.GetOrdinal("Month"));
                 }
                 // Yearly readings have Year
                 else if (viewType == "yearly")
                 {
-                    if (!reader.IsDBNull(reader.GetOrdinal("Year")))
-                        reading.Year = reader.GetInt32("Year");
+                    reading.Year = reader.IsDBNull(reader.GetOrdinal("Year")) ? 0 : reader.GetInt32(reader.GetOrdinal("Year"));
                 }
             }
-            else
+            else // Vue "raw" (brute)
             {
-                // FIXED: Raw readings have quality - handle different quality value scenarios
+                // On utilise ton extension HasColumn pour éviter les crashs
                 if (reader.HasColumn("Quality"))
                 {
                     var qualityOrdinal = reader.GetOrdinal("Quality");
                     if (!reader.IsDBNull(qualityOrdinal))
                     {
                         var qualityValue = reader.GetInt32(qualityOrdinal);
-
-                        // Handle the special case where we used -1 for null values in SQL
-                        if (qualityValue == -1)
-                        {
-                            reading.Quality = null;
-                        }
-                        else
-                        {
-                            reading.Quality = qualityValue;
-                        }
-
-                        // Log for debugging
-                        _logger.LogDebug($"Quality value read from DB: {qualityValue}, Assigned to reading: {reading.Quality}");
+                        reading.Quality = qualityValue == -1 ? null : qualityValue;
                     }
-                    else
-                    {
-                        reading.Quality = null;
-                        _logger.LogDebug("Quality value is DBNull");
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Quality column not found in result set");
-                    reading.Quality = null;
                 }
             }
 

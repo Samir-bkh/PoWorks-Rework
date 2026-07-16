@@ -1,12 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
+using QuestPDF.Fluent;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -125,7 +126,10 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                using var connection = GetDatabaseConnection();
+                // NOUVELLE CONNEXION ISOLÉE ET SÉCURISÉE
+                string connString = _databaseService.GetConnectionString();
+                using var connection = new NpgsqlConnection(connString);
+                connection.Open();
 
                 // 1. On récupère les infos principales de la facture
                 string billQuery = @"
@@ -440,6 +444,90 @@ namespace PoWorks_Rework.Controllers
             {
                 _logger.LogError(ex, $"Error updating the status of the invoice {id}");
                 TempData["ErrorMessage"] = "Error while updating the invoice.";
+                return RedirectToAction("Details", new { id = id });
+            }
+        }
+    
+
+    [HttpGet]
+        public IActionResult DownloadPdf(int id)
+        {
+            try
+            {
+                using var connection = GetDatabaseConnection();
+          
+
+                // 1. On récupère les infos principales de la facture
+                string billQuery = @"
+                    SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
+                           b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
+                    WHERE b.""BillId"" = @id";
+
+                using var cmdBill = new NpgsqlCommand(billQuery, connection);
+                cmdBill.Parameters.AddWithValue("id", id);
+
+                var bill = new BillEntity();
+
+                using (var reader = cmdBill.ExecuteReader())
+                {
+                    if (!reader.Read())
+                    {
+                        TempData["ErrorMessage"] = "Bill not found.";
+                        return RedirectToAction("Index");
+                    }
+
+                    bill.BillId = reader.GetInt32(0);
+                    bill.BillNumber = $"BILL-{bill.BillId:D4}"; // Format the ID into a nice bill number
+                    bill.TenantName = reader.GetString(1);
+                    bill.PeriodStart = reader.GetDateTime(2);
+                    bill.PeriodEnd = reader.GetDateTime(3);
+                    bill.TotalKWh = reader.GetDecimal(4);
+                    bill.AmountExclTax = reader.GetDecimal(5);
+                    bill.TaxAmount = reader.GetDecimal(6);
+                    bill.AmountInclTax = reader.GetDecimal(7);
+                    bill.Status = reader.GetString(8);
+                    bill.GeneratedAt = reader.GetDateTime(9);
+                }
+
+                // 2. On récupère le détail de chaque compteur lié à cette facture
+                string lineQuery = @"
+                    SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
+                    FROM ""BillLineItems""
+                    WHERE ""BillId"" = @id";
+
+                using var cmdLine = new NpgsqlCommand(lineQuery, connection);
+                cmdLine.Parameters.AddWithValue("id", id);
+
+                using (var lineReader = cmdLine.ExecuteReader())
+                {
+                    while (lineReader.Read())
+                    {
+                        bill.LineItems.Add(new BillLineItemEntity
+                        {
+                            MeterName = lineReader.GetString(0),
+                            Consumption = lineReader.GetDecimal(1),
+                            Unit = lineReader.GetString(2),
+                            UnitPrice = lineReader.GetDecimal(3),
+                            LineTotalExclTax = lineReader.GetDecimal(4)
+                        });
+                    }
+                }
+
+                // 3. Générer le document QuestPDF
+                var document = new InvoiceDocument(bill);
+
+                // 4. Convertir en tableau d'octets (fichier PDF)
+                byte[] pdfBytes = document.GeneratePdf();
+
+                // 5. L'envoyer au navigateur pour téléchargement
+                return File(pdfBytes, "application/pdf", $"{bill.BillNumber}.pdf");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating PDF for Bill {BillId}", id);
+                TempData["ErrorMessage"] = "Error generating PDF document.";
                 return RedirectToAction("Details", new { id = id });
             }
         }

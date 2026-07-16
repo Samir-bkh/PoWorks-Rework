@@ -819,7 +819,18 @@
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } },
+                        legend: { 
+                            position: 'right',  
+                            align: 'start',     
+                            labels: { 
+                                usePointStyle: true, 
+                                boxWidth: 8,    
+                                padding: 12,    
+                                font: {
+                                    size: 11    
+                                }
+                            } 
+                        },
                         title: { display: false },
                         zoom: {
                             zoom: {

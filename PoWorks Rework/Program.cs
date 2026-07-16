@@ -1,11 +1,16 @@
 using PoWorks_Rework.Services;
 using System;
 using System.Security.Authentication;
+using QuestPDF.Infrastructure;
 
 // Start of program
 Console.WriteLine("1. PROGRAM START");
 
 var builder = WebApplication.CreateBuilder(args);
+
+// --- CONFIGURATION QUESTPDF ---
+// Déclaration de la licence communautaire (Gratuite pour les PME/Indépendants)
+QuestPDF.Settings.License = LicenseType.Community;
 
 Console.WriteLine("2. ADDING SERVICES");
 
@@ -95,6 +100,7 @@ try
         pattern: "VarexpImport/{action}/{id?}",
         defaults: new { controller = "VarexpImport" });
     app.MapControllerRoute(
+
         name: "webServicesImport",
         pattern: "WebServicesImport/{action}/{id?}",
         defaults: new { controller = "WebServicesImport" });
