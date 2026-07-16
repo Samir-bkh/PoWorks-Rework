@@ -87,7 +87,7 @@ namespace PoWorks_Rework.Services
                 if (response.IsSuccessStatusCode)
                 {
                     // Response is plain text containing the RequestID
-                    var requestId = responseContent.Trim();
+                    var requestId = responseContent.Trim().Trim('"');
                     _logger.LogInformation("Trend request created successfully. RequestID: {RequestId}", requestId);
 
                     return new TrendRequestResult
@@ -147,7 +147,7 @@ namespace PoWorks_Rework.Services
                 var startStr = startDate.ToString("yyyy-MM-dd HH:mm:ss");
                 var endStr = endDate.ToString("yyyy-MM-dd HH:mm:ss");
 
-                var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends/{requestId}?Start={Uri.EscapeDataString(startStr)}&End={Uri.EscapeDataString(endStr)}";
+                var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends/{requestId.Trim('"')}?Start={Uri.EscapeDataString(startStr)}&End={Uri.EscapeDataString(endStr)}";
 
                 // CREATE HTTPCLIENT WITH SSL BYPASS (for development environments)
                 var handler = new HttpClientHandler();
@@ -229,80 +229,65 @@ namespace PoWorks_Rework.Services
         /// Process multiple variables to get trend data (one by one as required by API)
         /// </summary>
         public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(
-            List<string> variableNames,
-            DateTime startDate,
-            DateTime endDate,
-            PCVueWebServiceSettings settings)
+    List<string> variableNames,
+    DateTime startDate,
+    DateTime endDate,
+    PCVueWebServiceSettings settings)
         {
             var results = new List<VariableTrendResult>();
 
-            _logger.LogInformation("Processing {Count} variables for trend data", variableNames.Count);
+            _logger.LogInformation("Traitement de {Count} variables de manière séquentielle.", variableNames.Count);
 
             foreach (var variableName in variableNames)
             {
+                _logger.LogInformation("Demande de trends pour la variable: {VariableName}", variableName);
+
                 try
                 {
-                    _logger.LogInformation("Processing variable: {VariableName}", variableName);
-
-                    // Step 1: Create trend request
+                    // 1 requête = 1 compteur (Pas besoin de trier les données, elles sont toutes à lui !)
                     var requestResult = await CreateTrendRequestAsync(variableName, settings);
-                    if (!requestResult.Success)
+
+                    if (requestResult.Success)
+                    {
+                        var dataResult = await GetTrendDataAsync(requestResult.RequestId, startDate, endDate, settings);
+
+                        results.Add(new VariableTrendResult
+                        {
+                            VariableName = variableName,
+                            Success = dataResult.Success,
+                            TrendData = dataResult.Values // On prend TOUT directement
+                        });
+                    }
+                    else
                     {
                         results.Add(new VariableTrendResult
                         {
                             VariableName = variableName,
                             Success = false,
-                            ErrorMessage = $"Failed to create trend request: {requestResult.ErrorMessage}"
+                            ErrorMessage = requestResult.ErrorMessage
                         });
-                        continue;
                     }
-
-                    // Step 2: Get trend data
-                    var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);
-                    if (!dataResult.Success)
-                    {
-                        results.Add(new VariableTrendResult
-                        {
-                            VariableName = variableName,
-                            Success = false,
-                            ErrorMessage = $"Failed to get trend data: {dataResult.ErrorMessage}",
-                            RequestId = requestResult.RequestId
-                        });
-                        continue;
-                    }
-
-                    // Success - add to results
-                    results.Add(new VariableTrendResult
-                    {
-                        VariableName = variableName,
-                        Success = true,
-                        RequestId = requestResult.RequestId,
-                        TrendData = dataResult.Values,
-                        MaxNumberExceeded = dataResult.MaxNumberExceeded
-                    });
-
-                    _logger.LogInformation("Successfully processed variable: {VariableName} with {Count} data points",
-                        variableName, dataResult.Values.Count);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Exception processing variable: {VariableName}", variableName);
-                    results.Add(new VariableTrendResult
-                    {
-                        VariableName = variableName,
-                        Success = false,
-                        ErrorMessage = $"Exception: {ex.Message}"
-                    });
+                    _logger.LogError(ex, "Erreur lors du traitement de la variable {VariableName}", variableName);
+                    results.Add(new VariableTrendResult { VariableName = variableName, Success = false, ErrorMessage = ex.Message });
                 }
 
-                // Small delay between requests to be API-friendly
-                await Task.Delay(100);
+                // Petite pause de sécurité pour ne pas étouffer PcVue
+                await Task.Delay(200);
             }
 
-            _logger.LogInformation("Completed processing {Total} variables. Success: {Success}, Failed: {Failed}",
-                results.Count, results.Count(r => r.Success), results.Count(r => !r.Success));
-
             return results;
+        }
+
+        public async Task<bool> ProcessTrendsForVariable(string variableName, PCVueWebServiceSettings settings, DateTime startDate, DateTime endDate)
+        {
+            var requestResult = await CreateTrendRequestAsync(variableName, settings);
+            if (!requestResult.Success) return false;
+
+            var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);
+            return dataResult.Success && dataResult.Values.Any();
         }
     }
 }

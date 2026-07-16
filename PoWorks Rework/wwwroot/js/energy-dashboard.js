@@ -791,9 +791,14 @@
                     'Sunday': '#C9CBCF'   
                 };
 
-               
                 const colorKey = Object.keys(emvueColors).find(k => dataset.label.includes(k));
                 const finalColor = colorKey ? emvueColors[colorKey] : getColor(index, 1);
+                
+               
+                const validPointsCount = dataset.data.filter(v => v !== null && v !== undefined).length;
+                
+               
+                const pRadius = validPointsCount <= 1 ? 6 : 3;
                 
                 return {
                     label: dataset.label,
@@ -803,7 +808,9 @@
                     borderWidth: chartType === 'line' ? 2.5 : 1, 
                     fill: false, 
                     tension: 0.1, 
-                    pointRadius: chartType === 'line' ? 0 : 3, 
+                    spanGaps: true,  
+                    pointRadius: pRadius,
+                    pointBackgroundColor: finalColor, 
                     pointHoverRadius: 6 
                 };
             });

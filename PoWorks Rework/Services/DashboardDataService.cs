@@ -377,29 +377,26 @@ namespace PoWorks_Rework.Services
                     string curveNameSql = "";
                     string xAxisSql = "";
 
-                    // LA SOLUTION MAGIQUE : Éviter l'explosion des courbes !
-                    // Si on groupe par locataire SANS en sélectionner un en particulier, les courbes DEVIENNENT les locataires.
-                    bool compareTenants = (filters.GroupBy == "tenant" && !filters.TenantId.HasValue);
+
+                    string entityNameSql = filters.GroupBy == "tenant" ? "COALESCE(t.\"DisplayName\", m.\"Name\")" : "m.\"Name\"";
 
                     if (filters.DateFilter == "daily")
                     {
-                        if (compareTenants) curveNameSql = "COALESCE(t.\"DisplayName\", 'Zones Communes')";
-                        else curveNameSql = @"CASE EXTRACT(ISODOW FROM mr.""Timestamp"") WHEN 1 THEN 'Lundi' WHEN 2 THEN 'Mardi' WHEN 3 THEN 'Mercredi' WHEN 4 THEN 'Jeudi' WHEN 5 THEN 'Vendredi' WHEN 6 THEN 'Samedi' WHEN 7 THEN 'Dimanche' END";
-
+                        string periodSql = @"CASE EXTRACT(ISODOW FROM mr.""Timestamp"") WHEN 1 THEN 'Lundi' WHEN 2 THEN 'Mardi' WHEN 3 THEN 'Mercredi' WHEN 4 THEN 'Jeudi' WHEN 5 THEN 'Vendredi' WHEN 6 THEN 'Samedi' WHEN 7 THEN 'Dimanche' END";
+                        // Résultat : "Light1 [Jeudi]" ou "Société Beta [Jeudi]"
+                        curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
                         xAxisSql = @"to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00')";
                     }
                     else if (filters.DateFilter == "monthly")
                     {
-                        if (compareTenants) curveNameSql = "COALESCE(t.\"DisplayName\", 'Zones Communes')";
-                        else curveNameSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM-YYYY')";
-
+                        string periodSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM-YYYY')";
+                        curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
                         xAxisSql = @"to_char(DATE_TRUNC('day', mr.""Timestamp""), 'DD')";
                     }
                     else // yearly
                     {
-                        if (compareTenants) curveNameSql = "COALESCE(t.\"DisplayName\", 'Zones Communes')";
-                        else curveNameSql = @"to_char(DATE_TRUNC('year', mr.""Timestamp""), 'YYYY')";
-
+                        string periodSql = @"to_char(DATE_TRUNC('year', mr.""Timestamp""), 'YYYY')";
+                        curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
                         xAxisSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM')";
                     }
 
@@ -413,7 +410,7 @@ namespace PoWorks_Rework.Services
                             AVG(mr.""Value"") as AvgConsumption,
                             MAX(mr.""Value"") as MaxConsumption,
                             m.""TenantID"",
-                            COALESCE(t.""DisplayName"", '') as TenantName
+                            '' as TenantName -- 🛑 On vide ceci pour éviter que le nom du locataire s'ajoute en double à la fin !
                         FROM ""MeterReadings"" mr
                         INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
                         LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""

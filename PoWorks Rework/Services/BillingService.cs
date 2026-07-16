@@ -23,13 +23,16 @@ namespace PoWorks_Rework.Services
 
         public async Task<BillEntity> CalculateBillAsync(int tenantId, DateTime startDate, DateTime endDate)
         {
-            _logger.LogInformation("Calculating bill for Tenant {TenantId} from {Start} to {End}", tenantId, startDate, endDate);
+      
+            DateTime adjustedEndDate = endDate.Date.AddDays(1).AddTicks(-1);
+
+            _logger.LogInformation("Calculating bill for Tenant {TenantId} from {Start} to {End}", tenantId, startDate, adjustedEndDate);
 
             var bill = new BillEntity
             {
                 TenantID = tenantId,
                 PeriodStart = startDate,
-                PeriodEnd = endDate,
+                PeriodEnd = endDate, 
                 GeneratedAt = DateTime.Now,
                 Status = "Draft"
             };
@@ -84,7 +87,7 @@ namespace PoWorks_Rework.Services
             // 3. Calculate consumption
             foreach (var meter in meters)
             {
-                decimal consumption = await CalculateMeterConsumptionAsync(connection, meter.Id, meter.Unit, startDate, endDate);
+                decimal consumption = await CalculateMeterConsumptionAsync(connection, meter.Id, meter.Unit, startDate, adjustedEndDate);
 
                 if (consumption > 0)
                 {

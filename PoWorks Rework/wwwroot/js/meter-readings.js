@@ -93,8 +93,11 @@ const MeterReadings = {
         const exportBtn = document.getElementById('exportBtn');
 
         if (applyFiltersBtn) {
-            applyFiltersBtn.addEventListener('click', () => this.applyFilters());
-        }
+    applyFiltersBtn.addEventListener('click', (e) => {
+        e.preventDefault(); 
+        this.applyFilters();
+    });
+}
 
         if (clearFiltersBtn) {
             clearFiltersBtn.addEventListener('click', () => this.clearFilters());
@@ -143,6 +146,34 @@ const MeterReadings = {
 
         this.config.currentViewType = viewType;
         this.config.currentPage = 1; // Reset to first page when switching views
+
+        // 🧠 NOUVEAU : AUTO-AJUSTEMENT DES DATES !
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && endDateInput) {
+            const today = new Date();
+            let newStart = new Date();
+
+            // On ajuste la date de début selon l'onglet cliqué
+            if (viewType === 'raw' || viewType === 'daily') {
+                newStart.setDate(today.getDate() - 30); // 30 derniers jours
+            } else if (viewType === 'monthly') {
+                newStart.setFullYear(today.getFullYear() - 1); // 1 dernière année
+            } else if (viewType === 'yearly') {
+                newStart.setFullYear(today.getFullYear() - 5); // 5 dernières années
+            }
+
+            // On met à jour les cases HTML (en format YYYY-MM-DD)
+            startDateInput.value = newStart.toISOString().split('T')[0];
+            endDateInput.value = today.toISOString().split('T')[0];
+            
+            // On met à jour la configuration interne
+            this.config.startDate = startDateInput.value;
+            this.config.endDate = endDateInput.value;
+            
+            console.log(`Dates auto-ajustées : ${this.config.startDate} au ${this.config.endDate}`);
+        }
 
         // Update active tab
         this.updateActiveTab(viewType);

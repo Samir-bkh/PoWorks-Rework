@@ -113,16 +113,20 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                
+                DateTime? adjustedEndDate = request.EndDate.HasValue ? request.EndDate.Value.Date.AddDays(1).AddTicks(-1) : null;
+
                 var filters = new MeterReadingFilters
                 {
                     StartDate = request.StartDate,
-                    EndDate = request.EndDate,
+                    EndDate = adjustedEndDate, 
                     TenantId = request.TenantId,
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
                     Offset = Math.Max(0, request.Offset ?? 0),
                     IncludeNullTenants = request.IncludeNullTenants ?? true,
                     ActiveOnly = true
                 };
+               
 
                 var meters = await _dashboardDataService.GetActiveMetersWithDataAsync(filters);
 
@@ -244,19 +248,23 @@ namespace PoWorks_Rework.Controllers
                     return Json(_dashboardDataService.GenerateDemoChartData("Database not configured. Showing demo data."));
                 }
 
+                
+                DateTime? adjustedEndDate = request.EndDate.HasValue ? request.EndDate.Value.Date.AddDays(1).AddTicks(-1) : null;
+
                 var filters = new MeterReadingFilters
                 {
                     DateFilter = request.DateFilter ?? "monthly",
                     TenantId = request.TenantId,
                     MeterId = request.MeterId,
                     StartDate = request.StartDate,
-                    EndDate = request.EndDate,
+                    EndDate = adjustedEndDate, 
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 25)),
                     ActiveOnly = true,
                     IncludeNullTenants = true,
                     IsComparisonMode = request.IsComparisonMode,
                     GroupBy = request.GroupBy
                 };
+                
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
 
@@ -306,13 +314,17 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+              
+                DateTime? adjustedEndDate = endDate.HasValue ? endDate.Value.Date.AddDays(1).AddTicks(-1) : null;
+
                 var filters = new MeterReadingFilters
                 {
                     Limit = 1,
                     IncludeNullTenants = true,
                     StartDate = startDate,
-                    EndDate = endDate
+                    EndDate = adjustedEndDate 
                 };
+                
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
                 var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync();

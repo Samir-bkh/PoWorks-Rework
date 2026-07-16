@@ -337,10 +337,19 @@ namespace PoWorks_Rework.Controllers
         private void AddDateParameters(NpgsqlCommand command, DateTime? startDate, DateTime? endDate)
         {
             if (startDate.HasValue)
-                command.Parameters.AddWithValue("@startDate", startDate.Value);
+            {
+                // On s'assure de prendre le début de la journée (00:00:00)
+                command.Parameters.AddWithValue("@startDate", startDate.Value.Date);
+            }
 
             if (endDate.HasValue)
-                command.Parameters.AddWithValue("@endDate", endDate.Value);
+            {
+                // LA CORRECTION EST ICI :
+                // On prend la date, on ajoute 1 jour, et on enlève 1 milliseconde
+                // Le 16 Juillet devient donc le 16 Juillet à 23h 59m 59s !
+                DateTime endOfDay = endDate.Value.Date.AddDays(1).AddTicks(-1);
+                command.Parameters.AddWithValue("@endDate", endOfDay);
+            }
         }
 
         /// <summary>

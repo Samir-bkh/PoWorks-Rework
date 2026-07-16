@@ -98,6 +98,8 @@ namespace PoWorks_Rework.Models
         public string Quality { get; set; } = "";
         public int QualityValue { get; set; }
         public object? Properties { get; set; }
+        public string? Variable { get; set; }
+
 
         // Helper properties for easier processing
         public DateTime? TimestampParsed
