@@ -383,5 +383,38 @@ namespace PoWorks_Rework.Repositories
                 throw;
             }
         }
+
+        /// <summary>
+        /// Récupère la date de la dernière donnée enregistrée pour un compteur.
+        /// Si le compteur est vide, renvoie null.
+        /// </summary>
+        public async Task<DateTime?> GetLastReadingTimestampAsync(int meterId)
+        {
+            try
+            {
+                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                {
+                    await connection.OpenAsync();
+                    string sql = @"SELECT MAX(""Timestamp"") FROM ""MeterReadings"" WHERE ""MeterId"" = @MeterId";
+
+                    using var cmd = new NpgsqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@MeterId", meterId);
+
+                    var result = await cmd.ExecuteScalarAsync();
+
+                    if (result != DBNull.Value && result != null)
+                    {
+                        return Convert.ToDateTime(result);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération du dernier timestamp pour le compteur {MeterId}", meterId);
+            }
+            return null;
+        }
     }
+
+
 }

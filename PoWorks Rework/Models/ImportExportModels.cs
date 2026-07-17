@@ -32,22 +32,16 @@ namespace PoWorks_Rework.Models
         public TrendsOptions Options { get; set; } = new();
     }
 
-    /// <summary>
-    /// Options for trends processing
-    /// </summary>
     public class TrendsOptions
     {
         public int ElementMaxNumber { get; set; } = 100000;
         public int AggregateFunction { get; set; } = 0; // 0 = Raw, 1 = WindowPixelSize
         public int AggregateParam1 { get; set; } = 0;
         public List<string> Properties { get; set; } = new() { "VariableName", "Description", "StandardLabel" };
-        public bool IncludeStartBound { get; set; } = true;
-        public bool IncludeEndBound { get; set; } = true;
+        public bool IncludeStartBound { get; set; } = false; // <-- ICI : FALSE
+        public bool IncludeEndBound { get; set; } = false;   // <-- ICI : FALSE
     }
 
-    /// <summary>
-    /// Request payload for creating a single trend request (matches API specification)
-    /// </summary>
     public class TrendCreateRequest
     {
         public string VariableName { get; set; } = "";
@@ -56,8 +50,8 @@ namespace PoWorks_Rework.Models
         public int AggregateParam1 { get; set; } = 0;
         public List<string> Properties { get; set; } = new() { "VariableName", "Description", "StandardLabel" };
         public string Context { get; set; } = "";
-        public bool IncludeStartBound { get; set; } = true;
-        public bool IncludeEndBound { get; set; } = true;
+        public bool IncludeStartBound { get; set; } = false; // <-- ICI : FALSE
+        public bool IncludeEndBound { get; set; } = false;   // <-- ICI : FALSE
     }
 
     /// <summary>

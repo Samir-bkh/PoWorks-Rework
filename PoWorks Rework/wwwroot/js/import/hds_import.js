@@ -72,11 +72,7 @@ function initializeEventDelegation() {
         }
     });
 
-    document.body.addEventListener('input', function (event) {
-        if (event.target.id === 'filterInput') {
-            filterRows(event.target.value);
-        }
-    });
+
 
     document.body.addEventListener('change', function (event) {
         if (event.target.classList.contains('meter-checkbox')) {
@@ -740,31 +736,6 @@ function updateCounter() {
         importBtn.textContent = checkedBoxes.length > 0
             ? `Import Selected (${checkedBoxes.length})`
             : 'Import Selected';
-    }
-}
-
-/**
- * Filters rows in the meter table based on user input.
- * @param {string} filterText
- */
-function filterRows(filterText) {
-    filterText = filterText.toLowerCase();
-    const rows = document.querySelectorAll('#hdsMeterTable tbody tr');
-    let visibleCount = 0;
-
-    rows.forEach(row => {
-        const meterName = row.cells[1]?.textContent.toLowerCase() || '';
-        if (meterName.includes(filterText)) {
-            row.style.display = '';
-            visibleCount++;
-        } else {
-            row.style.display = 'none';
-        }
-    });
-
-    const filterStatus = document.getElementById('filterStatus');
-    if (filterStatus) {
-        filterStatus.textContent = `Showing ${visibleCount} of ${rows.length} meters`;
     }
 }
 

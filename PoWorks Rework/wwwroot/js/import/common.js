@@ -20,8 +20,6 @@ document.addEventListener('DOMContentLoaded', function () {
  * This ensures the shared functions are called regardless of which module is active
  */
 function setupUnifiedEventDelegation() {
-    // console.log('🔧 Setting up unified event delegation');
-
     // Single event delegation for the entire document
     document.body.addEventListener('click', function (event) {
         // Unified Print Button
@@ -66,24 +64,60 @@ function setupUnifiedEventDelegation() {
         }
     });
 
+    // NOUVEAU : Écouteur pour la barre de recherche (Filtre)
+    document.body.addEventListener('input', function (event) {
+        if (event.target.id === 'meterFilterInput') {
+            filterTableRows(event.target.value.toLowerCase());
+        }
+    });
+
     console.log('✅ Unified event delegation setup complete');
+}
+
+// =====================================================
+// NOUVEAU : FONCTION DE FILTRAGE EN TEMPS RÉEL
+// =====================================================
+function filterTableRows(filterText) {
+    const rows = document.querySelectorAll('#metersTableBody tr');
+    let visibleCount = 0;
+    let totalCount = 0;
+
+    rows.forEach(row => {
+        // On ignore la ligne bleue d'information
+        if (row.classList.contains('table-info')) return;
+        totalCount++;
+
+        // On cherche le texte dans toute la ligne (Nom, Unité, etc.)
+        const rowText = row.textContent.toLowerCase();
+
+        if (rowText.includes(filterText)) {
+            row.style.display = ''; // Affiche la ligne
+            visibleCount++;
+        } else {
+            row.style.display = 'none'; // Cache la ligne
+        }
+    });
+
+    // Mise à jour du petit texte de statut sous la barre
+    const statusEl = document.getElementById('meterFilterStatus');
+    if (statusEl) {
+        if (filterText === '') {
+            statusEl.innerHTML = `<span class="text-muted">Showing all ${totalCount} variables</span>`;
+        } else {
+            statusEl.innerHTML = `<strong class="text-primary">${visibleCount}</strong> variables found`;
+        }
+    }
 }
 
 // =====================================================
 // GLOBAL EXPORTS
 // =====================================================
 
-/**
- * Handles unified printing by detecting the current meter data type
- * and routing the request to the corresponding print handler.
- */
-// Can be removed from Prod - only for Debugging 
 function handleUnifiedPrint() {
-
     const dataType = window.currentMeterDataType || 'UNKNOWN';
 
     switch (dataType) {
-        case 'HDS':           
+        case 'HDS':            
             if (typeof handleHDSPrint === 'function') {
                 handleHDSPrint();
             } else {
@@ -113,12 +147,10 @@ function handleUnifiedPrint() {
             break;
 
         default:
-
-            // 🎯 ENHANCED FALLBACK: Check for WebService content first
             const webServiceTable = document.querySelector('.web-service-meter-selection-container');
             if (webServiceTable) {
                 window.currentMeterDataType = 'WebService';
-                handleUnifiedPrint(); // Retry with detected type
+                handleUnifiedPrint(); 
                 return;
             }
 
@@ -128,15 +160,15 @@ function handleUnifiedPrint() {
                 if (headerRow && headerRow.textContent.includes('HDS Import')) {
                     window.currentMeterDataType = 'HDS';
                     updatePrintButtonForDataType('HDS');
-                    handleUnifiedPrint(); // Retry with detected type
+                    handleUnifiedPrint(); 
                 } else if (headerRow && headerRow.textContent.includes('VAREXP Import')) {
                     window.currentMeterDataType = 'VAREXP';
                     updatePrintButtonForDataType('VAREXP');
-                    handleUnifiedPrint(); // Retry with detected type
+                    handleUnifiedPrint(); 
                 } else if (headerRow && headerRow.textContent.includes('Web Service Import')) {
                     window.currentMeterDataType = 'WebService';
                     updatePrintButtonForDataType('WebService');
-                    handleUnifiedPrint(); // Retry with detected type
+                    handleUnifiedPrint(); 
                 } else {
                     alert('Cannot determine data type. Please reload the meters and try again.');
                 }
@@ -147,12 +179,6 @@ function handleUnifiedPrint() {
     }
 }
 
-/**
- * Updates the print button text and style based on the current data type.
- * @param {string} dataType - The detected data type (HDS, VAREXP, WebService, etc.)
- */
-
-// Can be removed from Prod - only for Debugging 
 function updatePrintButtonForDataType(dataType) {
     const printBtn = document.getElementById('printSelectedBtn');
 
@@ -174,13 +200,9 @@ function updatePrintButtonForDataType(dataType) {
 }
 
 // =====================================================
-// SELECT / DESELECT HANDLERS
+// SELECT / DESELECT HANDLERS (Mis à jour pour le filtre)
 // =====================================================
 
-/**
- * Selects all checkboxes for the current meter data type
- * and updates the selection counter.
- */
 function handleSelectAll() {
     const dataType = window.currentMeterDataType || 'UNKNOWN';
     let checkboxes;
@@ -192,16 +214,16 @@ function handleSelectAll() {
     }
 
     checkboxes.forEach(checkbox => {
-        checkbox.checked = true;
+        const row = checkbox.closest('tr');
+        // On ne coche QUE si la ligne est visible (non filtrée) et n'est pas la ligne d'info
+        if (row && row.style.display !== 'none' && !row.classList.contains('table-info')) {
+            checkbox.checked = true;
+        }
     });
 
     updateMeterCounter();
 }
 
-/**
- * Deselects all checkboxes for the current meter data type
- * and updates the selection counter.
- */
 function handleDeselectAll() {
     const dataType = window.currentMeterDataType || 'UNKNOWN';
     let checkboxes;
@@ -213,7 +235,11 @@ function handleDeselectAll() {
     }
 
     checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
+        const row = checkbox.closest('tr');
+        // On ne décoche QUE si la ligne est visible
+        if (row && row.style.display !== 'none' && !row.classList.contains('table-info')) {
+            checkbox.checked = false;
+        }
     });
 
     updateMeterCounter();
@@ -223,10 +249,6 @@ function handleDeselectAll() {
 // COUNTER UPDATE
 // =====================================================
 
-/**
- * Updates the counter display showing how many meters/variables
- * are selected out of the total available.
- */
 function updateMeterCounter() {
     const dataType = window.currentMeterDataType || 'UNKNOWN';
     let checkboxes, checkedBoxes;
@@ -240,7 +262,8 @@ function updateMeterCounter() {
     }
 
     const statusElement = document.getElementById('meterFilterStatus');
-    if (statusElement) {
+    if (statusElement && !document.getElementById('meterFilterInput').value) {
+        // On ne met à jour ce texte que s'il n'y a pas de recherche active
         const totalItems = checkboxes.length;
         const selectedItems = checkedBoxes.length;
 
@@ -262,6 +285,7 @@ function updateMeterCounter() {
                 ? `<i class="bi bi-cloud-upload"></i> Import Selected (${checkedBoxes.length})`
                 : '<i class="bi bi-cloud-upload"></i> Import Selected';
         }
+        importBtn.disabled = checkedBoxes.length === 0;
     } 
 }
 
@@ -269,15 +293,10 @@ function updateMeterCounter() {
 // IMPORT HANDLER
 // =====================================================
 
-/**
- * Handles importing data for the current meter data type
- * by routing to the appropriate import function.
- */
 function handleImport() {
-
     const dataType = window.currentMeterDataType || 'UNKNOWN';
    
-    if (dataType === 'HDS') {       
+    if (dataType === 'HDS') {        
         if (typeof handleHDSImport === 'function') {
             handleHDSImport();
         } else {
@@ -290,8 +309,7 @@ function handleImport() {
             alert('VAREXP import functionality not available');
         }
     } else if (dataType === 'WebService') {
-
-        if (typeof importWebServiceVariables === 'function') {           
+        if (typeof importWebServiceVariables === 'function') {            
             importWebServiceVariables();
         } else {
             alert('WebService import functionality not available');

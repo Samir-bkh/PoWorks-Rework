@@ -57,6 +57,9 @@ System.Net.ServicePointManager.SecurityProtocol =
     System.Net.SecurityProtocolType.Tls11 |
     System.Net.SecurityProtocolType.Tls12 |
     System.Net.SecurityProtocolType.Tls13;
+
+builder.Services.AddHostedService<AutoImportWorker>();
+
 Console.WriteLine("3. BUILDING THE APP");
 var app = builder.Build();
 Console.WriteLine("4. BUILDING FINISHED !");

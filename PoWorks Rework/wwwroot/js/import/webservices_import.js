@@ -302,10 +302,15 @@ window.showWebServiceMeterSelection = function (variables, parentOptions, connec
     meterSelectionSection.classList.remove('d-none');
 
     const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
-    const cardBody = meterSelectionSection.querySelector('.card-body');
-    if (cardBody) {
-        cardBody.innerHTML = tableHtml;
+    
+    // --- LA CORRECTION EST ICI ---
+    // Au lieu d'écraser tout le 'card-body' (et donc la barre de recherche),
+    // On cible uniquement le conteneur du tableau (.table-responsive)
+    const tableContainer = meterSelectionSection.querySelector('.table-responsive');
+    if (tableContainer) {
+        tableContainer.outerHTML = tableHtml;
     }
+    // -----------------------------
 
     const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
     if (sectionHeader) {
