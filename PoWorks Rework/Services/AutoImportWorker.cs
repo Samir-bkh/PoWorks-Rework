@@ -7,12 +7,15 @@ namespace PoWorks_Rework.Services
     {
         private readonly ILogger<AutoImportWorker> _logger;
         private readonly IServiceProvider _serviceProvider;
+        private readonly EncryptionService _encryptionService; // 1. Ajout de notre outil de déchiffrement
         private readonly int _cycleDelayMinutes = 1;
 
-        public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider)
+        // 2. On l'injecte dans le constructeur du robot
+        public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider, EncryptionService encryptionService)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
+            _encryptionService = encryptionService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,8 +44,12 @@ namespace PoWorks_Rework.Services
                 _logger.LogInformation("🏢 --- IMPORTATION COMPANY : {Id} ---", companyId);
 
                 // On charge la config unique globale pour le moment (réutilisant GetApiSettingsAsync)
-                var apiSettings = await GetApiSettingsAsync(dbService);
-                if (apiSettings == null) continue;
+                var apiSettings = await GetApiSettingsAsync(dbService, companyId);
+                if (apiSettings == null)
+                {
+                    _logger.LogWarning("⚠️ Aucune configuration PcVue trouvée pour la Company {Id}. On passe à la suivante.", companyId);
+                    continue;
+                }
 
                 await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                 {
@@ -127,17 +134,50 @@ namespace PoWorks_Rework.Services
             return (res != DBNull.Value) ? (DateTime?)Convert.ToDateTime(res) : null;
         }
 
-        private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService)
+        private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService, int companyId)
         {
             try
             {
-                using var conn = dbService.CreateNewConnection();
-                await conn.OpenAsync();
-                using var cmd = new NpgsqlCommand("SELECT \"SettingValue\" FROM \"Settings\" WHERE \"SettingKey\" = 'PCVueWebServiceSettings'", conn);
-                var res = await cmd.ExecuteScalarAsync();
-                return (res != null) ? System.Text.Json.JsonSerializer.Deserialize<PCVueWebServiceSettings>(res.ToString()!) : null;
+                return await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
+                {
+                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
+                                          ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
+                                          ""ProjectName"", ""IsDefault""
+                                   FROM ""WebServiceConnections""
+                                   LIMIT 1";
+
+                    using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    using var reader = await cmd.ExecuteReaderAsync();
+
+                    if (await reader.ReadAsync())
+                    {
+                        return new PCVueWebServiceSettings
+                        {
+                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                            ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                            BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                            ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
+
+                            // 3. LA MAGIE EST ICI : On déchiffre le Secret et le Mot de passe à la volée !
+                            ClientSecret = reader.IsDBNull(4) ? "" : _encryptionService.Decrypt(reader.GetString(4)),
+                            ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                            Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                            Password = reader.IsDBNull(7) ? "" : _encryptionService.Decrypt(reader.GetString(7)),
+
+                            AuthType = (AuthenticationType)reader.GetInt32(8),
+                            TimeoutSeconds = reader.GetInt32(9),
+                            ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                            IsDefault = reader.GetBoolean(11)
+                        };
+                    }
+                    return null;
+                });
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération des paramètres PcVue pour la Company {CompanyId}", companyId);
+                return null;
+            }
         }
     }
 }

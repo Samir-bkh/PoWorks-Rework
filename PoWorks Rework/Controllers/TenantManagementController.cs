@@ -20,6 +20,12 @@ namespace PoWorks_Rework.Controllers
             _logger = logger;
         }
 
+        private int GetCurrentUserId()
+        {
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+            return claim != null && int.TryParse(claim.Value, out int userId) ? userId : 1;
+        }
+
         /// <summary>
         /// Display form to create a new tenant
         /// </summary>
@@ -161,16 +167,18 @@ namespace PoWorks_Rework.Controllers
         private int CreateNewTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation("Creating new tenant");
+            int currentUserId = GetCurrentUserId(); 
 
-            // Insert new tenant in Tenants table
+            
             var insertTenantCommand = new NpgsqlCommand(
-                @"INSERT INTO ""Tenants"" (""DisplayName"", ""Misc"") 
-                  VALUES (@displayName, @misc) 
-                  RETURNING ""TenantID""",
+                @"INSERT INTO ""Tenants"" (""DisplayName"", ""Misc"", ""UserId"", ""CompanyId"") 
+          VALUES (@displayName, @misc, @userId, 1) 
+          RETURNING ""TenantID""",
                 connection, transaction);
 
             insertTenantCommand.Parameters.AddWithValue("@displayName", tenant.CompanyName);
             insertTenantCommand.Parameters.AddWithValue("@misc", tenant.Unit ?? (object)DBNull.Value);
+            insertTenantCommand.Parameters.AddWithValue("@userId", currentUserId);
 
             _logger.LogInformation("Executing tenant insert command");
             int tenantId = (int)insertTenantCommand.ExecuteScalar();

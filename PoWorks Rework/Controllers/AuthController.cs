@@ -31,6 +31,15 @@ namespace PoWorks_Rework.Controllers
             return View();
         }
 
+        // On fusionne HttpGet et HttpPost pour régler le problème de doublon
+        [HttpGet, HttpPost]
+        public async Task<IActionResult> Logout()
+        {
+            // Détruit le cookie de connexion
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return RedirectToAction("Login");
+        }
+
         [HttpPost]
         public async Task<IActionResult> Login(string username, string password)
         {
@@ -73,9 +82,32 @@ namespace PoWorks_Rework.Controllers
                 return View();
             }
 
+            // --- DÉBUT MIGRATION AUTOMATIQUE BCRYPT ---
+            // Si l'utilisateur existe et que son mot de passe en BDD n'est pas un hash BCrypt (qui commence toujours par $2)
+            if (user != null && !user.PasswordHash.StartsWith("$2"))
+            {
+                // On vérifie si ce qu'il a tapé correspond à l'ancien mot de passe en clair
+                if (password == user.PasswordHash)
+                {
+                    // Si oui, on génère le nouveau hash sécurisé et on met à jour la base de données !
+                    string newHash = BCrypt.Net.BCrypt.HashPassword(password);
+                    using var updateConn = _databaseService.CreateNewConnection();
+                    await updateConn.OpenAsync();
+                    using var updateCmd = new NpgsqlCommand("UPDATE \"Users\" SET \"PasswordHash\" = @hash WHERE \"UserId\" = @id", updateConn);
+                    updateCmd.Parameters.AddWithValue("hash", newHash);
+                    updateCmd.Parameters.AddWithValue("id", user.UserId);
+                    await updateCmd.ExecuteNonQueryAsync();
+
+                    // On met à jour l'objet en mémoire pour que la vérification suivante réussisse
+                    user.PasswordHash = newHash;
+                }
+            }
+            // --- FIN MIGRATION AUTOMATIQUE BCRYPT ---
+
             // Vérification BCrypt ultra-sécurisée
             if (user == null || !user.IsActive || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             {
+        
                 ViewBag.Error = "Nom d'utilisateur ou mot de passe incorrect.";
                 return View();
             }
@@ -97,13 +129,6 @@ namespace PoWorks_Rework.Controllers
                 new AuthenticationProperties { IsPersistent = true });
 
             return Redirect("/");
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> Logout()
-        {
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            return RedirectToAction("Login");
         }
 
         // Fonction magique qui crée le compte admin la première fois

@@ -19,6 +19,7 @@ namespace PoWorks_Rework.Controllers
         private readonly TrendsService _trendsService;
         private readonly MeterRepository _meterRepository;
         private readonly PCVueWebService _pcvueWebService;
+        private readonly ICompanyContext _companyContext;
 
         public WebServicesImportController(
             ILogger<WebServicesImportController> logger,
@@ -26,14 +27,16 @@ namespace PoWorks_Rework.Controllers
             VariableBrowseParsingService variableBrowseParsingService,
             TrendsService trendsService,
             MeterRepository meterRepository,
-            PCVueWebService pcvueWebService)   
+            PCVueWebService pcvueWebService,
+            ICompanyContext companyContext) 
         {
             _logger = logger;
             _databaseService = databaseService;
             _variableBrowseParsingService = variableBrowseParsingService;
             _trendsService = trendsService;
             _meterRepository = meterRepository;
-            _pcvueWebService = pcvueWebService;  // ← AJOUTE ÇA
+            _pcvueWebService = pcvueWebService;
+            _companyContext = companyContext; 
         }
 
         #endregion
@@ -108,7 +111,7 @@ namespace PoWorks_Rework.Controllers
 
                 if (processTrends)
                 {
-                    trendsSettings = GetWebServiceConnectionById(request.ConnectionId);
+                    trendsSettings = await GetWebServiceConnectionById(request.ConnectionId);
                     if (trendsSettings == null) processTrends = false;
                 }
 
@@ -259,32 +262,37 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
         }
 
         [HttpGet]
-        public IActionResult GetWebServiceConnections()
+        public async Task<IActionResult> GetWebServiceConnections()
         {
             try
             {
-                _logger.LogInformation("Getting Web Service connections...");
+                _logger.LogInformation("Getting Web Service connections from Database...");
+                int companyId = _companyContext.CurrentCompanyId;
 
-                // Get webservice connections from configuration
-                var connections = new List<dynamic>();
-                var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
-
-                if (webServiceSection.Exists())
+                var connections = await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
-                    foreach (var connectionSection in webServiceSection.GetChildren())
+                    var list = new List<dynamic>();
+                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault""
+                                   FROM ""WebServiceConnections""";
+
+                    using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    using var reader = await cmd.ExecuteReaderAsync();
+
+                    while (await reader.ReadAsync())
                     {
-                        connections.Add(new
+                        list.Add(new
                         {
-                            connectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
-                            connectionName = connectionSection["ConnectionName"] ?? "",
-                            baseUrl = connectionSection["BaseUrl"] ?? "",
-                            projectName = connectionSection["ProjectName"] ?? "",
-                            isDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                            connectionId = reader.GetString(0),
+                            connectionName = reader.GetString(1),
+                            baseUrl = reader.GetString(2),
+                            projectName = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                            isDefault = reader.GetBoolean(4)
                         });
                     }
-                }
+                    return list;
+                });
 
-                _logger.LogInformation($"Found {connections.Count} Web Service connections");
+                _logger.LogInformation($"Found {connections.Count} Web Service connections for Company {companyId}");
                 return Json(new { success = true, connections = connections });
             }
             catch (Exception ex)
@@ -329,7 +337,7 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                 Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 
                 // Get the connection settings
-                var connection = GetWebServiceConnectionById(request.ConnectionId);
+                var connection = await GetWebServiceConnectionById(request.ConnectionId);
                 if (connection == null)
                 {
                     Console.WriteLine("❌ ERROR: Web Service connection not found");
@@ -452,36 +460,44 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
         /// <summary>
         /// Get Web Service connection settings by connection ID
         /// </summary>
-        private PCVueWebServiceSettings? GetWebServiceConnectionById(string connectionId)
+        private async Task<PCVueWebServiceSettings?> GetWebServiceConnectionById(string connectionId)
         {
             try
             {
-                var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-                var webServiceSection = config.GetSection("WebServiceConnections");
+                int companyId = _companyContext.CurrentCompanyId;
 
-                foreach (var connectionSection in webServiceSection.GetChildren())
+                return await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
-                    if (connectionSection["ConnectionId"] == connectionId)
+                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
+                                          ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
+                                          ""ProjectName"", ""IsDefault""
+                                   FROM ""WebServiceConnections""
+                                   WHERE ""ConnectionId"" = @connId LIMIT 1";
+
+                    using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    cmd.Parameters.AddWithValue("connId", connectionId);
+                    using var reader = await cmd.ExecuteReaderAsync();
+
+                    if (await reader.ReadAsync())
                     {
                         return new PCVueWebServiceSettings
                         {
-                            ConnectionId = connectionSection["ConnectionId"] ?? "",
-                            ConnectionName = connectionSection["ConnectionName"] ?? "",
-                            BaseUrl = connectionSection["BaseUrl"] ?? "",
-                            ClientId = connectionSection["ClientId"] ?? "",
-                            ClientSecret = connectionSection["ClientSecret"] ?? "",
-                            Username = connectionSection["Username"] ?? "",
-                            Password = connectionSection["Password"] ?? "",
-                            AuthType = (AuthenticationType)(int.TryParse(connectionSection["AuthType"], out var authType) ? authType : 0),
-                            TimeoutSeconds = int.TryParse(connectionSection["TimeoutSeconds"], out var timeout) ? timeout : 30,
-                            ProjectName = connectionSection["ProjectName"] ?? "",
-                            IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
+                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                            ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                            BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                            ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                            ClientSecret = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                            ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                            Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                            Password = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                            AuthType = (AuthenticationType)reader.GetInt32(8),
+                            TimeoutSeconds = reader.GetInt32(9),
+                            ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                            IsDefault = reader.GetBoolean(11)
                         };
                     }
-                }
-
-                _logger.LogWarning("Web service connection not found: {ConnectionId}", connectionId);
-                return null;
+                    return null;
+                });
             }
             catch (Exception ex)
             {

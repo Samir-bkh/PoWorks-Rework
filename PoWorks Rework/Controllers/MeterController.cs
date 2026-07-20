@@ -11,12 +11,16 @@ namespace PoWorks_Rework.Controllers
     public class MeterController : BaseController
     {
         private readonly MeterRepository _meterRepository;
+        private readonly ICompanyContext _companyContext; // AJOUT
 
-        public MeterController(DatabaseService databaseService, MeterRepository meterRepository)
+        public MeterController(DatabaseService databaseService, MeterRepository meterRepository, ICompanyContext companyContext)
             : base(databaseService)
         {
             _meterRepository = meterRepository;
+            _companyContext = companyContext; // AJOUT
         }
+
+
 
         // Controllers/MeterController.cs - Update the Management method
         // Update the Management method in MeterController
@@ -176,11 +180,21 @@ namespace PoWorks_Rework.Controllers
                     try
                     {
                         string sql = @"
-                    INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"")
-                    VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active, @TenantId)
-                    RETURNING ""MeterId""";
+    UPDATE ""Meters""
+    SET ""Name"" = @Name,
+        ""Label"" = @Label,
+        ""Unit"" = @Unit,
+        ""ParentId"" = @ParentId,
+        ""LastReading"" = @LastReading,
+        ""Type"" = @Type,
+        ""Active"" = @Active,
+        ""TenantID"" = @TenantId
+    WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId"; // AJOUT DU MUR ICI !
 
                         using var cmd = new NpgsqlCommand(sql, connection, transaction);
+
+                        // On n'oublie pas d'envoyer la valeur du mur :
+                        cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
 
                         cmd.Parameters.AddWithValue("@Name", meter.Name);
                         // Never pass NULL for Unit, use empty string instead
@@ -549,12 +563,14 @@ namespace PoWorks_Rework.Controllers
                     connection.Open();
 
                     string sql = @"
-                SELECT t.""TenantID"", td.""CompanyName""
-                FROM ""Tenants"" t
-                LEFT JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                ORDER BY td.""CompanyName""";
+SELECT t.""TenantID"", td.""CompanyName""
+FROM ""Tenants"" t
+LEFT JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
+WHERE t.""CompanyId"" = @CompanyId
+ORDER BY td.""CompanyName""";
 
                     using var cmd = new NpgsqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId); // LE MUR !
                     using var reader = cmd.ExecuteReader();
 
                     while (reader.Read())

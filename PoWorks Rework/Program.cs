@@ -75,6 +75,8 @@ builder.Services.AddHttpContextAccessor();
 // Déclare notre cerveau Multi-Clients
 builder.Services.AddScoped<ICompanyContext, WebCompanyContext>();
 
+builder.Services.AddSingleton<EncryptionService>();
+
 Console.WriteLine("3. BUILDING THE APP");
 var app = builder.Build();
 Console.WriteLine("4. BUILDING FINISHED !");

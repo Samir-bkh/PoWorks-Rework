@@ -7,16 +7,15 @@ namespace PoWorks_Rework.Repositories
     public class MeterRepository
     {
         private readonly DatabaseService _databaseService;
-        private readonly ICompanyContext _companyContext; // <--- AJOUT
+        private readonly ICompanyContext _companyContext;
         private readonly ILogger<MeterRepository> _logger;
 
         public MeterRepository(DatabaseService databaseService, ICompanyContext companyContext, ILogger<MeterRepository> logger)
         {
             _databaseService = databaseService;
-            _companyContext = companyContext; // <--- AJOUT
+            _companyContext = companyContext;
             _logger = logger;
         }
-
 
         public async Task<List<Meter>> GetMetersAsync(MeterSearchCriteria criteria, int page = 1, int pageSize = 10)
         {
@@ -24,19 +23,20 @@ namespace PoWorks_Rework.Repositories
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
                 var meters = new List<Meter>();
-                var whereClause = string.Empty;
+                var whereClause = @" AND m.""CompanyId"" = @CompanyId";
+
                 if (!string.IsNullOrEmpty(criteria.SearchTerm))
                 {
                     switch (criteria.SearchField)
                     {
                         case "Name":
-                            whereClause = @" AND (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
+                            whereClause += @" AND (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
                             break;
                         case "Type":
-                            whereClause = @" AND m.""Type"" ILIKE @SearchTerm";
+                            whereClause += @" AND m.""Type"" ILIKE @SearchTerm";
                             break;
                         case "Tenant":
-                            whereClause = @" AND m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
+                            whereClause += @" AND m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
                             break;
                     }
                 }
@@ -52,6 +52,8 @@ namespace PoWorks_Rework.Repositories
                     LIMIT @PageSize OFFSET @Offset";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
+
                 if (!string.IsNullOrEmpty(criteria.SearchTerm))
                     cmd.Parameters.AddWithValue("@SearchTerm", $"%{criteria.SearchTerm}%");
 
@@ -85,25 +87,27 @@ namespace PoWorks_Rework.Repositories
             int currentCompanyId = _companyContext.CurrentCompanyId;
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                var whereClause = string.Empty;
+                var whereClause = @" WHERE m.""CompanyId"" = @CompanyId";
                 if (!string.IsNullOrEmpty(criteria.SearchTerm))
                 {
                     switch (criteria.SearchField)
                     {
                         case "Name":
-                            whereClause = @" WHERE (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
+                            whereClause += @" AND (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
                             break;
                         case "Type":
-                            whereClause = @" WHERE m.""Type"" ILIKE @SearchTerm";
+                            whereClause += @" AND m.""Type"" ILIKE @SearchTerm";
                             break;
                         case "Tenant":
-                            whereClause = @" WHERE m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
+                            whereClause += @" AND m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
                             break;
                     }
                 }
 
                 string sql = $@"SELECT COUNT(*) FROM ""Meters"" m {whereClause}";
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
+
                 if (!string.IsNullOrEmpty(criteria.SearchTerm))
                     cmd.Parameters.AddWithValue("@SearchTerm", $"%{criteria.SearchTerm}%");
 
@@ -123,10 +127,11 @@ namespace PoWorks_Rework.Repositories
                 FROM ""Meters"" m
                 LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
                 LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                WHERE m.""MeterId"" = @MeterId";
+                WHERE m.""MeterId"" = @MeterId AND m.""CompanyId"" = @CompanyId";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
                 cmd.Parameters.AddWithValue("@MeterId", meterId);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -162,10 +167,11 @@ namespace PoWorks_Rework.Repositories
                 FROM ""Meters"" m
                 LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
                 LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                WHERE m.""ParentId"" = @ParentId AND m.""Type"" = 'sub'";
+                WHERE m.""ParentId"" = @ParentId AND m.""Type"" = 'sub' AND m.""CompanyId"" = @CompanyId";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
                 cmd.Parameters.AddWithValue("@ParentId", parentMeterId);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -195,7 +201,8 @@ namespace PoWorks_Rework.Repositories
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
                 var meters = new List<MeterForTrendsAnalysis>();
-                var whereConditions = new List<string> { @"(m.""Name"" LIKE '%.%' OR m.""Name"" LIKE 'varsets.%')" };
+                var whereConditions = new List<string> { @"(m.""Name"" LIKE '%.%' OR m.""Name"" LIKE 'varsets.%')", @"m.""CompanyId"" = @CompanyId" };
+
                 if (activeOnly) whereConditions.Add(@"m.""Active"" = true");
 
                 var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
@@ -212,6 +219,8 @@ namespace PoWorks_Rework.Repositories
                 {limitClause}";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); // LE MUR
+
                 using var reader = await cmd.ExecuteReaderAsync();
 
                 while (await reader.ReadAsync())
@@ -238,13 +247,15 @@ namespace PoWorks_Rework.Repositories
             int currentCompanyId = _companyContext.CurrentCompanyId;
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                var whereConditions = new List<string> { @"(""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')" };
+                var whereConditions = new List<string> { @"(""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')", @"""CompanyId"" = @CompanyId" };
                 if (activeOnly) whereConditions.Add(@"""Active"" = true");
 
                 var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
                 string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); // LE MUR
+
                 var result = await cmd.ExecuteScalarAsync();
                 return Convert.ToInt32(result);
             });
@@ -253,13 +264,18 @@ namespace PoWorks_Rework.Repositories
         public async Task<DateTime?> GetLastReadingTimestampAsync(int meterId)
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
-
-            // On précise explicitement <DateTime?> ici pour le compilateur
             return await _databaseService.ExecuteWithCompanyIsolationAsync<DateTime?>(currentCompanyId, async (connection, transaction) =>
             {
-                string sql = @"SELECT MAX(""Timestamp"") FROM ""MeterReadings"" WHERE ""MeterId"" = @MeterId";
+                // Note : On relie avec la table Meters pour s'assurer que ce compteur appartient bien au CompanyId
+                string sql = @"
+                SELECT MAX(mr.""Timestamp"") 
+                FROM ""MeterReadings"" mr
+                INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+                WHERE mr.""MeterId"" = @MeterId AND m.""CompanyId"" = @CompanyId";
+
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
                 cmd.Parameters.AddWithValue("@MeterId", meterId);
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); // LE MUR
 
                 var result = await cmd.ExecuteScalarAsync();
                 if (result != DBNull.Value && result != null)
@@ -269,7 +285,5 @@ namespace PoWorks_Rework.Repositories
                 return (DateTime?)null;
             });
         }
-
-    
     }
 }

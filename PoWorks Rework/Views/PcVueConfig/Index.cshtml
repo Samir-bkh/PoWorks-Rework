@@ -1,0 +1,79 @@
+@model PoWorks_Rework.Models.PcVueSettingsViewModel
+@{
+    ViewData["Title"] = "PcVue Web Services Configuration";
+}
+
+<div class="container-fluid mt-4">
+    <h2 class="mb-4"><i class="bi bi-server text-primary"></i> PcVue Connection Settings</h2>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="card shadow-sm max-w-800">
+        <div class="card-header bg-dark text-white">
+            <h5 class="card-title mb-0">API Credentials (OAuth)</h5>
+        </div>
+        <div class="card-body">
+            <form asp-controller="PcVueConfig" asp-action="Save" method="post">
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">PcVue Web Services URL</label>
+                    <input type="url" name="BaseUrl" value="@Model?.BaseUrl" class="form-control" required placeholder="https://192.168.x.x/WS/" />
+                    <small class="text-muted">Ensure the URL ends with a trailing slash (/).</small>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Client ID</label>
+                        <input type="text" name="ClientId" value="@Model?.ClientId" class="form-control" required />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Client Secret</label>
+                        <input type="password" name="ClientSecret" value="@Model?.ClientSecret" class="form-control" required />
+                        <small class="text-muted">Stored securely with AES-256 encryption.</small>
+                    </div>
+                </div>
+                <div class="mb-3">
+    <label class="form-label fw-bold">PcVue Project Name (Optional)</label>
+    <input type="text" name="ProjectName" value="@Model?.ProjectName" class="form-control" placeholder="Ex: Batiment_Vinci_01" />
+    <small class="text-muted">For informational purposes.</small>
+</div>
+
+                <hr class="my-4" />
+                <h6 class="fw-bold mb-3">Optional: Basic Authentication</h6>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="Username" value="@Model?.Username" class="form-control" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" name="Password" value="@Model?.Password" class="form-control" />
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mb-4 mt-2">
+    <input class="form-check-input" type="checkbox" role="switch" asp-for="IsActive" id="IsActiveSwitch">
+    <label class="form-check-label" for="IsActiveSwitch">Enable Automatic Data Import</label>
+</div>
+
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="bi bi-save"></i> Save Configuration
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
