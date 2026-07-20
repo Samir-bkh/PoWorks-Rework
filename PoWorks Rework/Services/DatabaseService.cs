@@ -75,7 +75,75 @@ namespace PoWorks_Rework.Services
         {
             return new NpgsqlConnection(_currentSettings.ToConnectionString());
         }
+
+        // =========================================================================
+        // NOUVELLES MÉTHODES POUR LE MULTI-TENANT (SaaS) ET LA SÉCURITÉ RLS
+        // =========================================================================
+
+        /// <summary>
+        /// Exécute une opération base de données (avec retour de type T) isolée pour une Company spécifique.
+        /// </summary>
+        public async Task<T> ExecuteWithCompanyIsolationAsync<T>(int companyId, Func<NpgsqlConnection, NpgsqlTransaction, Task<T>> action)
+        {
+            await using var connection = CreateNewConnection();
+            await connection.OpenAsync();
+
+            // On ouvre obligatoirement une transaction pour que le "set_config" survive
+            await using var transaction = await connection.BeginTransactionAsync();
+
+            try
+            {
+                // 1. Définir le CompanyId pour PostgreSQL (Active la RLS)
+                // Le paramètre "true" à la fin signifie que c'est une variable locale à la transaction
+                await using (var cmd = new NpgsqlCommand("SELECT set_config('app.current_company_id', @id::text, true);", connection, transaction))
+                {
+                    cmd.Parameters.AddWithValue("id", companyId.ToString());
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                // 2. Exécuter la vraie requête C# (celle qui sera passée en paramètre)
+                var result = await action(connection, transaction);
+
+                // 3. Valider la transaction si tout s'est bien passé
+                await transaction.CommitAsync();
+
+                return result;
+            }
+            catch
+            {
+                // En cas de problème, on annule tout pour ne rien corrompre
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Exécute une opération base de données (sans retour) isolée pour une Company spécifique.
+        /// </summary>
+        public async Task ExecuteWithCompanyIsolationAsync(int companyId, Func<NpgsqlConnection, NpgsqlTransaction, Task> action)
+        {
+            await using var connection = CreateNewConnection();
+            await connection.OpenAsync();
+
+            await using var transaction = await connection.BeginTransactionAsync();
+
+            try
+            {
+                await using (var cmd = new NpgsqlCommand("SELECT set_config('app.current_company_id', @id::text, true);", connection, transaction))
+                {
+                    cmd.Parameters.AddWithValue("id", companyId.ToString());
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                await action(connection, transaction);
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
     }
-
-
 }

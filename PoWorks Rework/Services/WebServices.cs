@@ -22,25 +22,19 @@ namespace PoWorks_Rework.Services
             _logger = logger;
         }
 
-        /// <summary>
-        /// Get a valid access token (refreshes automatically if needed)
-        /// </summary>
         public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings, bool forceRefresh = false)
         {
-            // Si on force le rafraichissement, on vide le cache
             if (forceRefresh)
             {
                 _logger.LogInformation("🔄 Force refresh requested. Clearing old tokens.");
                 ClearTokens();
             }
 
-            // If we have a valid token, return it
             if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
             {
                 return _accessToken;
             }
 
-            // If we have a refresh token, try to refresh first
             if (!string.IsNullOrEmpty(_refreshToken))
             {
                 _logger.LogDebug("Attempting token refresh");
@@ -51,7 +45,6 @@ namespace PoWorks_Rework.Services
                 }
             }
 
-            // No valid token and refresh failed, get a new token
             _logger.LogInformation("Getting new access token...");
             var tokenResponse = await RequestNewTokenAsync(settings);
             return tokenResponse.Success ? tokenResponse.AccessToken : null;
@@ -103,8 +96,6 @@ namespace PoWorks_Rework.Services
                             _accessToken = tokenResponse.AccessToken;
                             _refreshToken = tokenResponse.RefreshToken;
 
-                            // 💡 LA MAGIE EST ICI : On bride le cache à 4 minutes maximum (240 secondes)
-                            // Même si PcVue dit 20 minutes, on force le renouvellement pour le Worker de 5 minutes !
                             int actualLifespan = Math.Min(tokenResponse.ExpiresIn - 60, 240);
                             _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
 
@@ -115,7 +106,12 @@ namespace PoWorks_Rework.Services
                         }
                         else
                         {
-                            return new OAuthTokenResponse { Success = false, ErrorMessage = "Invalid token response: missing access_token" };
+                            // C'est ici que la magie de la lecture d'erreur se passe
+                            var errorContent = await response.Content.ReadAsStringAsync();
+                            _logger.LogError("OAuth token request failed: {StatusCode}. Message retourné par PcVue : {ErrorDetails}",
+                                response.StatusCode, errorContent);
+
+                            return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
                         }
                     }
                     catch (JsonException ex)
@@ -168,7 +164,6 @@ namespace PoWorks_Rework.Services
                             _refreshToken = refreshElement.GetString();
                         }
 
-                        // 💡 Même bride ici (4 minutes max)
                         var expiresIn = tokenData.TryGetProperty("expires_in", out var expiresElement) ? expiresElement.GetInt32() : 3600;
                         int actualLifespan = Math.Min(expiresIn - 60, 240);
                         _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);

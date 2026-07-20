@@ -7,166 +7,117 @@ namespace PoWorks_Rework.Repositories
     public class MeterRepository
     {
         private readonly DatabaseService _databaseService;
+        private readonly ICompanyContext _companyContext; // <--- AJOUT
         private readonly ILogger<MeterRepository> _logger;
 
-        public MeterRepository(DatabaseService databaseService, ILogger<MeterRepository> logger)
+        public MeterRepository(DatabaseService databaseService, ICompanyContext companyContext, ILogger<MeterRepository> logger)
         {
             _databaseService = databaseService;
+            _companyContext = companyContext; // <--- AJOUT
             _logger = logger;
         }
 
+
         public async Task<List<Meter>> GetMetersAsync(MeterSearchCriteria criteria, int page = 1, int pageSize = 10)
         {
-            _logger.LogInformation("Getting meters with criteria: {SearchField}={SearchTerm}, Page={Page}, PageSize={PageSize}",
-                criteria.SearchField, criteria.SearchTerm, page, pageSize);
-
-            var meters = new List<Meter>();
-
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                // Create a brand new connection for this operation
-                var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
+                var meters = new List<Meter>();
+                var whereClause = string.Empty;
+                if (!string.IsNullOrEmpty(criteria.SearchTerm))
                 {
-                    await connection.OpenAsync();
-                    _logger.LogInformation("Database connection opened for GetMetersAsync");
-
-                    var whereClause = string.Empty;
-                  if (!string.IsNullOrEmpty(criteria.SearchTerm))
+                    switch (criteria.SearchField)
                     {
-                        switch (criteria.SearchField)
-                        {
-                            case "Name":
-                                whereClause = @" WHERE (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
-                                break;
-                            case "Type":
-                                whereClause = @" WHERE m.""Type"" ILIKE @SearchTerm";
-                                break;
-                         
-                            case "Tenant":
-                                whereClause = @" WHERE m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
-                                break;
-                        }
+                        case "Name":
+                            whereClause = @" AND (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
+                            break;
+                        case "Type":
+                            whereClause = @" AND m.""Type"" ILIKE @SearchTerm";
+                            break;
+                        case "Tenant":
+                            whereClause = @" AND m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
+                            break;
                     }
-
-                    string sql = $@"
-                                SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
-                                m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
-                                FROM ""Meters"" m
-                                LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
-                                LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                                {whereClause}
-                                ORDER BY m.""Name""
-                                LIMIT @PageSize OFFSET @Offset";
-
-                    _logger.LogInformation("Executing SQL: {SQL}", sql);
-
-                    using var cmd = new NpgsqlCommand(sql, connection);
-
-                    if (!string.IsNullOrEmpty(criteria.SearchTerm))
-                    {
-                        cmd.Parameters.AddWithValue("@SearchTerm", $"%{criteria.SearchTerm}%");
-                    }
-
-                    cmd.Parameters.AddWithValue("@PageSize", pageSize);
-                    cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
-
-                    using var reader = await cmd.ExecuteReaderAsync();
-
-                    while (await reader.ReadAsync())
-                    {
-                        meters.Add(new Meter
-                        {
-                            Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
-                            Name = reader.GetString(reader.GetOrdinal("Name")),
-                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
-                            Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
-                            ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
-                            ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
-                            LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
-                            Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
-                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
-                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
-                            Active = reader.GetBoolean(reader.GetOrdinal("Active"))
-                        });
-                    }
-
-                    _logger.LogInformation("Retrieved {Count} meters", meters.Count);
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting meters");
-                throw;
-            }
 
-            return meters;
+                string sql = $@"
+                    SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
+                    m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
+                    FROM ""Meters"" m
+                    LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
+                    LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                    WHERE 1=1 {whereClause}
+                    ORDER BY m.""Name""
+                    LIMIT @PageSize OFFSET @Offset";
+
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                if (!string.IsNullOrEmpty(criteria.SearchTerm))
+                    cmd.Parameters.AddWithValue("@SearchTerm", $"%{criteria.SearchTerm}%");
+
+                cmd.Parameters.AddWithValue("@PageSize", pageSize);
+                cmd.Parameters.AddWithValue("@Offset", (page - 1) * pageSize);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    meters.Add(new Meter
+                    {
+                        Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                        Name = reader.GetString(reader.GetOrdinal("Name")),
+                        Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
+                        Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
+                        ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
+                        ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
+                        LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
+                        Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
+                        TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
+                        TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
+                        Active = reader.GetBoolean(reader.GetOrdinal("Active"))
+                    });
+                }
+                return meters;
+            });
         }
 
         public async Task<int> GetTotalMetersCountAsync(MeterSearchCriteria criteria)
         {
-            _logger.LogInformation("Getting total meters count with criteria: {SearchField}={SearchTerm}",
-                criteria.SearchField, criteria.SearchTerm);
-
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                // Create a brand new connection for this operation
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                var whereClause = string.Empty;
+                if (!string.IsNullOrEmpty(criteria.SearchTerm))
                 {
-                    await connection.OpenAsync();
-                    _logger.LogInformation("Database connection opened for GetTotalMetersCountAsync");
-
-                    var whereClause = string.Empty;
-                    if (!string.IsNullOrEmpty(criteria.SearchTerm))
+                    switch (criteria.SearchField)
                     {
-                        switch (criteria.SearchField)
-                        {
-                            case "Name":
-                                whereClause = @" WHERE (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
-                                break;
-                            case "Type":
-                                whereClause = @" WHERE m.""Type"" ILIKE @SearchTerm";
-                                break;
-                          
-                            case "Tenant":
-                                whereClause = @" WHERE m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
-                                break;
-                        }
+                        case "Name":
+                            whereClause = @" WHERE (m.""Name"" ILIKE @SearchTerm OR m.""Label"" ILIKE @SearchTerm)";
+                            break;
+                        case "Type":
+                            whereClause = @" WHERE m.""Type"" ILIKE @SearchTerm";
+                            break;
+                        case "Tenant":
+                            whereClause = @" WHERE m.""TenantID"" IN (SELECT ""TenantID"" FROM ""Tenants"" WHERE ""DisplayName"" ILIKE @SearchTerm)";
+                            break;
                     }
-
-                    string sql = $@"SELECT COUNT(*) FROM ""Meters"" m {whereClause}";
-                    _logger.LogInformation("Executing SQL: {SQL}", sql);
-
-                    using var cmd = new NpgsqlCommand(sql, connection);
-
-                    if (!string.IsNullOrEmpty(criteria.SearchTerm))
-                    {
-                        cmd.Parameters.AddWithValue("@SearchTerm", $"%{criteria.SearchTerm}%");
-                    }
-
-                    var result = await cmd.ExecuteScalarAsync();
-                    int count = Convert.ToInt32(result);
-                    _logger.LogInformation("Total meters count: {Count}", count);
-                    return count;
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting total meters count");
-                throw;
-            }
+
+                string sql = $@"SELECT COUNT(*) FROM ""Meters"" m {whereClause}";
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                if (!string.IsNullOrEmpty(criteria.SearchTerm))
+                    cmd.Parameters.AddWithValue("@SearchTerm", $"%{criteria.SearchTerm}%");
+
+                var result = await cmd.ExecuteScalarAsync();
+                return Convert.ToInt32(result);
+            });
         }
 
         public async Task<Meter> GetMeterByIdAsync(int meterId)
         {
-            _logger.LogInformation("Getting meter by ID: {MeterId}", meterId);
-
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
-
-                    string sql = @"
+                string sql = @"
                 SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
                        m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
                 FROM ""Meters"" m
@@ -174,53 +125,38 @@ namespace PoWorks_Rework.Repositories
                 LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
                 WHERE m.""MeterId"" = @MeterId";
 
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@MeterId", meterId);
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@MeterId", meterId);
 
-                    using var reader = await cmd.ExecuteReaderAsync();
-
-                    if (await reader.ReadAsync())
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    return new Meter
                     {
-                        var meter = new Meter
-                        {
-                            Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
-                            Name = reader.GetString(reader.GetOrdinal("Name")),
-                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")), // Add Label
-                            Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
-                            ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
-                            ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
-                            LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
-                            Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
-                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
-                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
-                            Active = reader.GetBoolean(reader.GetOrdinal("Active"))
-                        };
-
-                        return meter;
-                    }
-
-                    return null;
+                        Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                        Name = reader.GetString(reader.GetOrdinal("Name")),
+                        Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
+                        Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
+                        ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
+                        ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
+                        LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
+                        Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
+                        TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
+                        TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
+                        Active = reader.GetBoolean(reader.GetOrdinal("Active"))
+                    };
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting meter by ID {MeterId}", meterId);
-                throw;
-            }
+                return null;
+            });
         }
 
         public async Task<List<Meter>> GetSubMetersAsync(int parentMeterId)
         {
-            var meters = new List<Meter>();
-
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
-
-                    // FIX: Use lowercase 'sub' to match database constraint
-                    string sql = @"
+                var meters = new List<Meter>();
+                string sql = @"
                 SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
                        m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
                 FROM ""Meters"" m
@@ -228,76 +164,44 @@ namespace PoWorks_Rework.Repositories
                 LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
                 WHERE m.""ParentId"" = @ParentId AND m.""Type"" = 'sub'";
 
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@ParentId", parentMeterId);
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@ParentId", parentMeterId);
 
-                    using var reader = await cmd.ExecuteReaderAsync();
-
-                    while (await reader.ReadAsync())
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    meters.Add(new Meter
                     {
-                        meters.Add(new Meter
-                        {
-                            Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
-                            Name = reader.GetString(reader.GetOrdinal("Name")),
-                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
-                            Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
-                            ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
-                            ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
-                            LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
-                            Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
-                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
-                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
-                            Active = reader.GetBoolean(reader.GetOrdinal("Active"))
-                        });
-                    }
+                        Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                        Name = reader.GetString(reader.GetOrdinal("Name")),
+                        Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
+                        Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
+                        ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
+                        ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
+                        LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
+                        Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
+                        TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
+                        TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
+                        Active = reader.GetBoolean(reader.GetOrdinal("Active"))
+                    });
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting sub meters for parent {ParentMeterId}", parentMeterId);
-            }
-
-            _logger.LogInformation("Retrieved {Count} sub meters for parent meter ID {ParentMeterId}", meters.Count, parentMeterId);
-            return meters;
+                return meters;
+            });
         }
 
-
-        /// <summary>
-        /// Get meters that were imported from WebService variables
-        /// These meters can be identified by their Name field containing WebService variable patterns
-        /// </summary>
-        /// <param name="activeOnly">If true, only return active meters</param>
-        /// <param name="limit">Maximum number of meters to return (0 = no limit)</param>
-        /// <returns>List of meters that originated from WebService imports</returns>
         public async Task<List<MeterForTrendsAnalysis>> GetWebServiceImportedMetersAsync(bool activeOnly = true, int limit = 0)
         {
-            _logger.LogInformation("Getting WebService imported meters - ActiveOnly: {ActiveOnly}, Limit: {Limit}", activeOnly, limit);
-
-            var meters = new List<MeterForTrendsAnalysis>();
-
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
-                    _logger.LogInformation("Database connection opened for GetWebServiceImportedMetersAsync");
+                var meters = new List<MeterForTrendsAnalysis>();
+                var whereConditions = new List<string> { @"(m.""Name"" LIKE '%.%' OR m.""Name"" LIKE 'varsets.%')" };
+                if (activeOnly) whereConditions.Add(@"m.""Active"" = true");
 
-                    // Build WHERE clause to identify WebService-imported meters
-                    var whereConditions = new List<string>();
+                var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
+                var limitClause = limit > 0 ? $"LIMIT {limit}" : "";
 
-                    // WebService variables typically use dot notation (e.g., "varsets.varset001.Variable")
-                    // or specific naming patterns that distinguish them from HDS/manual meters
-                    whereConditions.Add(@"(m.""Name"" LIKE '%.%' OR m.""Name"" LIKE 'varsets.%')");
-
-                    if (activeOnly)
-                    {
-                        whereConditions.Add(@"m.""Active"" = true");
-                    }
-
-                    var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
-                    var limitClause = limit > 0 ? $"LIMIT {limit}" : "";
-
-                    string sql = $@"
+                string sql = $@"
                 SELECT m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"", 
                        m.""Type"", m.""Active"", m.""TenantID"", 
                        t.""DisplayName"" AS ""TenantName""
@@ -307,114 +211,65 @@ namespace PoWorks_Rework.Repositories
                 ORDER BY m.""Name""
                 {limitClause}";
 
-                    _logger.LogInformation("Executing SQL: {SQL}", sql);
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                using var reader = await cmd.ExecuteReaderAsync();
 
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    using var reader = await cmd.ExecuteReaderAsync();
-
-                    while (await reader.ReadAsync())
+                while (await reader.ReadAsync())
+                {
+                    meters.Add(new MeterForTrendsAnalysis
                     {
-                        var meter = new MeterForTrendsAnalysis
-                        {
-                            MeterId = reader.GetInt32(reader.GetOrdinal("MeterId")),
-                            Name = reader.GetString(reader.GetOrdinal("Name")),
-                            Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
-                            Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
-                            Type = reader.GetString(reader.GetOrdinal("Type")),
-                            Active = reader.GetBoolean(reader.GetOrdinal("Active")),
-                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")),
-                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
-
-                            // For trends processing, the Name field contains the original WebService variable name
-                            OriginalVariableName = reader.GetString(reader.GetOrdinal("Name"))
-                        };
-
-                        meters.Add(meter);
-                    }
-
-                    _logger.LogInformation("Retrieved {Count} WebService imported meters", meters.Count);
-                    return meters;
+                        MeterId = reader.GetInt32(reader.GetOrdinal("MeterId")),
+                        Name = reader.GetString(reader.GetOrdinal("Name")),
+                        Label = reader.IsDBNull(reader.GetOrdinal("Label")) ? null : reader.GetString(reader.GetOrdinal("Label")),
+                        Unit = reader.IsDBNull(reader.GetOrdinal("Unit")) ? "" : reader.GetString(reader.GetOrdinal("Unit")),
+                        Type = reader.GetString(reader.GetOrdinal("Type")),
+                        Active = reader.GetBoolean(reader.GetOrdinal("Active")),
+                        TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")),
+                        TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
+                        OriginalVariableName = reader.GetString(reader.GetOrdinal("Name"))
+                    });
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting WebService imported meters");
-                throw;
-            }
+                return meters;
+            });
         }
 
-        /// <summary>
-        /// Get count of meters that were imported from WebService variables
-        /// </summary>
-        /// <param name="activeOnly">If true, only count active meters</param>
-        /// <returns>Total count of WebService imported meters</returns>
         public async Task<int> GetWebServiceImportedMetersCountAsync(bool activeOnly = true)
         {
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
+                var whereConditions = new List<string> { @"(""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')" };
+                if (activeOnly) whereConditions.Add(@"""Active"" = true");
 
-                    var whereConditions = new List<string>();
-                    whereConditions.Add(@"(""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')");
+                var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
+                string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
 
-                    if (activeOnly)
-                    {
-                        whereConditions.Add(@"""Active"" = true");
-                    }
-
-                    var whereClause = "WHERE " + string.Join(" AND ", whereConditions);
-
-
-                    string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
-
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    var result = await cmd.ExecuteScalarAsync();
-                    int count = Convert.ToInt32(result);
-
-                    _logger.LogInformation("Total WebService imported meters count: {Count}", count);
-                    return count;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting WebService imported meters count");
-                throw;
-            }
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                var result = await cmd.ExecuteScalarAsync();
+                return Convert.ToInt32(result);
+            });
         }
 
-        /// <summary>
-        /// Récupère la date de la dernière donnée enregistrée pour un compteur.
-        /// Si le compteur est vide, renvoie null.
-        /// </summary>
         public async Task<DateTime?> GetLastReadingTimestampAsync(int meterId)
         {
-            try
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+
+            // On précise explicitement <DateTime?> ici pour le compilateur
+            return await _databaseService.ExecuteWithCompanyIsolationAsync<DateTime?>(currentCompanyId, async (connection, transaction) =>
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                string sql = @"SELECT MAX(""Timestamp"") FROM ""MeterReadings"" WHERE ""MeterId"" = @MeterId";
+                using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                cmd.Parameters.AddWithValue("@MeterId", meterId);
+
+                var result = await cmd.ExecuteScalarAsync();
+                if (result != DBNull.Value && result != null)
                 {
-                    await connection.OpenAsync();
-                    string sql = @"SELECT MAX(""Timestamp"") FROM ""MeterReadings"" WHERE ""MeterId"" = @MeterId";
-
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@MeterId", meterId);
-
-                    var result = await cmd.ExecuteScalarAsync();
-
-                    if (result != DBNull.Value && result != null)
-                    {
-                        return Convert.ToDateTime(result);
-                    }
+                    return (DateTime?)Convert.ToDateTime(result);
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Erreur lors de la récupération du dernier timestamp pour le compteur {MeterId}", meterId);
-            }
-            return null;
+                return (DateTime?)null;
+            });
         }
+
+    
     }
-
-
 }

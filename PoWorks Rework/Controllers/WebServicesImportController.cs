@@ -203,17 +203,16 @@ namespace PoWorks_Rework.Controllers
                                         if (point.TimestampParsed.HasValue)
                                         {
                                             var insertCmd = new NpgsqlCommand(@"
-                                INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"")
-                                VALUES (@meterId, @timestamp, @value, @quality)
-                                ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
+INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+VALUES (@meterId, @timestamp, @value, @quality, @companyId)
+ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
 
                                             insertCmd.Parameters.AddWithValue("@meterId", currentMeterId);
                                             insertCmd.Parameters.AddWithValue("@timestamp", point.TimestampParsed.Value);
                                             insertCmd.Parameters.AddWithValue("@value", point.Value);
-
-                                            // Si la qualité est "Good", on met 192 (standard OPC), sinon 0
                                             int qualityValue = point.IsGoodQuality ? 192 : 0;
                                             insertCmd.Parameters.AddWithValue("@quality", qualityValue);
+                                            insertCmd.Parameters.AddWithValue("@companyId", 1); // <-- Ajout de l'ID de l'entreprise
 
                                             await insertCmd.ExecuteNonQueryAsync();
                                             pointsInserted++;

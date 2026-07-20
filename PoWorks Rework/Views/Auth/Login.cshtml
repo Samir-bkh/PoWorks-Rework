@@ -1,0 +1,41 @@
+@{
+    Layout = null; // Pas de menu sur la page de connexion
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - PoWorks SaaS</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <style>
+        body { background-color: #f8f9fa; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        .login-card { max-width: 400px; width: 100%; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 2rem; background: white; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">PoWorks</h2>
+            <p class="text-muted">Portail SaaS Sécurisé</p>
+        </div>
+
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger text-center">@ViewBag.Error</div>
+        }
+
+        <form asp-controller="Auth" asp-action="Login" method="post">
+            <div class="mb-3">
+                <label class="form-label">Nom d'utilisateur</label>
+                <input type="text" name="username" class="form-control" required placeholder="ex: admin" />
+            </div>
+            <div class="mb-4">
+                <label class="form-label">Mot de passe</label>
+                <input type="password" name="password" class="form-control" required placeholder="****" />
+            </div>
+            <button type="submit" class="btn btn-primary w-100 fw-bold">Se connecter</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -2,6 +2,7 @@ using PoWorks_Rework.Services;
 using System;
 using System.Security.Authentication;
 using QuestPDF.Infrastructure;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 // Start of program
 Console.WriteLine("1. PROGRAM START");
@@ -32,15 +33,14 @@ builder.Services.AddScoped<VariableBrowseParsingService>();
 
 builder.Services.AddScoped<BillingService>();
 
-// Register HttpClient and PCVueWebService
+// Dans Program.cs, remplace ton bloc de registre PCVueWebService par ceci :
 builder.Services.AddSingleton<PCVueWebService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<PCVueWebService>>();
     var handler = new HttpClientHandler
     {
-        ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
-        CheckCertificateRevocationList = false,
-        SslProtocols = SslProtocols.None
+        // Autorise tout, ne vérifie rien (parfait pour le test)
+        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
     };
     var httpClient = new HttpClient(handler)
     {
@@ -59,6 +59,21 @@ System.Net.ServicePointManager.SecurityProtocol =
     System.Net.SecurityProtocolType.Tls13;
 
 builder.Services.AddHostedService<AutoImportWorker>();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Auth/Login";
+        options.LogoutPath = "/Auth/Logout";
+        options.AccessDeniedPath = "/Auth/AccessDenied";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8); // Durée de la session : 8 heures
+    });
+
+// Permet de lire les requêtes HTTP (et donc les cookies) n'importe où dans le code
+builder.Services.AddHttpContextAccessor();
+
+// Déclare notre cerveau Multi-Clients
+builder.Services.AddScoped<ICompanyContext, WebCompanyContext>();
 
 Console.WriteLine("3. BUILDING THE APP");
 var app = builder.Build();
@@ -87,6 +102,9 @@ try
 
     Console.WriteLine("4e. UseRouting");
     app.UseRouting();
+
+   
+    app.UseAuthorization();
 
     Console.WriteLine("4f. UseAuthorization");
     app.UseAuthorization();

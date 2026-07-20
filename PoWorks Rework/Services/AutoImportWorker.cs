@@ -1,174 +1,143 @@
-﻿using Microsoft.Extensions.Hosting;
-using Npgsql;
+﻿using Npgsql;
 using PoWorks_Rework.Models;
-using PoWorks_Rework.Repositories;
 
 namespace PoWorks_Rework.Services
 {
     public class AutoImportWorker : BackgroundService
     {
-        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<AutoImportWorker> _logger;
-        // On reste à 1 minute pour tes tests !
-        private readonly int _pollingIntervalMinutes = 1;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly int _cycleDelayMinutes = 1;
 
-        public AutoImportWorker(IServiceScopeFactory scopeFactory, ILogger<AutoImportWorker> logger)
+        public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider)
         {
-            _scopeFactory = scopeFactory;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("🚀 DÉMARRAGE DU PILOTE AUTOMATIQUE (AutoImportWorker) - Cycle: {Minutes} minutes", _pollingIntervalMinutes);
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            _logger.LogInformation("🚀 DÉMARRAGE DU PILOTE AUTOMATIQUE - Cycle: {Delay} minutes", _cycleDelayMinutes);
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                _logger.LogInformation("🔄 Lancement du cycle d'importation automatique à {time}", DateTimeOffset.Now);
-                try
-                {
-                    await RunImportCycleAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "❌ Erreur critique dans le cycle d'importation automatique");
-                }
-                await Task.Delay(TimeSpan.FromMinutes(_pollingIntervalMinutes), stoppingToken);
+                try { await RunImportCycleAsync(stoppingToken); }
+                catch (Exception ex) { _logger.LogError(ex, "❌ ERREUR CRITIQUE !"); }
+                await Task.Delay(TimeSpan.FromMinutes(_cycleDelayMinutes), stoppingToken);
             }
         }
 
-        private async Task RunImportCycleAsync()
+        private async Task RunImportCycleAsync(CancellationToken stoppingToken)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var meterRepo = scope.ServiceProvider.GetRequiredService<MeterRepository>();
-            var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
+            using var scope = _serviceProvider.CreateScope();
             var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var pcVueWebService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
+            var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
 
-            if (!dbService.IsInitialized) return;
+            var companyIds = await GetAllCompanyIdsAsync(dbService);
 
-            var meters = await meterRepo.GetWebServiceImportedMetersAsync(activeOnly: true);
-            if (!meters.Any()) return;
-
-            var connectionSection = config.GetSection("WebServiceConnections").GetChildren().FirstOrDefault(c => c["IsDefault"] == "true")
-                                 ?? config.GetSection("WebServiceConnections").GetChildren().FirstOrDefault();
-
-            if (connectionSection == null) return;
-
-            var settings = new PCVueWebServiceSettings
+            foreach (var companyId in companyIds)
             {
-                ConnectionId = connectionSection["ConnectionId"] ?? "",
-                ConnectionName = connectionSection["ConnectionName"] ?? "",
-                BaseUrl = connectionSection["BaseUrl"] ?? "",
-                ClientId = connectionSection["ClientId"] ?? "",
-                ClientSecret = connectionSection["ClientSecret"] ?? "",
-                Username = connectionSection["Username"] ?? "",
-                Password = connectionSection["Password"] ?? ""
-            };
+                _logger.LogInformation("🏢 --- IMPORTATION COMPANY : {Id} ---", companyId);
 
-            int pointsInsertsTotal = 0;
+                // On charge la config unique globale pour le moment (réutilisant GetApiSettingsAsync)
+                var apiSettings = await GetApiSettingsAsync(dbService);
+                if (apiSettings == null) continue;
 
-            // LA CORRECTION EST LÀ : ON DEMANDE L'HEURE UTC POUR PCVUE !
-            var endDateUtc = DateTime.UtcNow;
-
-            using var connection = new NpgsqlConnection(dbService.GetConnectionString());
-            await connection.OpenAsync();
-
-            foreach (var meter in meters)
-            {
-                _logger.LogWarning("🔍 --- ANALYSE DU COMPTEUR : {MeterName} ---", meter.Name);
-
-                // On lit l'heure malaisienne dans ta base
-                var lastTimestampLocal = await meterRepo.GetLastReadingTimestampAsync(meter.MeterId);
-
-                DateTime startDateUtc;
-                if (lastTimestampLocal.HasValue)
+                await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                 {
-                    // On convertit l'heure malaisienne en Heure Universelle (UTC) pour PcVue
-                    var localTime = DateTime.SpecifyKind(lastTimestampLocal.Value, DateTimeKind.Local);
-                    startDateUtc = localTime.ToUniversalTime();
-                }
-                else
-                {
-                    startDateUtc = DateTime.UtcNow.AddHours(-24);
-                }
-
-                _logger.LogInformation("🕰️ Dernier point en base (Local) : {Last}", lastTimestampLocal?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Aucun");
-                _logger.LogInformation("📡 Requête API (En UTC !!!) -> Start={Start} | End={End}", startDateUtc.ToString("yyyy-MM-dd HH:mm:ss"), endDateUtc.ToString("yyyy-MM-dd HH:mm:ss"));
-
-                if (startDateUtc >= endDateUtc)
-                {
-                    _logger.LogInformation("⏩ Ignoré : on a déjà les données jusqu'à maintenant.");
-                    continue;
-                }
-
-                var variableNames = new List<string> { meter.OriginalVariableName };
-                var trendsResults = await trendsService.ProcessVariablesTrendsAsync(variableNames, startDateUtc, endDateUtc, settings);
-                var result = trendsResults.FirstOrDefault();
-
-                if (result != null && result.Success && result.TrendData != null)
-                {
-                    _logger.LogWarning("📥 PCVue a renvoyé {NbPoints} points.", result.TrendData.Count);
-
-                    using var tx = await connection.BeginTransactionAsync();
-                    try
+                    var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
+                    foreach (var meter in metersToImport)
                     {
-                        int pointsInsertsPourCompteur = 0;
-                        foreach (var point in result.TrendData)
+                        if (stoppingToken.IsCancellationRequested) break;
+
+                        DateTime? lastPoint = await GetLastTimestampForMeterAsync(connection, transaction, meter.MeterId);
+                        DateTime startTime = lastPoint ?? DateTime.Now.AddDays(-7);
+                        DateTime endTime = DateTime.Now;
+
+                        if (startTime >= endTime) continue;
+
+                        try
                         {
-                            _logger.LogInformation("   -> Point reçu brut : Heure={Time} | Valeur={Val} | Qualité={Qual}", point.Timestamp, point.Value, point.Quality);
+                            var trendResults = await trendsService.ProcessVariablesTrendsAsync(
+                                new List<string> { meter.OriginalVariableName }, startTime.ToUniversalTime(), endTime.ToUniversalTime(), apiSettings);
 
-                            if (point.TimestampParsed.HasValue)
+                            var resultForThisMeter = trendResults.FirstOrDefault();
+                            if (resultForThisMeter?.TrendData == null) continue;
+
+                            foreach (var point in resultForThisMeter.TrendData)
                             {
-                                // DOUBLE SÉCURITÉ : UNIQUEMENT LES BONS POINTS
-                                if (point.IsGoodQuality)
-                                {
-                                    var insertCmd = new NpgsqlCommand(@"
-                                        INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"")
-                                        VALUES (@meterId, @timestamp, @value, @quality)
-                                        ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, tx);
+                                if (point.Quality?.ToLower() != "good" || !point.TimestampParsed.HasValue) continue;
 
-                                    // On prend l'heure UTC renvoyée par PcVue, et on la repasse en heure Malaisienne pour ta BDD !
-                                    DateTime apiUtcTime = DateTime.SpecifyKind(point.TimestampParsed.Value, DateTimeKind.Utc);
-                                    DateTime heureLocalePourDashboard = apiUtcTime.ToLocalTime();
+                                DateTime localTime = point.TimestampParsed.Value.ToLocalTime();
+                                if (localTime <= startTime) continue;
 
-                                    insertCmd.Parameters.AddWithValue("@meterId", meter.MeterId);
-                                    insertCmd.Parameters.AddWithValue("@timestamp", heureLocalePourDashboard);
-                                    insertCmd.Parameters.AddWithValue("@value", point.Value);
-                                    insertCmd.Parameters.AddWithValue("@quality", 192);
+                                var insertCmd = new NpgsqlCommand(@"
+                                    INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                                    VALUES (@meterId, @timestamp, @value, @quality, @companyId)
+                                    ON CONFLICT DO NOTHING", connection, transaction);
 
-                                    int inserted = await insertCmd.ExecuteNonQueryAsync();
-                                    pointsInsertsPourCompteur += inserted;
-                                    pointsInsertsTotal += inserted;
-
-                                    if (inserted > 0)
-                                        _logger.LogInformation("      ✅ Point inséré à l'heure locale : {LocalTime}", heureLocalePourDashboard);
-                                    else
-                                        _logger.LogInformation("      ⚠️ Point ignoré (Déjà existant en base).");
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("      ❌ Point ignoré (Mauvaise qualité ou point de bordure artificiel)");
-                                }
+                                insertCmd.Parameters.AddWithValue("@meterId", meter.MeterId);
+                                insertCmd.Parameters.AddWithValue("@timestamp", localTime);
+                                insertCmd.Parameters.AddWithValue("@value", point.Value);
+                                insertCmd.Parameters.AddWithValue("@quality", 192);
+                                insertCmd.Parameters.AddWithValue("@companyId", companyId);
+                                await insertCmd.ExecuteNonQueryAsync();
                             }
                         }
-                        await tx.CommitAsync();
-                        _logger.LogInformation("✔ Bilan pour {MeterName} : {Points} nouveaux points ajoutés.", meter.Name, pointsInsertsPourCompteur);
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Erreur sur {Name}", meter.Name);
+                            pcVueWebService.ClearTokens();
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        await tx.RollbackAsync();
-                        _logger.LogError(ex, "Erreur lors de l'insertion en base.");
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("❌ PCVue n'a retourné aucun point ou la requête a échoué.");
-                }
+                });
             }
+        }
 
-            _logger.LogInformation("✅ Cycle terminé. Total des nouveaux points : {Total}", pointsInsertsTotal);
+        private async Task<List<int>> GetAllCompanyIdsAsync(DatabaseService dbService)
+        {
+            var ids = new List<int>();
+            try
+            {
+                using var conn = dbService.CreateNewConnection();
+                await conn.OpenAsync();
+                using var cmd = new NpgsqlCommand("SELECT \"CompanyId\" FROM \"Companies\"", conn);
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) ids.Add(reader.GetInt32(0));
+            }
+            catch { }
+            return ids;
+        }
+
+        private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
+        {
+            var meters = new List<MeterForTrendsAnalysis>();
+            using var cmd = new NpgsqlCommand("SELECT \"MeterId\", \"Name\", \"Active\" FROM \"Meters\" WHERE (\"Name\" LIKE '%.%' OR \"Name\" LIKE 'varsets.%') AND \"Active\" = true", conn, tr);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) meters.Add(new MeterForTrendsAnalysis { MeterId = reader.GetInt32(0), Name = reader.GetString(1), OriginalVariableName = reader.GetString(1) });
+            return meters;
+        }
+
+        private async Task<DateTime?> GetLastTimestampForMeterAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int id)
+        {
+            using var cmd = new NpgsqlCommand("SELECT MAX(\"Timestamp\") FROM \"MeterReadings\" WHERE \"MeterId\" = @id", conn, tr);
+            cmd.Parameters.AddWithValue("@id", id);
+            var res = await cmd.ExecuteScalarAsync();
+            return (res != DBNull.Value) ? (DateTime?)Convert.ToDateTime(res) : null;
+        }
+
+        private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService)
+        {
+            try
+            {
+                using var conn = dbService.CreateNewConnection();
+                await conn.OpenAsync();
+                using var cmd = new NpgsqlCommand("SELECT \"SettingValue\" FROM \"Settings\" WHERE \"SettingKey\" = 'PCVueWebServiceSettings'", conn);
+                var res = await cmd.ExecuteScalarAsync();
+                return (res != null) ? System.Text.Json.JsonSerializer.Deserialize<PCVueWebServiceSettings>(res.ToString()!) : null;
+            }
+            catch { return null; }
         }
     }
 }
