@@ -1,4 +1,4 @@
-﻿using Npgsql;
+using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
 
@@ -219,7 +219,7 @@ namespace PoWorks_Rework.Repositories
                 {limitClause}";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
-                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); // LE MUR
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
 
                 using var reader = await cmd.ExecuteReaderAsync();
 
@@ -254,7 +254,7 @@ namespace PoWorks_Rework.Repositories
                 string sql = $@"SELECT COUNT(*) FROM ""Meters"" {whereClause}";
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
-                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); // LE MUR
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
 
                 var result = await cmd.ExecuteScalarAsync();
                 return Convert.ToInt32(result);
@@ -266,7 +266,6 @@ namespace PoWorks_Rework.Repositories
             int currentCompanyId = _companyContext.CurrentCompanyId;
             return await _databaseService.ExecuteWithCompanyIsolationAsync<DateTime?>(currentCompanyId, async (connection, transaction) =>
             {
-                // Note : On relie avec la table Meters pour s'assurer que ce compteur appartient bien au CompanyId
                 string sql = @"
                 SELECT MAX(mr.""Timestamp"") 
                 FROM ""MeterReadings"" mr
@@ -275,7 +274,7 @@ namespace PoWorks_Rework.Repositories
 
                 using var cmd = new NpgsqlCommand(sql, connection, transaction);
                 cmd.Parameters.AddWithValue("@MeterId", meterId);
-                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); // LE MUR
+                cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
 
                 var result = await cmd.ExecuteScalarAsync();
                 if (result != DBNull.Value && result != null)

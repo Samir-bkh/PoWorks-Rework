@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
@@ -9,9 +9,7 @@ namespace PoWorks_Rework.Controllers
     public class MeterReadingsController : BaseController
     {
         private readonly ILogger<MeterReadingsController> _logger;
-        private readonly ICompanyContext _companyContext; // <--- AJOUT DU CERVEAU
-
-        // <--- AJOUT DU CERVEAU DANS LE CONSTRUCTEUR
+        private readonly ICompanyContext _companyContext; 
         public MeterReadingsController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<MeterReadingsController> logger)
             : base(databaseService)
         {
@@ -153,7 +151,7 @@ namespace PoWorks_Rework.Controllers
         private async Task<List<MeterReading>> GetReadingsByType(List<int> meterIds, string viewType,
             int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
         {
-            int currentCompanyId = _companyContext.CurrentCompanyId; // <--- C'EST LE VRAI ID DU CLIENT
+            int currentCompanyId = _companyContext.CurrentCompanyId; 
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
                 var readings = new List<MeterReading>();
@@ -509,7 +507,7 @@ namespace PoWorks_Rework.Controllers
             {
                 DateTime endOfDay = endDate.Value.Date.AddDays(1).AddTicks(-1);
                 command.Parameters.AddWithValue("@endDate", endOfDay);
-                command.Parameters.AddWithValue("@EndDate", endOfDay); // For single queries mapping
+                command.Parameters.AddWithValue("@EndDate", endOfDay); 
             }
         }
 
@@ -592,8 +590,6 @@ namespace PoWorks_Rework.Controllers
 
         #endregion
     }
-
-    // Extension method to check if a column exists in the reader
     public static class NpgsqlDataReaderExtensions
     {
         public static bool HasColumn(this NpgsqlDataReader reader, string columnName)

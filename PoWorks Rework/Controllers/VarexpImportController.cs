@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -27,25 +27,17 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region VAREXP Parse & Import Methods
-
-        /// <summary>
-        /// Parse VAREXP.DAT file and return records with parent options
-        /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
         [IgnoreAntiforgeryToken]
         public async Task<IActionResult> ParseVarexp(IFormFile VarexpFile)
         {
-            // 1) Basic file check
             if (VarexpFile == null || VarexpFile.Length == 0)
                 return BadRequest("No VAREXP.DAT file was uploaded.");
 
             try
             {
-                // 2) Attempt parse
                 var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
-
-                // 3) Get parent meter options from PostgreSQL database
                 _logger.LogInformation("🔍 DEBUG: About to call GetParentMeterOptions()");
                 var parentOptions = await GetParentMeterOptions();
                 _logger.LogInformation("🔍 DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0);
@@ -73,10 +65,6 @@ namespace PoWorks_Rework.Controllers
                 return BadRequest($"Unexpected error: {ex.Message}");
             }
         }
-
-        /// <summary>
-        /// Import VAREXP meters into the database
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> ImportVarexpMeters([FromBody] ImportVarexpMetersRequest request)
         {
@@ -107,18 +95,12 @@ namespace PoWorks_Rework.Controllers
                 int skippedCount = 0;
                 int errorCount = 0;
                 var detailedErrors = new Dictionary<string, string>();
-
-                // Use a single connection for the entire import operation
                 using var connection = _databaseService.GetConnection();
-
-                // Process each meter
                 foreach (var meter in request.Meters)
                 {
                     try
                     {
                         _logger.LogInformation($"Processing VAREXP meter: {meter.MeterName}");
-
-                        // Check if meter already exists
                         var existingMeter = await GetExistingMeterByNameAsync(meter.MeterName, connection);
 
                         if (existingMeter != null)
@@ -131,7 +113,6 @@ namespace PoWorks_Rework.Controllers
                             }
                             else if (request.UpdateExisting)
                             {
-                                // Update existing meter
                                 await UpdateExistingVarexpMeterAsync(existingMeter.MeterId, meter, connection);
                                 updatedCount++;
                                 _logger.LogInformation($"Updated meter: {meter.MeterName}");
@@ -146,7 +127,6 @@ namespace PoWorks_Rework.Controllers
                         }
                         else
                         {
-                            // Create new meter
                             await CreateNewVarexpMeterAsync(meter, request.CreateMissingParents, connection);
                             importedCount++;
                             _logger.LogInformation($"Created new meter: {meter.MeterName}");
@@ -190,10 +170,6 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region Helper Methods
-
-        /// <summary>
-        /// Get parent meter options for dropdowns
-        /// </summary>
         private async Task<List<SelectListItem>> GetParentMeterOptions()
         {
             var options = new List<SelectListItem>
@@ -230,15 +206,10 @@ namespace PoWorks_Rework.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting parent meter options");
-                // Don't throw here, just return what we have
             }
 
             return options;
         }
-
-        /// <summary>
-        /// Get existing meter by name
-        /// </summary>
         private async Task<dynamic> GetExistingMeterByNameAsync(string meterName, NpgsqlConnection connection)
         {
             var command = new NpgsqlCommand(@"
@@ -266,19 +237,13 @@ namespace PoWorks_Rework.Controllers
 
             return null;
         }
-
-        /// <summary>
-        /// Create new VAREXP meter
-        /// </summary>
         private async Task CreateNewVarexpMeterAsync(VarexpMeterImportItem meter, bool createMissingParents, NpgsqlConnection connection)
         {
-            // Handle parent meter ID conversion
             int? parentId = null;
             if (!string.IsNullOrEmpty(meter.ParentMeterId))
             {
                 if (int.TryParse(meter.ParentMeterId, out var parentIdValue))
                 {
-                    // Verify parent meter exists using the same connection
                     var parentExists = await CheckMeterExistsAsync(parentIdValue, connection);
                     if (parentExists)
                     {
@@ -287,7 +252,6 @@ namespace PoWorks_Rework.Controllers
                     else if (createMissingParents)
                     {
                         _logger.LogWarning($"Parent meter ID {parentIdValue} not found for meter {meter.MeterName}. Creating without parent.");
-                        // Could implement parent creation logic here if needed
                     }
                     else
                     {
@@ -306,23 +270,18 @@ namespace PoWorks_Rework.Controllers
         RETURNING ""MeterId""", connection);
 
             command.Parameters.AddWithValue("@name", meter.MeterName);
-            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); // Ensure lowercase as per schema constraint
-            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); // Empty string, not null
+            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); 
+            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); 
             command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
             command.Parameters.AddWithValue("@active", meter.Active);
-            command.Parameters.AddWithValue("@lastReading", 0); // Default to 0 for VAREXP meters
-            command.Parameters.AddWithValue("@tenantId", DBNull.Value); // No tenant for VAREXP imports
+            command.Parameters.AddWithValue("@lastReading", 0); 
+            command.Parameters.AddWithValue("@tenantId", DBNull.Value); 
 
             var newMeterId = await command.ExecuteScalarAsync();
             _logger.LogInformation($"Created meter {meter.MeterName} with ID {newMeterId}");
         }
-
-        /// <summary>
-        /// Update existing VAREXP meter
-        /// </summary>
         private async Task UpdateExistingVarexpMeterAsync(int meterId, VarexpMeterImportItem meter, NpgsqlConnection connection)
         {
-            // Handle parent meter ID conversion
             int? parentId = null;
             if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out var parentIdValue))
             {
@@ -339,18 +298,14 @@ namespace PoWorks_Rework.Controllers
         WHERE ""MeterId"" = @meterId", connection);
 
             command.Parameters.AddWithValue("@meterId", meterId);
-            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); // Ensure lowercase
-            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); // Empty string, not null
+            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); 
+            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); 
             command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
             command.Parameters.AddWithValue("@active", meter.Active);
 
             await command.ExecuteNonQueryAsync();
             _logger.LogInformation($"Updated meter {meter.MeterName} with ID {meterId}");
         }
-
-        /// <summary>
-        /// Check if meter exists by ID
-        /// </summary>
         private async Task<bool> CheckMeterExistsAsync(int meterId, NpgsqlConnection connection)
         {
             var command = new NpgsqlCommand(@"

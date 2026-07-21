@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
@@ -20,22 +20,16 @@ namespace PoWorks_Rework.Controllers
         [HttpGet]
         public async Task<IActionResult> Login()
         {
-            // Vérifie et crée l'Admin par défaut si la table est vide
             await EnsureAdminUserExistsAsync();
-
-            // Si déjà connecté, on redirige vers l'accueil
             if (User.Identity != null && User.Identity.IsAuthenticated)
             {
                 return Redirect("/");
             }
             return View();
         }
-
-        // On fusionne HttpGet et HttpPost pour régler le problème de doublon
         [HttpGet, HttpPost]
         public async Task<IActionResult> Logout()
         {
-            // Détruit le cookie de connexion
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return RedirectToAction("Login");
         }
@@ -52,7 +46,6 @@ namespace PoWorks_Rework.Controllers
             User? user = null;
             try
             {
-                // Pas de RLS ici car on a besoin de chercher dans tout le système
                 using var connection = _databaseService.CreateNewConnection();
                 await connection.OpenAsync();
 
@@ -81,15 +74,10 @@ namespace PoWorks_Rework.Controllers
                 ViewBag.Error = "Erreur de connexion à la base de données : " + ex.Message;
                 return View();
             }
-
-            // --- DÉBUT MIGRATION AUTOMATIQUE BCRYPT ---
-            // Si l'utilisateur existe et que son mot de passe en BDD n'est pas un hash BCrypt (qui commence toujours par $2)
             if (user != null && !user.PasswordHash.StartsWith("$2"))
             {
-                // On vérifie si ce qu'il a tapé correspond à l'ancien mot de passe en clair
                 if (password == user.PasswordHash)
                 {
-                    // Si oui, on génère le nouveau hash sécurisé et on met à jour la base de données !
                     string newHash = BCrypt.Net.BCrypt.HashPassword(password);
                     using var updateConn = _databaseService.CreateNewConnection();
                     await updateConn.OpenAsync();
@@ -97,23 +85,15 @@ namespace PoWorks_Rework.Controllers
                     updateCmd.Parameters.AddWithValue("hash", newHash);
                     updateCmd.Parameters.AddWithValue("id", user.UserId);
                     await updateCmd.ExecuteNonQueryAsync();
-
-                    // On met à jour l'objet en mémoire pour que la vérification suivante réussisse
                     user.PasswordHash = newHash;
                 }
             }
-            // --- FIN MIGRATION AUTOMATIQUE BCRYPT ---
-
-            // Vérification BCrypt ultra-sécurisée
             if (user == null || !user.IsActive || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             {
         
                 ViewBag.Error = "Nom d'utilisateur ou mot de passe incorrect.";
                 return View();
             }
-
-            // --- C'EST ICI LA MAGIE DU MULTI-CLIENTS ---
-            // On stocke le CompanyId dans le cookie de session de l'utilisateur
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.Username),
@@ -130,8 +110,6 @@ namespace PoWorks_Rework.Controllers
 
             return Redirect("/");
         }
-
-        // Fonction magique qui crée le compte admin la première fois
         private async Task EnsureAdminUserExistsAsync()
         {
             try
@@ -150,7 +128,7 @@ namespace PoWorks_Rework.Controllers
                     await cmdInsert.ExecuteNonQueryAsync();
                 }
             }
-            catch { /* La base n'est peut-être pas prête, on ignore */ }
+            catch {  }
         }
     }
 }

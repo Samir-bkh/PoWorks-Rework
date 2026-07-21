@@ -1,4 +1,3 @@
-﻿// Controllers/TenantController.cs
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -21,7 +20,6 @@ namespace PoWorks_Rework.Controllers
 
         private int GetCurrentUserId()
         {
-            // On récupère l'ID de l'utilisateur connecté (par défaut 1 si on est en test)
             var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
             return claim != null && int.TryParse(claim.Value, out int userId) ? userId : 1;
         }
@@ -149,15 +147,11 @@ namespace PoWorks_Rework.Controllers
                         "Phone" => @"WHERE ""td"".""ContactPhone"" ILIKE @searchTerm",
                         _ => @"WHERE ""td"".""CompanyName"" ILIKE @searchTerm"
                     };
-
-                // LA SOLUTION ULTIME : On récupère la vraie chaîne avec le mot de passe, et on crée une connexion toute propre !
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
 
                 int currentUserId = GetCurrentUserId();
-
-                // Ajout du filtre UserId dans la clause WHERE existante
                 if (string.IsNullOrEmpty(whereClause))
                 {
                     whereClause = @"WHERE ""t"".""UserId"" = @currentUserId";
@@ -206,7 +200,6 @@ namespace PoWorks_Rework.Controllers
 
                 using (var searchCommand = new NpgsqlCommand(searchSql, connection))
                 {
-                    // AJOUT DE LA LIGNE CI-DESSOUS
                     searchCommand.Parameters.AddWithValue("@currentUserId", currentUserId);
 
                     if (!string.IsNullOrEmpty(searchTerm))
@@ -251,12 +244,9 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // LA SOLUTION ULTIME ICI AUSSI
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-
-                // Dans la méthode GetTenantDetailsById()
                 int currentUserId = GetCurrentUserId();
 
                 var command = new NpgsqlCommand(@"

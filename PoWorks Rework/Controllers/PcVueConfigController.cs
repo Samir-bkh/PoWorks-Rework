@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -32,8 +32,6 @@ namespace PoWorks_Rework.Controllers
 
             using var conn = _databaseService.CreateNewConnection();
             await conn.OpenAsync();
-
-            // 1. AJOUT DE "ProjectName" DANS LA LECTURE (SELECT)
             string sql = @"SELECT ""Id"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""IsActive"", ""ProjectName"" 
                            FROM ""WebServiceConnections"" 
                            WHERE ""CompanyId"" = @companyId LIMIT 1";
@@ -59,8 +57,6 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 model.IsActive = reader.GetBoolean(6);
-
-                // 2. RÉCUPÉRATION DE LA VALEUR POUR L'AFFICHER
                 if (!reader.IsDBNull(7)) model.ProjectName = reader.GetString(7);
             }
 
@@ -90,7 +86,6 @@ namespace PoWorks_Rework.Controllers
 
             if (count > 0)
             {
-                // 3. AJOUT DE "ProjectName" DANS LA MISE À JOUR (UPDATE)
                 string updateSql = @"UPDATE ""WebServiceConnections"" 
                                      SET ""BaseUrl"" = @url, ""ClientId"" = @clientId, ""ClientSecret"" = @secret, 
                                          ""Username"" = @username, ""Password"" = @password, ""IsActive"" = @isActive,
@@ -104,14 +99,13 @@ namespace PoWorks_Rework.Controllers
                 cmd.Parameters.AddWithValue("username", model.Username ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("password", encryptedPassword ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("isActive", model.IsActive);
-                cmd.Parameters.AddWithValue("projectName", model.ProjectName ?? (object)DBNull.Value); // Le paramètre est bien passé ici
+                cmd.Parameters.AddWithValue("projectName", model.ProjectName ?? (object)DBNull.Value); 
                 cmd.Parameters.AddWithValue("companyId", companyId);
 
                 await cmd.ExecuteNonQueryAsync();
             }
             else
             {
-                // 4. AJOUT DE "ProjectName" DANS LA CRÉATION (INSERT)
                 string insertSql = @"INSERT INTO ""WebServiceConnections"" 
                                      (""CompanyId"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""IsActive"", ""ProjectName"")
                                      VALUES (@companyId, @url, @clientId, @secret, @username, @password, @isActive, @projectName)";
@@ -124,7 +118,7 @@ namespace PoWorks_Rework.Controllers
                 cmd.Parameters.AddWithValue("username", model.Username ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("password", encryptedPassword ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("isActive", model.IsActive);
-                cmd.Parameters.AddWithValue("projectName", model.ProjectName ?? (object)DBNull.Value); // Et ici aussi
+                cmd.Parameters.AddWithValue("projectName", model.ProjectName ?? (object)DBNull.Value); 
 
                 await cmd.ExecuteNonQueryAsync();
             }

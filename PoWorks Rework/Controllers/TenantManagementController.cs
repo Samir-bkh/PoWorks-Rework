@@ -1,4 +1,3 @@
-﻿// Controllers/TenantManagementController.cs
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -7,9 +6,6 @@ using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
-    /// <summary>
-    /// Controller for managing individual tenant data (create, update)
-    /// </summary>
     public class TenantManagementController : BaseController
     {
         private readonly ILogger<TenantManagementController> _logger;
@@ -25,19 +21,13 @@ namespace PoWorks_Rework.Controllers
             var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
             return claim != null && int.TryParse(claim.Value, out int userId) ? userId : 1;
         }
-
-        /// <summary>
-        /// Display form to create a new tenant
-        /// </summary>
         [HttpGet]
         public IActionResult Create()
         {
-            // Return empty tenant form
             var viewModel = new TenantViewModel
             {
                 SelectedTenant = new Tenant
                 {
-                    // Initialize with default values for a new tenant
                     StartDate = DateTime.Now.ToString("yyyy-MM-dd"),
                     Period = "Monthly",
                     TariffType = "Company",
@@ -58,17 +48,10 @@ namespace PoWorks_Rework.Controllers
 
             return View("~/Views/Tenant/Management.cshtml", viewModel);
         }
-
-        /// <summary>
-        /// Save tenant data (creates new or updates existing)
-        /// </summary>
         [HttpPost]
         public IActionResult SaveTenant(Tenant tenant, IFormCollection form)
         {
-            // Log the received tenant data
             _logger.LogInformation($"Tenant save attempt - ID: {tenant.Id}, Company: {tenant.CompanyName}, BaseRate: {tenant.BaseRate}");
-
-            // Handle checkbox values manually
             tenant.Active = form["Active"].ToString() == "on";
             tenant.EmailAlert = form["EmailAlert"].ToString() == "on";
             tenant.PrintBill = form["PrintBill"].ToString() == "on";
@@ -106,8 +89,6 @@ namespace PoWorks_Rework.Controllers
                 using (var connection = GetDatabaseConnection())
                 {
                     _logger.LogInformation("Database connection opened successfully");
-
-                    // Begin transaction
                     using var transaction = connection.BeginTransaction();
                     _logger.LogInformation("Transaction started");
 
@@ -117,12 +98,10 @@ namespace PoWorks_Rework.Controllers
 
                         if (tenant.Id <= 0)
                         {
-                            // Create new tenant
                             tenantId = CreateNewTenant(tenant, connection, transaction);
                         }
                         else
                         {
-                            // Update existing tenant
                             tenantId = UpdateExistingTenant(tenant, connection, transaction);
                         }
 
@@ -160,10 +139,6 @@ namespace PoWorks_Rework.Controllers
                 return View("~/Views/Tenant/Management.cshtml", viewModel);
             }
         }
-
-        /// <summary>
-        /// Create a new tenant record
-        /// </summary>
         private int CreateNewTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation("Creating new tenant");
@@ -183,8 +158,6 @@ namespace PoWorks_Rework.Controllers
             _logger.LogInformation("Executing tenant insert command");
             int tenantId = (int)insertTenantCommand.ExecuteScalar();
             _logger.LogInformation($"New tenant created with ID: {tenantId}");
-
-            // Insert tenant details
             var insertDetailsSql = @"
                 INSERT INTO ""TenantDetails"" 
                    (""TenantID"", ""ContactName"", ""ContactPhone"", ""ContactEmail"",
@@ -204,16 +177,10 @@ namespace PoWorks_Rework.Controllers
 
             return tenantId;
         }
-
-        /// <summary>
-        /// Update an existing tenant record
-        /// </summary>
         private int UpdateExistingTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation($"Updating existing tenant with ID: {tenant.Id}");
             int tenantId = tenant.Id;
-
-            // Update existing tenant
             var updateTenantCommand = new NpgsqlCommand(
                 @"UPDATE ""Tenants"" 
                   SET ""DisplayName"" = @displayName, ""Misc"" = @misc 
@@ -227,8 +194,6 @@ namespace PoWorks_Rework.Controllers
             _logger.LogInformation("Executing tenant update command");
             updateTenantCommand.ExecuteNonQuery();
             _logger.LogInformation("Tenant updated successfully");
-
-            // Check if tenant details exist
             var checkCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM ""TenantDetails"" WHERE ""TenantID"" = @tenantId",
                 connection, transaction);
@@ -237,8 +202,6 @@ namespace PoWorks_Rework.Controllers
             _logger.LogInformation("Checking if tenant details exist");
             int detailsCount = Convert.ToInt32(checkCommand.ExecuteScalar());
             _logger.LogInformation($"Tenant details exist: {detailsCount > 0}");
-
-            // Prepare SQL for either insert or update
             string detailsSql = detailsCount > 0
                 ? @"UPDATE ""TenantDetails"" SET
                     ""ContactName"" = @contactName, 
@@ -270,10 +233,6 @@ namespace PoWorks_Rework.Controllers
 
             return tenantId;
         }
-
-        /// <summary>
-        /// Sets common parameters for tenant details SQL commands
-        /// </summary>
         private void SetTenantDetailsParameters(NpgsqlCommand command, Tenant tenant, int tenantId)
         {
             command.Parameters.AddWithValue("@tenantId", tenantId);
@@ -289,8 +248,6 @@ namespace PoWorks_Rework.Controllers
             command.Parameters.AddWithValue("@address", address);
             command.Parameters.AddWithValue("@location", tenant.City + " " + tenant.PostCode);
             command.Parameters.AddWithValue("@misc", tenant.Unit ?? (object)DBNull.Value);
-
-            // Use proper money format for PostgreSQL
             command.Parameters.AddWithValue("@tarif1", tenant.BaseRate.ToString());
             command.Parameters.AddWithValue("@tarif2", tenant.Threshold1Rate.ToString());
             command.Parameters.AddWithValue("@tarif3", tenant.Threshold2Rate.ToString());

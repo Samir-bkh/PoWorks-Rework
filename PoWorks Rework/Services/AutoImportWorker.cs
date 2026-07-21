@@ -1,4 +1,4 @@
-﻿using Npgsql;
+using Npgsql;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
@@ -7,10 +7,8 @@ namespace PoWorks_Rework.Services
     {
         private readonly ILogger<AutoImportWorker> _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly EncryptionService _encryptionService; // 1. Ajout de notre outil de déchiffrement
+        private readonly EncryptionService _encryptionService; 
         private readonly int _cycleDelayMinutes = 1;
-
-        // 2. On l'injecte dans le constructeur du robot
         public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider, EncryptionService encryptionService)
         {
             _logger = logger;
@@ -42,8 +40,6 @@ namespace PoWorks_Rework.Services
             foreach (var companyId in companyIds)
             {
                 _logger.LogInformation("🏢 --- IMPORTATION COMPANY : {Id} ---", companyId);
-
-                // On charge la config unique globale pour le moment (réutilisant GetApiSettingsAsync)
                 var apiSettings = await GetApiSettingsAsync(dbService, companyId);
                 if (apiSettings == null)
                 {
@@ -157,8 +153,6 @@ namespace PoWorks_Rework.Services
                             ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
                             ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
-
-                            // 3. LA MAGIE EST ICI : On déchiffre le Secret et le Mot de passe à la volée !
                             ClientSecret = reader.IsDBNull(4) ? "" : _encryptionService.Decrypt(reader.GetString(4)),
                             ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
                             Username = reader.IsDBNull(6) ? "" : reader.GetString(6),

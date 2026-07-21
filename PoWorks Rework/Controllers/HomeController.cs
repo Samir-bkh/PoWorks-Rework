@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
@@ -15,7 +15,6 @@ namespace PoWorks_Rework.Controllers
 
         public IActionResult Index()
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["WarningMessage"] = "Database not configured. Dashboard functionality will be limited.";

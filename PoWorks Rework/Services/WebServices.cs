@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using PoWorks_Rework.Models;
 
@@ -10,8 +10,6 @@ namespace PoWorks_Rework.Services
         private readonly ILogger<PCVueWebService> _logger;
 
         public HttpClient HttpClient => _httpClient;
-
-        // Token storage
         private string? _accessToken;
         private string? _refreshToken;
         private DateTime _tokenExpiry;
@@ -106,7 +104,6 @@ namespace PoWorks_Rework.Services
                         }
                         else
                         {
-                            // C'est ici que la magie de la lecture d'erreur se passe
                             var errorContent = await response.Content.ReadAsStringAsync();
                             _logger.LogError("OAuth token request failed: {StatusCode}. Message retourné par PcVue : {ErrorDetails}",
                                 response.StatusCode, errorContent);

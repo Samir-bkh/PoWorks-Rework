@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
@@ -16,7 +16,6 @@ namespace PoWorks_Rework.Services
             _configuration = configuration;
             _logger = logger;
             _connectionCollection = new SqlServerConnectionCollection();
-            // Load settings from configuration initially
             LoadSettingsFromConfig();
         }
 
@@ -32,7 +31,6 @@ namespace PoWorks_Rework.Services
 
             if (_connectionCollection != null && _connectionCollection.Connections.Any())
             {
-                // Use new multiple connections system
                 settings = string.IsNullOrEmpty(connectionId)
                     ? _connectionCollection.GetDefaultConnection()
                     : _connectionCollection.GetConnection(connectionId);
@@ -42,7 +40,6 @@ namespace PoWorks_Rework.Services
             }
             else
             {
-                // Fallback to legacy single connection system
                 settings = _currentSettings;
                 if (settings == null)
                     throw new InvalidOperationException("SQL Server connection is not initialized.");
@@ -99,8 +96,6 @@ namespace PoWorks_Rework.Services
                 using (var connection = GetConnection(connectionId))
                 {
                     await connection.OpenAsync();
-
-                    // SQL to get all tables in the database
                     string sql = @"
                 SELECT TABLE_NAME 
                 FROM INFORMATION_SCHEMA.TABLES 
@@ -125,8 +120,6 @@ namespace PoWorks_Rework.Services
                 _logger.LogError(ex, "Error getting available tables from SQL Server connection '{ConnectionId}'", connectionId ?? "default");
                 throw;
             }
-
-            // If no tables found, add some sample tables for development/testing
             if (tables.Count == 0)
             {
                 tables.Add("HDS_RAW_DATA");
@@ -137,15 +130,11 @@ namespace PoWorks_Rework.Services
 
             return tables;
         }
-
-        // FIND the LoadSettingsFromConfig method and REPLACE with:
         private void LoadSettingsFromConfig()
         {
             try
             {
                 var connections = new List<SqlServerSettings>();
-
-                // Try to load from the new multiple connections format first
                 var connectionsSection = _configuration.GetSection("SqlServerConnections");
                 if (connectionsSection.Exists() && connectionsSection.GetChildren().Any())
                 {
@@ -168,7 +157,6 @@ namespace PoWorks_Rework.Services
                 }
                 else
                 {
-                    // Fallback to old single connection format for backward compatibility
                     var legacyConnection = new SqlServerSettings
                     {
                         ConnectionId = "legacy",
@@ -187,8 +175,6 @@ namespace PoWorks_Rework.Services
                         connections.Add(legacyConnection);
                     }
                 }
-
-                // Initialize the connection collection
                 _connectionCollection = new SqlServerConnectionCollection();
                 foreach (var connection in connections)
                 {
@@ -217,8 +203,6 @@ namespace PoWorks_Rework.Services
                 using (var connection = new SqlConnection(_currentSettings.ToConnectionString()))
                 {
                     await connection.OpenAsync();
-
-                    // SQL to get all tables in the database
                     string sql = @"
                 SELECT TABLE_NAME 
                 FROM INFORMATION_SCHEMA.TABLES 
@@ -243,8 +227,6 @@ namespace PoWorks_Rework.Services
                 _logger.LogError(ex, "Error getting available tables from SQL Server");
                 throw;
             }
-
-            // If no tables found, add some sample tables for development/testing
             if (tables.Count == 0)
             {
                 tables.Add("HDS_RAW_DATA");
@@ -255,8 +237,6 @@ namespace PoWorks_Rework.Services
 
             return tables;
         }
-
-        // Services/SqlServerService.cs - Fixed GetDistinctMeterNames method with corrected SQL syntax
         public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName, int? limit = null, string connectionId = null)
         {
             if (!IsInitialized)
@@ -266,7 +246,6 @@ namespace PoWorks_Rework.Services
 
             try
             {
-                // Validate the table name to prevent SQL injection
                 if (!IsValidTableName(tableName))
                 {
                     throw new ArgumentException("Invalid table name format");
@@ -275,12 +254,9 @@ namespace PoWorks_Rework.Services
                 using (var connection = GetConnection(connectionId))
                 {
                     await connection.OpenAsync();
-
-                    // Build the SQL query with proper syntax for SQL Server
                     string sql;
                     if (limit.HasValue && limit.Value > 0)
                     {
-                        // Use subquery approach for TOP with DISTINCT
                         sql = $@"
                     SELECT TOP ({limit.Value}) NAME 
                     FROM (
@@ -303,22 +279,19 @@ namespace PoWorks_Rework.Services
 
                     using (var command = new SqlCommand(sql, connection))
                     {
-                        // Set command timeout to handle large datasets
-                        command.CommandTimeout = 60; // 60 seconds
+                        command.CommandTimeout = 60; 
 
                         using (var reader = await command.ExecuteReaderAsync())
                         {
                             while (await reader.ReadAsync())
                             {
                                 var meterName = reader.GetString(0);
-
-                                // Skip empty or whitespace-only meter names
                                 if (!string.IsNullOrWhiteSpace(meterName))
                                 {
                                     meters.Add(new HDSMeterItem
                                     {
                                         HdsMeterName = meterName.Trim(),
-                                        Type = "Main", // Default to Main
+                                        Type = "Main", 
                                         Active = true,
                                         IsSelected = true
                                     });
@@ -333,8 +306,6 @@ namespace PoWorks_Rework.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error getting distinct meter names from table {tableName} on connection '{connectionId ?? "default"}' with limit {limit}");
-
-                // Log the specific SQL error for debugging
                 if (ex.Message.Contains("Incorrect syntax"))
                 {
                     _logger.LogError($"SQL Syntax Error - Table name: {tableName}, Connection: {connectionId ?? "default"}, Limit: {limit}");
@@ -342,13 +313,9 @@ namespace PoWorks_Rework.Services
 
                 throw;
             }
-
-            // If no meters found, create sample meters for development/testing
             if (meters.Count == 0)
             {
                 _logger.LogWarning($"No meters found in table {tableName} on connection '{connectionId ?? "default"}', creating sample meters for development");
-
-                // Apply limit to sample data as well
                 int sampleCount = limit.HasValue && limit.Value > 0 ? Math.Min(limit.Value, 15) : 15;
 
                 for (int i = 1; i <= sampleCount; i++)
@@ -368,18 +335,11 @@ namespace PoWorks_Rework.Services
 
             return meters;
         }
-
-        // Enhanced table name validation
         private bool IsValidTableName(string tableName)
         {
             if (string.IsNullOrWhiteSpace(tableName))
                 return false;
-
-            // Remove brackets if present for validation
             var cleanTableName = tableName.Trim('[', ']');
-
-            // Allow alphanumeric characters, underscores, and dots (for schema.table format)
-            // Also allow spaces if the table name will be bracketed
             return System.Text.RegularExpressions.Regex.IsMatch(
                 cleanTableName, @"^[a-zA-Z0-9_\s\.]+$");
         }
@@ -401,8 +361,6 @@ namespace PoWorks_Rework.Services
 
             _isInitialized = connections.Any();
         }
-
-        // Alternative method to get table schema and validate table exists
         public async Task<bool> ValidateTableExists(string tableName, string connectionId = null)
         {
             if (!IsInitialized)
@@ -413,8 +371,6 @@ namespace PoWorks_Rework.Services
                 using (var connection = GetConnection(connectionId))
                 {
                     await connection.OpenAsync();
-
-                    // Check if table exists in the database
                     string sql = @"
                 SELECT COUNT(*) 
                 FROM INFORMATION_SCHEMA.TABLES 
@@ -423,7 +379,6 @@ namespace PoWorks_Rework.Services
 
                     using (var command = new SqlCommand(sql, connection))
                     {
-                        // Extract just the table name without schema or brackets
                         var cleanTableName = tableName.Trim('[', ']');
                         if (cleanTableName.Contains("."))
                         {

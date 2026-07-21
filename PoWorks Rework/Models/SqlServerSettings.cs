@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace PoWorks_Rework.Models
 {
@@ -30,11 +30,8 @@ namespace PoWorks_Rework.Models
 
         [Display(Name = "Is Default Connection")]
         public bool IsDefault { get; set; } = false;
-
-        // Helper method to generate SQL Server connection string
         public string ToConnectionString()
         {
-            // Gère le port vide ou null
             var server = string.IsNullOrWhiteSpace(Port)
                 ? Host
                 : $"{Host},{Port}";

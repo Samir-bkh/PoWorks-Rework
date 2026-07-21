@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace PoWorks_Rework.Models
 {
@@ -21,8 +21,6 @@ namespace PoWorks_Rework.Models
 
         [Display(Name = "SSL Mode")]
         public string SSLMode { get; set; } = "Prefer";
-
-        // Helper method to generate Npgsql connection string
         public string ToConnectionString()
         {
             return $"Host={Host};Port={Port};Database={Database};Username={Username};Password={Password};SSL Mode={SSLMode};";

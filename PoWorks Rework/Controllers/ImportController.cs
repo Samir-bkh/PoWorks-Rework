@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Data.SqlClient;
 using Npgsql;
@@ -44,7 +44,6 @@ namespace PoWorks_Rework.Controllers
         {
             var viewModel = new ImportExportViewModel
             {
-                // Initialize with default values if needed
                 HdsTables = new List<string>()
             };
             return View(viewModel);
@@ -78,18 +77,12 @@ namespace PoWorks_Rework.Controllers
 
 
         #region Trends Endpoints (NEW)
-
-        /// <summary>
-        /// Get trends data for selected variables
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> GetTrendsData([FromBody] ProcessTrendsRequest request)
         {
             try
             {
                 _logger.LogInformation("Processing trends data for {Count} variables", request.VariableNames?.Count ?? 0);
-
-                // Validate request
                 if (request == null || string.IsNullOrEmpty(request.ConnectionId))
                 {
                     return Json(new ProcessTrendsResponse
@@ -116,8 +109,6 @@ namespace PoWorks_Rework.Controllers
                         ErrorMessage = "Invalid date range: Start date must be before end date"
                     });
                 }
-
-                // Get connection settings
                 var settings = GetWebServiceConnectionById(request.ConnectionId);
                 if (settings == null)
                 {
@@ -129,8 +120,6 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 var startTime = DateTime.UtcNow;
-
-                // Process trends for all variables
                 var results = await _trendsService.ProcessVariablesTrendsAsync(
                     request.VariableNames,
                     request.StartDate,
@@ -139,8 +128,6 @@ namespace PoWorks_Rework.Controllers
                 );
 
                 var endTime = DateTime.UtcNow;
-
-                // Convert service results to controller response format
                 var responseResults = results.Select(r => new VariableTrendsResult
                 {
                     VariableName = r.VariableName,
@@ -153,8 +140,6 @@ namespace PoWorks_Rework.Controllers
                     FirstTimestamp = GetParsedTimestamp(r.TrendData?.FirstOrDefault()?.Timestamp),
                     LastTimestamp = GetParsedTimestamp(r.TrendData?.LastOrDefault()?.Timestamp)
                 }).ToList();
-
-                // Create summary
                 var summary = new TrendsSummary
                 {
                     TotalVariables = results.Count,
@@ -188,10 +173,6 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-
-        /// <summary>
-        /// Get available Web Service connections for trends processing
-        /// </summary>
         [HttpGet]
         public IActionResult GetWebServiceConnectionsForTrends()
         {
@@ -207,7 +188,7 @@ namespace PoWorks_Rework.Controllers
                         connectionName = c.ConnectionName,
                         baseUrl = c.BaseUrl,
                         isDefault = c.IsDefault,
-                        status = "Available" // Could add real status checking
+                        status = "Available" 
                     })
                 });
             }
@@ -221,13 +202,6 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-
-        // Add this new endpoint to ImportController.cs in the #region Trends Endpoints (NEW) section
-
-        /// <summary>
-        /// Get trends data for all imported WebService meters - Main Testing Endpoint
-        /// Calls both trends endpoints sequentially and prints detailed results to console
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> GetTrendsDataForImportedMeters([FromBody] GetTrendsForImportedMetersRequest request)
         {
@@ -237,8 +211,6 @@ namespace PoWorks_Rework.Controllers
             {
                 _logger.LogInformation("Starting trends processing for imported meters - Connection: {ConnectionId}, DateRange: {StartDate} to {EndDate}",
                     request.ConnectionId, request.StartDate, request.EndDate);
-
-                // Validate request
                 var validationResult = ValidateTrendsRequest(request);
                 if (!validationResult.IsValid)
                 {                 
@@ -248,8 +220,6 @@ namespace PoWorks_Rework.Controllers
                         ErrorMessage = validationResult.ErrorMessage
                     });
                 }
-
-                // Get connection settings
                 var settings = GetWebServiceSettings(request.ConnectionId);
                 if (settings == null)
                 {
@@ -260,8 +230,6 @@ namespace PoWorks_Rework.Controllers
                         ErrorMessage = errorMsg
                     });
                 }
-
-                // Get imported meters from database
                 var importedMeters = await GetImportedMetersForProcessing(request);
                 if (importedMeters.Count == 0)
                 {
@@ -279,13 +247,9 @@ namespace PoWorks_Rework.Controllers
                         }
                     });
                 }
-
-                // Process each meter sequentially
                 var meterResults = await ProcessMetersSequentially(importedMeters, request, settings);
 
                 var overallEndTime = DateTime.UtcNow;
-
-                // Create summary
                 var summary = CreateProcessingSummary(meterResults, overallStartTime, overallEndTime, settings, request);
 
                 return Json(new ImportedMetersTrendsResponse
@@ -315,10 +279,6 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-
-        /// <summary>
-        /// Process all meters sequentially, calling both trends endpoints for each
-        /// </summary>
         private async Task<List<MeterTrendsResult>> ProcessMetersSequentially(
             List<MeterForTrendsAnalysis> meters,
             GetTrendsForImportedMetersRequest request,
@@ -333,18 +293,11 @@ namespace PoWorks_Rework.Controllers
 
                 try
                 {
-                    // Step 1: Call GetTrendsData endpoint
                     var trendsDataResult = await CallGetTrendsDataEndpoint(meter, request, settings);
-
-                    // Step 2: Call ImportWebServiceVariablesWithTrends endpoint
                     var importTrendsResult = await CallImportTrendsEndpoint(meter, request, settings);
-
-                    // Create result object
                     var meterResult = CreateMeterResult(meter, trendsDataResult, importTrendsResult, meterStartTime);
 
                     results.Add(meterResult);
-
-                    // Small delay between meters to be API-friendly
                     await Task.Delay(200);
                 }
                 catch (Exception ex)
@@ -368,10 +321,6 @@ namespace PoWorks_Rework.Controllers
 
             return results;
         }
-
-        /// <summary>
-        /// Call the GetTrendsData endpoint for a single meter
-        /// </summary>
         private async Task<(bool Success, string? Error, List<TrendDataPoint>? Data, string? RequestId)> CallGetTrendsDataEndpoint(
             MeterForTrendsAnalysis meter,
             GetTrendsForImportedMetersRequest request,
@@ -388,8 +337,6 @@ namespace PoWorks_Rework.Controllers
                     StartDate = request.StartDate,
                     EndDate = request.EndDate
                 };
-
-                // Call the existing TrendsService directly
                 var serviceResults = await _trendsService.ProcessVariablesTrendsAsync(
                     trendsRequest.VariableNames,
                     trendsRequest.StartDate,
@@ -413,10 +360,6 @@ namespace PoWorks_Rework.Controllers
                 return (false, $"Exception: {ex.Message}", null, null);
             }
         }
-
-        /// <summary>
-        /// Call the ImportWebServiceVariablesWithTrends endpoint for a single meter
-        /// </summary>
         private async Task<(bool Success, string? Error, string Action, int ImportedPoints)> CallImportTrendsEndpoint(
             MeterForTrendsAnalysis meter,
             GetTrendsForImportedMetersRequest request,
@@ -436,21 +379,16 @@ namespace PoWorks_Rework.Controllers
                     Unit = meter.Unit,
                     Type = meter.Type.ToLower(),
                     Active = meter.Active,
-                    TrendsDataAvailable = false // Will be set by the endpoint
+                    TrendsDataAvailable = false 
                 }
             },
                     ConnectionId = request.ConnectionId,
                     ImportTrendsData = true,
                     TrendsStartDate = request.StartDate,
                     TrendsEndDate = request.EndDate,
-                    SkipExisting = true, // Don't re-import the meter itself
+                    SkipExisting = true, 
                     UpdateExisting = false
                 };
-
-                // NOTE: This would typically call the actual endpoint, but for now we'll simulate the response
-                // In a real implementation, you might need to make an internal HTTP call or restructure the method
-
-                // For testing purposes, we'll return a simulated successful response
                 return (true, null, "Skipped (already exists)", 0);
             }
             catch (Exception ex)
@@ -463,10 +401,6 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region Helper Methods for Trends Processing
-
-        /// <summary>
-        /// Validate the trends processing request
-        /// </summary>
         private (bool IsValid, string? ErrorMessage) ValidateTrendsRequest(GetTrendsForImportedMetersRequest request)
         {
             if (request == null)
@@ -487,31 +421,22 @@ namespace PoWorks_Rework.Controllers
 
             return (true, null);
         }
-
-        /// <summary>
-        /// Get imported meters for processing based on request criteria
-        /// </summary>
         private async Task<List<MeterForTrendsAnalysis>> GetImportedMetersForProcessing(GetTrendsForImportedMetersRequest request)
         {
             List<MeterForTrendsAnalysis> meters;
 
             if (request.GetAllImported)
             {
-                // Get all imported meters
                 meters = await _meterRepository.GetWebServiceImportedMetersAsync(request.ActiveOnly, request.MeterLimit);
             }
             else if (request.SpecificMeterIds.Any())
             {
-                // Get specific meters (would need to implement this method)
-                meters = new List<MeterForTrendsAnalysis>(); // Placeholder
-                                                             // TODO: Implement GetSpecificMetersForTrendsAsync if needed
+                meters = new List<MeterForTrendsAnalysis>(); 
             }
             else
             {
                 meters = new List<MeterForTrendsAnalysis>();
             }
-
-            // Set connection ID for each meter
             foreach (var meter in meters)
             {
                 meter.AssignedConnectionId = request.ConnectionId;
@@ -519,10 +444,6 @@ namespace PoWorks_Rework.Controllers
 
             return meters;
         }
-
-        /// <summary>
-        /// Create meter processing result object
-        /// </summary>
         private MeterTrendsResult CreateMeterResult(
             MeterForTrendsAnalysis meter,
             (bool Success, string? Error, List<TrendDataPoint>? Data, string? RequestId) trendsResult,
@@ -534,15 +455,11 @@ namespace PoWorks_Rework.Controllers
                 MeterId = meter.MeterId,
                 MeterName = meter.Name,
                 OriginalVariableName = meter.OriginalVariableName,
-
-                // GetTrendsData results
                 GetTrendsDataSuccess = trendsResult.Success,
                 GetTrendsDataError = trendsResult.Error,
                 TrendsData = trendsResult.Data,
                 TrendsDataPointsCount = trendsResult.Data?.Count ?? 0,
                 TrendsRequestId = trendsResult.RequestId,
-
-                // ImportTrends results
                 ImportTrendsSuccess = importResult.Success,
                 ImportTrendsError = importResult.Error,
                 ImportAction = importResult.Action,
@@ -554,10 +471,6 @@ namespace PoWorks_Rework.Controllers
 
             return result;
         }
-
-        /// <summary>
-        /// Create overall processing summary
-        /// </summary>
         private TrendsProcessingSummary CreateProcessingSummary(
             List<MeterTrendsResult> results,
             DateTime startTime,
@@ -583,10 +496,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         #endregion
-
-        // ============================================================================================================
         #region HDS (Historical Data Server) FUNCTIONALITY
-        // ============================================================================================================
 
         [HttpGet]
         public async Task<IActionResult> GetTables(string connectionId = null)
@@ -600,8 +510,6 @@ namespace PoWorks_Rework.Controllers
                     _logger.LogError("SQL Server service not initialized");
                     return Json(new { success = false, error = "SQL Server connection not configured" });
                 }
-
-                // Get tables using the SQL Server service
                 var tables = await _sqlServerService.GetAvailableTables(connectionId);
 
                 _logger.LogInformation($"Retrieved {tables.Count} tables for connection '{connectionId ?? "default"}'");
@@ -663,15 +571,11 @@ namespace PoWorks_Rework.Controllers
                     _logger.LogError("Table name is null or empty");
                     return Json(new { success = false, error = "Table name is required" });
                 }
-
-                // Validate limit parameter
                 if (limit <= 0)
                 {
-                    limit = 1000; // Default limit
+                    limit = 1000; 
                     _logger.LogWarning($"Invalid limit provided, using default: {limit}");
                 }
-
-                // Maximum limit to prevent performance issues
                 if (limit > 10000)
                 {
                     limit = 10000;
@@ -679,8 +583,6 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 _logger.LogInformation($"Processing request for table '{tableName}' on connection '{connectionId}' with limit {limit}");
-
-                // Validate that the table exists before trying to query it
                 var tableExists = await _sqlServerService.ValidateTableExists(tableName, connectionId);
                 if (!tableExists)
                 {
@@ -691,16 +593,10 @@ namespace PoWorks_Rework.Controllers
                         error = $"Table '{tableName}' does not exist or is not accessible on the selected connection. Please verify the table name and permissions."
                     });
                 }
-
-                // Get the HDS meters with the specified limit and connection
                 var hdsMeters = await _sqlServerService.GetDistinctMeterNames(tableName, limit, connectionId);
-
-                // Get parent meter options from PostgreSQL database
                 var parentOptions = await GetParentMeterOptions();
 
                 _logger.LogInformation($"Successfully retrieved {hdsMeters.Count} meters from table '{tableName}' on connection '{connectionId}'");
-
-                // RETURN JSON RESPONSE - NOT PARTIAL VIEW
                 return Json(new
                 {
                     success = true,
@@ -715,24 +611,21 @@ namespace PoWorks_Rework.Controllers
             }
             catch (Microsoft.Data.SqlClient.SqlException sqlEx)
             {
-                // Handle specific SQL Server errors
                 _logger.LogError(sqlEx, $"SQL Server error getting meters from table '{tableName}' on connection '{connectionId}' with limit {limit}");
 
                 string errorMessage = "Database error occurred";
-
-                // Provide more specific error messages based on SQL error
                 switch (sqlEx.Number)
                 {
-                    case 208: // Invalid object name
+                    case 208: 
                         errorMessage = $"Table '{tableName}' does not exist or is not accessible on the selected connection";
                         break;
-                    case 102: // Incorrect syntax
+                    case 102: 
                         errorMessage = "Invalid SQL syntax - please check table name format";
                         break;
-                    case 2: // Connection timeout
+                    case 2: 
                         errorMessage = "Connection timeout - please check connection settings";
                         break;
-                    case 18456: // Login failed
+                    case 18456: 
                         errorMessage = "Authentication failed - please check connection credentials";
                         break;
                     default:
@@ -771,7 +664,6 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Basic validation
                 if (request == null || string.IsNullOrEmpty(request.TableName))
                 {
                     return Json(new { success = false, error = "Missing table name" });
@@ -783,27 +675,19 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 _logger.LogInformation($"Importing readings for {request.MeterNames.Count} meters from table {request.TableName}");
-
-                // Check database connections
                 if (!_databaseService.IsInitialized || !_sqlServerService.IsInitialized)
                 {
                     return Json(new { success = false, error = "Database connections not initialized" });
                 }
-
-                // Statistics
                 int totalReadingsImported = 0;
                 int totalMetersProcessed = 0;
                 var errorMeters = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
-
-                // Process each meter
                 foreach (var meterName in request.MeterNames)
                 {
                     try
                     {
                         _logger.LogInformation($"Processing readings for meter: {meterName}");
-
-                        // 1. Find meter ID in PostgreSQL
                         int? meterId = null;
                         using (var pgConnection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                         {
@@ -826,20 +710,15 @@ namespace PoWorks_Rework.Controllers
                         }
 
                         _logger.LogInformation($"Found meter {meterName} with ID: {meterId}");
-
-                        // 2. Get readings from SQL Server
                         var readings = new List<(DateTime timestamp, double value, int quality)>();
 
                         using (var sqlConnection = _sqlServerService.GetConnection())
                         {
                             await sqlConnection.OpenAsync();
-
-                            // Build query with optional date filters
                             string sql = $"SELECT Chrono, Value, Quality FROM {request.TableName} WHERE NAME = @Name";
 
                             if (request.StartDate.HasValue)
                             {
-                                // Convert DateTime to Windows filetime for comparison
                                 long startFiletime = request.StartDate.Value.ToFileTimeUtc();
                                 sql += " AND Chrono >= @StartDate";
                             }
@@ -877,8 +756,6 @@ namespace PoWorks_Rework.Controllers
                                     long chrono = reader.GetInt64(0);
                                     double value = reader.GetDouble(1);
                                     int quality = reader.GetInt16(2);
-
-                                    // Convert Windows filetime to DateTime
                                     DateTime timestamp = DateTime.FromFileTimeUtc(chrono);
 
                                     readings.Add((timestamp, value, quality));
@@ -891,8 +768,6 @@ namespace PoWorks_Rework.Controllers
                         }
 
                         _logger.LogInformation($"Retrieved {readings.Count} readings for meter {meterName}");
-
-                        // 3. Insert readings into PostgreSQL
                         if (readings.Count > 0)
                         {
                             using (var pgConnection = new NpgsqlConnection(_databaseService.GetConnectionString()))
@@ -1000,8 +875,6 @@ namespace PoWorks_Rework.Controllers
                         Console.WriteLine($"  Last Reading: {meter.LastReading ?? "N/A"}");
                         Console.WriteLine($"  Selected: {meter.IsSelected}");
                     }
-
-                    // Additional HDS-specific information
                     Console.WriteLine("\n--- HDS IMPORT SUMMARY ---");
                     Console.WriteLine($"Total meters to import: {request.SelectedMeters.Count}");
                     Console.WriteLine($"Active meters: {request.SelectedMeters.Count(m => m.Active)}");
@@ -1010,8 +883,6 @@ namespace PoWorks_Rework.Controllers
                     Console.WriteLine($"Meters with parents: {request.SelectedMeters.Count(m => !string.IsNullOrEmpty(m.ParentMeterId))}");
                     Console.WriteLine($"Source table: {request.TableName}");
                     Console.WriteLine($"Connection: {request.ConnectionId}");
-
-                    // Group by unit type
                     var unitGroups = request.SelectedMeters
                         .GroupBy(m => m.Unit ?? "Unknown")
                         .OrderBy(g => g.Key);
@@ -1020,7 +891,7 @@ namespace PoWorks_Rework.Controllers
                     foreach (var group in unitGroups)
                     {
                         Console.WriteLine($"  {group.Key}: {group.Count()} meters");
-                        foreach (var meter in group.Take(3)) // Show first 3 in each group
+                        foreach (var meter in group.Take(3)) 
                         {
                             Console.WriteLine($"    - {meter.HdsMeterName}");
                         }
@@ -1072,8 +943,6 @@ namespace PoWorks_Rework.Controllers
                         error = "No meters selected for import"
                     });
                 }
-
-                // Check if database is initialized
                 if (!_databaseService.IsInitialized)
                 {
                     return Json(new
@@ -1082,21 +951,15 @@ namespace PoWorks_Rework.Controllers
                         error = "PostgreSQL database not configured"
                     });
                 }
-
-                // Statistics for import result
                 int importedCount = 0;
                 int skippedCount = 0;
                 int updatedCount = 0;
                 int errorCount = 0;
                 var errorMeters = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
-
-                // Create a NEW connection instead of using the service's shared connection
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
-
-                    // Create a transaction to ensure all operations succeed or fail together
                     using var transaction = await connection.BeginTransactionAsync();
 
                     try
@@ -1106,16 +969,12 @@ namespace PoWorks_Rework.Controllers
                             try
                             {
                                 _logger.LogInformation($"Processing meter: {meter.HdsMeterName}, Type: {meter.Type}, Unit: {meter.Unit}");
-
-                                // Skip empty meter names
                                 if (string.IsNullOrWhiteSpace(meter.HdsMeterName))
                                 {
                                     _logger.LogWarning("Skipping meter with empty name");
                                     skippedCount++;
                                     continue;
                                 }
-
-                                // Check if meter already exists
                                 bool meterExists = false;
                                 int existingMeterId = 0;
 
@@ -1130,23 +989,18 @@ namespace PoWorks_Rework.Controllers
                                 }
 
                                 _logger.LogInformation($"Meter {meter.HdsMeterName} exists: {meterExists}, SkipExisting: {request.SkipExisting}, UpdateExisting: {request.UpdateExisting}");
-
-                                // Skip existing meter if requested
                                 if (meterExists && request.SkipExisting && !request.UpdateExisting)
                                 {
                                     _logger.LogInformation($"Skipping existing meter: {meter.HdsMeterName}");
                                     skippedCount++;
                                     continue;
                                 }
-
-                                // Ensure parent meter exists if specified
                                 int? parentId = null;
 
                                 if (!string.IsNullOrEmpty(meter.ParentMeterId))
                                 {
                                     if (int.TryParse(meter.ParentMeterId, out int parsedParentId))
                                     {
-                                        // Check if parent exists
                                         using (var parentCheckCommand = new NpgsqlCommand(
                                             @"SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @MeterId", connection, transaction))
                                         {
@@ -1166,15 +1020,11 @@ namespace PoWorks_Rework.Controllers
                                         }
                                     }
                                 }
-
-                                // Parse last reading if provided
                                 int lastReading = 0;
                                 if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int parsedReading))
                                 {
                                     lastReading = parsedReading;
                                 }
-
-                                // Ensure type is valid
                                 string type = "main";
                                 if (!string.IsNullOrWhiteSpace(meter.Type) &&
                                     (meter.Type.ToLower() == "main" || meter.Type.ToLower() == "sub"))
@@ -1183,11 +1033,8 @@ namespace PoWorks_Rework.Controllers
                                 }
 
                                 _logger.LogInformation($"Will insert: {!meterExists}, Will update: {meterExists && request.UpdateExisting}");
-
-                                // Insert or update the meter
                                 if (meterExists && request.UpdateExisting)
                                 {
-                                    // Update existing meter
                                     using (var updateCommand = new NpgsqlCommand(
                                         @"UPDATE ""Meters"" SET 
                                   ""Unit"" = @Unit,
@@ -1214,7 +1061,6 @@ namespace PoWorks_Rework.Controllers
                                 }
                                 else if (!meterExists)
                                 {
-                                    // Insert new meter
                                     using (var insertCommand = new NpgsqlCommand(
                                         @"INSERT INTO ""Meters"" (""Name"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"")
                                   VALUES (@Name, @Unit, @ParentId, @LastReading, @Type, @Active)
@@ -1234,22 +1080,18 @@ namespace PoWorks_Rework.Controllers
                                 }
                                 else
                                 {
-                                    // This case happens when the meter exists but we're not updating
                                     _logger.LogInformation($"Meter {meter.HdsMeterName} exists but not updating due to settings");
                                     skippedCount++;
                                 }
                             }
                             catch (Exception ex)
                             {
-                                // Track error for this meter but continue with others
                                 _logger.LogError(ex, $"Error importing meter {meter.HdsMeterName}");
                                 errorCount++;
                                 errorMeters.Add(meter.HdsMeterName);
                                 detailedErrors[meter.HdsMeterName] = ex.Message;
                             }
                         }
-
-                        // Commit the transaction
                         await transaction.CommitAsync();
                         _logger.LogInformation($"Import completed: {importedCount} imported, {updatedCount} updated, {skippedCount} skipped, {errorCount} errors");
 
@@ -1267,7 +1109,6 @@ namespace PoWorks_Rework.Controllers
                     }
                     catch (Exception ex)
                     {
-                        // Rollback the transaction if any error occurs
                         await transaction.RollbackAsync();
                         throw new Exception($"Failed to import meters: {ex.Message}", ex);
                     }
@@ -1288,11 +1129,6 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region Helper Methods (NEW)
-
-
-        /// <summary>
-        /// Parse timestamp string to DateTime
-        /// </summary>
         private DateTime? GetParsedTimestamp(string? timestamp)
         {
             if (string.IsNullOrEmpty(timestamp))
@@ -1303,21 +1139,12 @@ namespace PoWorks_Rework.Controllers
 
             return null;
         }
-
-        /// <summary>
-        /// Get Web Service settings by connection ID
-        /// </summary>
         private PCVueWebServiceSettings? GetWebServiceSettings(string connectionId)
         {
             try
             {
-                // Utilisation propre du système de configuration .NET au lieu de lire le fichier texte
                 var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-
-                // On cherche dans la section principale
                 var connectionsSection = config.GetSection("PCVueWebServiceSettings:Connections");
-
-                // Si elle est vide, on tente l'autre nom possible dans ton app
                 if (!connectionsSection.Exists() || !connectionsSection.GetChildren().Any())
                 {
                     connectionsSection = config.GetSection("WebServiceConnections");
@@ -1351,10 +1178,6 @@ namespace PoWorks_Rework.Controllers
                 return null;
             }
         }
-
-        /// <summary>
-        /// Get available Web Service connections
-        /// </summary>
         private List<PCVueWebServiceSettings> GetAvailableWebServiceConnections()
         {
             var connections = new List<PCVueWebServiceSettings>();
@@ -1399,10 +1222,7 @@ namespace PoWorks_Rework.Controllers
         }
 
         #endregion
-
-        // ============================================================================================================
         #region UTILITY METHODS & HELPERS
-        // ============================================================================================================
 
         [HttpPost]
         public IActionResult PrintSelectedMeters([FromBody] PrintMetersRequest request)
@@ -1439,8 +1259,6 @@ namespace PoWorks_Rework.Controllers
 
             return Json(new { success = true, message = "Printed meter data to console", count = selectedMeterNames?.Count ?? 0 });
         }
-
-        // Helper method to get web service connection by ID
         private PCVueWebServiceSettings? GetWebServiceConnectionById(string connectionId)
         {
             var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
@@ -1468,8 +1286,6 @@ namespace PoWorks_Rework.Controllers
 
             return null;
         }
-
-        // Enhanced method to get parent meter options with better error handling
         private async Task<List<SelectListItem>> GetParentMeterOptions()
         {
             var options = new List<SelectListItem>
@@ -1506,7 +1322,6 @@ namespace PoWorks_Rework.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting parent meter options");
-                // Don't throw here, just return what we have
             }
 
             return options;

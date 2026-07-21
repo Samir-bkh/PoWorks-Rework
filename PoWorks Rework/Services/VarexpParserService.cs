@@ -1,10 +1,7 @@
-﻿using Microsoft.VisualBasic.FileIO;
+using Microsoft.VisualBasic.FileIO;
 
 namespace PoWorks_Rework.Services
 {
-    /// <summary>
-    /// Exception thrown when a VAREXP.DAT parsing error occurs.
-    /// </summary>
     public class VarexpParseException : Exception
     {
         public int LineNumber { get; }
@@ -15,26 +12,11 @@ namespace PoWorks_Rework.Services
             LineNumber = lineNumber;
         }
     }
-
-    /// <summary>
-    /// Configuration enum to represent the two possible VAREXP configurations
-    /// </summary>
     public enum VarexpConfiguration
     {
-        /// <summary>
-        /// Configuration with n1-n6 for names + n7 for 6 variables (Source at index != 22)
-        /// </summary>
         SixPlusOne,
-
-        /// <summary>
-        /// Configuration with n1-n12 for names (Source at index 22)
-        /// </summary>
         Twelve
     }
-
-    /// <summary>
-    /// Service to parse PCVue VAREXP.DAT configuration files (comma-delimited ASCII with optional quoted fields).
-    /// </summary>
     public class VarexpParserService
     {
         private readonly ILogger<VarexpParserService> _logger;
@@ -43,12 +25,6 @@ namespace PoWorks_Rework.Services
         {
             _logger = logger;
         }
-
-        /// <summary>
-        /// Parses a VAREXP.DAT file uploaded via an ASP.NET Core IFormFile.
-        /// Uses TextFieldParser to handle quoted fields correctly.
-        /// Combines name columns (n1-n6 or n1-n12) into a single dotted name.
-        /// </summary>
         public async Task<List<string[]>> ParseVarexpAsync(IFormFile file)
         {
             var records = new List<string[]>();
@@ -81,55 +57,42 @@ namespace PoWorks_Rework.Services
                         _logger.LogError(ex, "Malformed line {LineNumber} in VAREXP.DAT", lineNumber);
                         throw new VarexpParseException(ex.Message, lineNumber, ex);
                     }
-
-                    // Skip empty or comment lines
                     if (fields == null || fields.Length == 0)
                         continue;
-
-                    // Check if this is the "Class" row to find the Source column and determine configuration
                     if (fields.Length > 0 && fields[0]?.Trim().Equals("Class", StringComparison.OrdinalIgnoreCase) == true)
                     {
                         sourceColumnIndex = FindSourceColumn(fields);
                         configuration = DetermineConfiguration(sourceColumnIndex);
 
                         LogConfigurationInfo(sourceColumnIndex, configuration, fields);
-
-                        // Process the Class row with combined name column
                         var processedFields = ProcessClassRow(fields, configuration.Value);
                         records.Add(processedFields);
                     }
                     else
                     {
-                        // Process regular data rows (combine name columns if configuration is known)
                         if (configuration.HasValue)
                         {
                             var processedFields = ProcessDataRow(fields, configuration.Value);
-
-                            // Apply filtering to processed fields
                             if (!ShouldFilterRow(processedFields))
                             {
                                 records.Add(processedFields);
                             }
                             else
                             {
-                                // Log filtered rows for debugging
                                 _logger.LogDebug($"Filtered out row: [{string.Join(", ", processedFields)}]");
                             }
                         }
                         else
                         {
-                            // Configuration not determined yet, add as-is
                             records.Add(fields);
                         }
                     }
                 }
-
-                // Log final summary
                 LogFinalSummary(sourceColumnIndex, configuration, records.Count);
             }
             catch (VarexpParseException)
             {
-                throw; // already logged and wrapped
+                throw; 
             }
             catch (Exception ex)
             {
@@ -139,10 +102,6 @@ namespace PoWorks_Rework.Services
 
             return records;
         }
-
-        /// <summary>
-        /// Find the column index that contains "Source" in the given fields array.
-        /// </summary>
         private int? FindSourceColumn(string[] fields)
         {
             for (int i = 0; i < fields.Length; i++)
@@ -154,10 +113,6 @@ namespace PoWorks_Rework.Services
             }
             return null;
         }
-
-        /// <summary>
-        /// Determine the VAREXP configuration based on Source column position
-        /// </summary>
         private VarexpConfiguration DetermineConfiguration(int? sourceColumnIndex)
         {
             if (sourceColumnIndex.HasValue && sourceColumnIndex.Value == 22)
@@ -169,10 +124,6 @@ namespace PoWorks_Rework.Services
                 return VarexpConfiguration.SixPlusOne;
             }
         }
-
-        /// <summary>
-        /// Log configuration information to both logger and console
-        /// </summary>
         private void LogConfigurationInfo(int? sourceColumnIndex, VarexpConfiguration? configuration, string[] fields)
         {
             string configName = configuration == VarexpConfiguration.Twelve ? "12-column (n1-n12)" : "6+1-column (n1-n6 + n7)";
@@ -189,31 +140,21 @@ namespace PoWorks_Rework.Services
             Console.WriteLine($"Class row content: [{string.Join(", ", fields)}]");
             Console.WriteLine("======================================\n");
         }
-
-        /// <summary>
-        /// Process the Class row by combining name columns and adjusting headers
-        /// </summary>
         private string[] ProcessClassRow(string[] fields, VarexpConfiguration configuration)
         {
             var result = new List<string>();
-
-            // Add the first field (Class)
             result.Add(fields[0]);
-
-            // Add "CombinedName" instead of individual n1, n2, etc.
             result.Add("CombinedName");
 
             if (configuration == VarexpConfiguration.Twelve)
             {
-                // Skip n1-n12 (indices 2-13), add everything after n12
                 for (int i = 14; i < fields.Length; i++)
                 {
                     result.Add(fields[i]);
                 }
             }
-            else // SixPlusOne
+            else 
             {
-                // Skip n1-n7 (indices 2-8), add everything after n7
                 for (int i = 9; i < fields.Length; i++)
                 {
                     result.Add(fields[i]);
@@ -222,32 +163,22 @@ namespace PoWorks_Rework.Services
 
             return result.ToArray();
         }
-
-        /// <summary>
-        /// Process data rows by combining name columns into a single dotted name
-        /// </summary>
         private string[] ProcessDataRow(string[] fields, VarexpConfiguration configuration)
         {
             var result = new List<string>();
-
-            // Add the first field (typically the record type like CMD, CHR, etc.)
             result.Add(fields[0]);
-
-            // Combine name columns based on configuration
             string combinedName = CombineNameColumns(fields, configuration);
             result.Add(combinedName);
 
             if (configuration == VarexpConfiguration.Twelve)
             {
-                // Skip n1-n12 (indices 2-13), add everything after n12
                 for (int i = 14; i < fields.Length; i++)
                 {
                     result.Add(fields[i]);
                 }
             }
-            else // SixPlusOne
+            else 
             {
-                // Skip n1-n7 (indices 2-8), add everything after n7
                 for (int i = 9; i < fields.Length; i++)
                 {
                     result.Add(fields[i]);
@@ -256,17 +187,12 @@ namespace PoWorks_Rework.Services
 
             return result.ToArray();
         }
-
-        /// <summary>
-        /// Combine name columns into a single dotted string based on configuration
-        /// </summary>
         private string CombineNameColumns(string[] fields, VarexpConfiguration configuration)
         {
             var nameParts = new List<string>();
 
             if (configuration == VarexpConfiguration.Twelve)
             {
-                // Combine n1-n12 (indices 2-13)
                 for (int i = 2; i <= 13; i++)
                 {
                     if (i < fields.Length && !string.IsNullOrWhiteSpace(fields[i]))
@@ -275,9 +201,8 @@ namespace PoWorks_Rework.Services
                     }
                 }
             }
-            else // SixPlusOne
+            else 
             {
-                // Combine n1-n6 (indices 2-7)
                 for (int i = 2; i <= 7; i++)
                 {
                     if (i < fields.Length && !string.IsNullOrWhiteSpace(fields[i]))
@@ -285,8 +210,6 @@ namespace PoWorks_Rework.Services
                         nameParts.Add(fields[i].Trim());
                     }
                 }
-
-                // Add n7 content if it exists and contains variables (index 8)
                 if (fields.Length > 8 && !string.IsNullOrWhiteSpace(fields[8]))
                 {
                     nameParts.Add(fields[8].Trim());
@@ -295,10 +218,6 @@ namespace PoWorks_Rework.Services
 
             return string.Join(".", nameParts);
         }
-
-        /// <summary>
-        /// Check if a processed row should be filtered out (system rows, etc.)
-        /// </summary>
         private bool ShouldFilterRow(string[] processedFields)
         {
             if (processedFields == null || processedFields.Length < 2)
@@ -306,14 +225,10 @@ namespace PoWorks_Rework.Services
 
             var firstField = processedFields[0]?.Trim() ?? "";
             var combinedName = processedFields[1]?.Trim().ToLowerInvariant() ?? "";
-
-            // Filter out system rows (combined name starts with "system")
             if (combinedName.StartsWith("system", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
-
-            // Filter out rows with excluded prefixes in the first field
             var excludedPrefixes = new[]
             {
                 "DEFACTALABEL", "DEFALMALABEL", "DEFBITALABEL", "LNSLCA",
@@ -327,10 +242,6 @@ namespace PoWorks_Rework.Services
 
             return false;
         }
-
-        /// <summary>
-        /// Log final parsing summary
-        /// </summary>
         private void LogFinalSummary(int? sourceColumnIndex, VarexpConfiguration? configuration, int recordCount)
         {
             string configName = configuration == VarexpConfiguration.Twelve ? "12-column" : "6+1-column";
@@ -355,10 +266,6 @@ namespace PoWorks_Rework.Services
                 Console.WriteLine($"===============================================\n");
             }
         }
-
-        /// <summary>
-        /// Convenience method to parse VAREXP.DAT from a file path.
-        /// </summary>
         public List<string[]> ParseVarexpFromPath(string filePath)
         {
             var records = new List<string[]>();
@@ -390,8 +297,6 @@ namespace PoWorks_Rework.Services
 
                     if (fields == null || fields.Length == 0)
                         continue;
-
-                    // Check if this is the "Class" row to find the Source column
                     if (fields.Length > 0 && fields[0]?.Trim().Equals("Class", StringComparison.OrdinalIgnoreCase) == true)
                     {
                         sourceColumnIndex = FindSourceColumn(fields);

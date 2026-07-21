@@ -1,4 +1,3 @@
-﻿// Controllers/BaseController.cs
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Services;

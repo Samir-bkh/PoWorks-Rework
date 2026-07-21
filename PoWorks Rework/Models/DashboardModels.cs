@@ -1,11 +1,7 @@
-﻿// Models/DashboardModels.cs
 using System.ComponentModel.DataAnnotations;
 
 namespace PoWorks_Rework.Models
 {
-    /// <summary>
-    /// Reusable filter model for meter reading queries
-    /// </summary>
     public class MeterReadingFilters
     {
         public string DateFilter { get; set; } = "monthly";
@@ -13,16 +9,12 @@ namespace PoWorks_Rework.Models
         public int? MeterId { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
-        public int Limit { get; set; } = 5; // Default 5 meters
+        public int Limit { get; set; } = 5; 
         public int Offset { get; set; } = 0;
         public bool ActiveOnly { get; set; } = true;
-        public bool IncludeNullTenants { get; set; } = true; // Allow meters without tenants
+        public bool IncludeNullTenants { get; set; } = true; 
         public bool IsComparisonMode { get; set; }
         public string GroupBy { get; set; } = "meter";
-
-        /// <summary>
-        /// Get effective date range with defaults
-        /// </summary>
         public (DateTime start, DateTime end) GetDateRange()
         {
             var endDate = EndDate ?? DateTime.Now;
@@ -30,10 +22,6 @@ namespace PoWorks_Rework.Models
             return (startDate, endDate);
         }
     }
-
-    /// <summary>
-    /// Reusable model for meter query results
-    /// </summary>
     public class MeterQueryResult
     {
         public int MeterId { get; set; }
@@ -45,15 +33,7 @@ namespace PoWorks_Rework.Models
         public int? TenantId { get; set; }
         public string TenantName { get; set; } = string.Empty;
         public int LastReading { get; set; }
-
-        /// <summary>
-        /// Display name for dropdowns
-        /// </summary>
         public string DisplayName => string.IsNullOrEmpty(Label) ? Name : $"{Name} ({Label})";
-
-        /// <summary>
-        /// Full display with tenant info
-        /// </summary>
         public string FullDisplayName
         {
             get
@@ -65,10 +45,6 @@ namespace PoWorks_Rework.Models
             }
         }
     }
-
-    /// <summary>
-    /// Reusable model for consumption data
-    /// </summary>
     public class ConsumptionQueryResult
     {
         public int MeterId { get; set; }
@@ -81,10 +57,6 @@ namespace PoWorks_Rework.Models
         public int? TenantId { get; set; }
         public string TenantName { get; set; } = string.Empty;
     }
-
-    /// <summary>
-    /// Reusable model for dashboard summary data
-    /// </summary>
     public class DashboardSummary
     {
         public double TotalConsumption { get; set; }
@@ -94,10 +66,6 @@ namespace PoWorks_Rework.Models
         public int TotalMeters { get; set; }
         public DateTime? OldestReading { get; set; }
         public DateTime? NewestReading { get; set; }
-
-        /// <summary>
-        /// Format values for display
-        /// </summary>
         public object ToDisplayObject()
         {
             return new
@@ -110,18 +78,10 @@ namespace PoWorks_Rework.Models
             };
         }
     }
-
-    /// <summary>
-    /// Reusable model for chart data
-    /// </summary>
     public class ChartDataResult
     {
         public List<string> Labels { get; set; } = new List<string>();
         public List<ChartDataset> Datasets { get; set; } = new List<ChartDataset>();
-
-        /// <summary>
-        /// Convert to API response format
-        /// </summary>
         public object ToApiResponse()
         {
             return new
@@ -131,20 +91,12 @@ namespace PoWorks_Rework.Models
             };
         }
     }
-
-    /// <summary>
-    /// Reusable model for chart datasets
-    /// </summary>
     public class ChartDataset
     {
         public string Label { get; set; } = string.Empty;
         public List<double> Data { get; set; } = new List<double>();
         public string BackgroundColor { get; set; } = string.Empty;
         public string BorderColor { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Convert to API format
-        /// </summary>
         public object ToApiFormat()
         {
             return new
@@ -156,10 +108,6 @@ namespace PoWorks_Rework.Models
             };
         }
     }
-
-    /// <summary>
-    /// Reusable model for data availability check results
-    /// </summary>
     public class DataAvailabilityResult
     {
         public bool HasActiveMeters { get; set; }
@@ -168,15 +116,7 @@ namespace PoWorks_Rework.Models
         public long TotalReadings { get; set; }
         public int MetersWithTenants { get; set; }
         public int MetersWithoutTenants { get; set; }
-
-        /// <summary>
-        /// Overall data availability
-        /// </summary>
         public bool IsDataAvailable => HasActiveMeters && HasReadings;
-
-        /// <summary>
-        /// Get availability message
-        /// </summary>
         public string GetAvailabilityMessage()
         {
             if (!HasActiveMeters)
@@ -192,10 +132,6 @@ namespace PoWorks_Rework.Models
             return $"Found {ActiveMeterCount} active meters{tenantInfo} with {TotalReadings} readings";
         }
     }
-
-    /// <summary>
-    /// Reusable query builder helper for meters
-    /// </summary>
     public class MeterQueryBuilder
     {
         private readonly List<string> _whereConditions = new List<string>();
@@ -227,8 +163,6 @@ namespace PoWorks_Rework.Models
         {
             if (include)
             {
-                // Allow both tenant-assigned and unassigned meters
-                // No additional WHERE clause needed
             }
             return this;
         }
@@ -280,10 +214,6 @@ namespace PoWorks_Rework.Models
             return (baseQuery, _parameters);
         }
     }
-
-    /// <summary>
-    /// NEW: Model for date range information
-    /// </summary>
     public class DateRangeInfo
     {
         public DateTime? EarliestReading { get; set; }
@@ -293,10 +223,6 @@ namespace PoWorks_Rework.Models
         public int DaysWithData { get; set; }
         public bool HasData { get; set; }
     }
-
-    /// <summary>
-    /// NEW: Model for date range suggestions
-    /// </summary>
     public class DateRangeSuggestions
     {
         public DateTime DefaultStartDate { get; set; }
@@ -304,10 +230,6 @@ namespace PoWorks_Rework.Models
         public string Message { get; set; } = string.Empty;
         public List<DateRangeOption> AlternativeRanges { get; set; } = new List<DateRangeOption>();
     }
-
-    /// <summary>
-    /// NEW: Model for date range optionsDashboardFilterRequest
-    /// </summary>
     public class DateRangeOption
     {
         public string Name { get; set; } = string.Empty;

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace PoWorks_Rework.Services
 {
@@ -28,36 +28,23 @@ namespace PoWorks_Rework.Services
             public int TotalCount { get; set; }
             public string ErrorMessage { get; set; } = "";
         }
-
-        /// <summary>
-        /// Parse PCVue browse variables response and extract variable paths
-        /// </summary>
-        /// <param name="responseData">The raw PCVue API response</param>
-        /// <param name="includeSystemVariables">Whether to include variables with 'System' branches</param>
         public ParseResult ParseBrowseVariablesResponse(object responseData, bool includeSystemVariables = false)
         {
             var result = new ParseResult();
 
             try
             {
-                // Convert response to JsonElement for parsing
                 var jsonString = JsonSerializer.Serialize(responseData);
                 var jsonDoc = JsonDocument.Parse(jsonString);
                 var root = jsonDoc.RootElement;
-
-                // Check if variableCollections exists
                 if (!root.TryGetProperty("variableCollections", out var collectionsElement))
                 {
                     result.ErrorMessage = "Response missing 'variableCollections' property";
                     return result;
                 }
-
-                // Parse each variable in the collection
                 foreach (var variable in collectionsElement.EnumerateArray())
                 {
                     var parsedVar = new ParsedVariable();
-
-                    // Extract branches array
                     if (variable.TryGetProperty("branches", out var branchesElement))
                     {
                         foreach (var branch in branchesElement.EnumerateArray())
@@ -65,14 +52,10 @@ namespace PoWorks_Rework.Services
                             parsedVar.Branches.Add(branch.GetString() ?? "");
                         }
                     }
-
-                    // Extract variable name
                     if (variable.TryGetProperty("VariableName", out var varNameElement))
                     {
                         parsedVar.VariableName = varNameElement.GetString() ?? "";
                     }
-
-                    // Extract other properties
                     if (variable.TryGetProperty("variableType", out var typeElement))
                     {
                         parsedVar.VariableType = typeElement.GetString() ?? "";
@@ -87,8 +70,6 @@ namespace PoWorks_Rework.Services
                     {
                         parsedVar.IsLeaf = leafElement.GetBoolean();
                     }
-
-                    // Build full path: branches joined with dots + variable name
                     if (parsedVar.Branches.Any() && !string.IsNullOrEmpty(parsedVar.VariableName))
                     {
                         parsedVar.FullPath = string.Join(".", parsedVar.Branches) + "." + parsedVar.VariableName;
@@ -97,18 +78,13 @@ namespace PoWorks_Rework.Services
                     {
                         parsedVar.FullPath = parsedVar.VariableName;
                     }
-
-                    // Filter out System variables unless explicitly requested
                     bool hasSystemBranch = parsedVar.Branches.Any(branch =>
                         branch.Equals("System", StringComparison.OrdinalIgnoreCase));
 
                     if (hasSystemBranch && !includeSystemVariables)
                     {
-                        // Skip this variable - it has a System branch and we're not including them
                         continue;
                     }
-
-                    // Only add variables with valid paths
                     if (!string.IsNullOrEmpty(parsedVar.FullPath))
                     {
                         result.Variables.Add(parsedVar);
@@ -128,10 +104,6 @@ namespace PoWorks_Rework.Services
 
             return result;
         }
-
-        /// <summary>
-        /// Print parsed variables to console in structured format
-        /// </summary>
         public void PrintParsedVariablesToConsole(ParseResult parseResult, string connectionInfo, bool includeSystemVariables = false)
         {
             Console.WriteLine("\n=====================================================");
@@ -165,15 +137,11 @@ namespace PoWorks_Rework.Services
                     }
                     Console.WriteLine($"   ├─ Variable: {variable.VariableName}");
                     Console.WriteLine($"   └─ Type: {variable.VariableType}, ReadOnly: {variable.IsReadOnly}");
-
-                    // Add spacing every 5 items for readability
                     if ((i + 1) % 5 == 0 && i < parseResult.Variables.Count - 1)
                     {
                         Console.WriteLine();
                     }
                 }
-
-                // Summary by type
                 var typeSummary = parseResult.Variables
                     .GroupBy(v => v.VariableType)
                     .OrderByDescending(g => g.Count())

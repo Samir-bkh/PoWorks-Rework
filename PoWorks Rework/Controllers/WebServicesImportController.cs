@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -55,8 +55,6 @@ namespace PoWorks_Rework.Controllers
                 Console.WriteLine($"Connection Name: {request?.ConnectionName ?? "Not provided"}");
                 Console.WriteLine($"Selected variables count: {request?.SelectedVariables?.Count ?? 0}");
                 Console.WriteLine($"Print timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-
-                // ADD date range output
                 if (!string.IsNullOrEmpty(request?.StartDate))
                 {
                     Console.WriteLine($"Trends Start Date: {request.StartDate}");
@@ -76,7 +74,6 @@ namespace PoWorks_Rework.Controllers
 
                 if (request?.SelectedVariables != null && request.SelectedVariables.Count > 0)
                 {
-                    // existing variable details code...
                 }
 
                 return Json(new { success = true, count = request?.SelectedVariables?.Count ?? 0 });
@@ -120,8 +117,6 @@ namespace PoWorks_Rework.Controllers
                 var errorVariables = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
                 var meterIdsMap = new Dictionary<string, int>();
-
-                // --- PHASE 1 : CRÉATION DES COMPTEURS ---
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
@@ -176,16 +171,12 @@ namespace PoWorks_Rework.Controllers
                     }
                     catch (Exception) { await transaction.RollbackAsync(); throw; }
                 }
-
-                // --- PHASE 2 : TRAITEMENT PAR BATCH ET INSERTION EN BDD ---
                 if (processTrends && meterIdsMap.Any())
                 {
                     Console.WriteLine($"\n⚡ Lancement du téléchargement BATCH pour {meterIdsMap.Count} compteurs...");
 
                     var variableNamesList = meterIdsMap.Keys.ToList();
                     var trendsResults = await _trendsService.ProcessVariablesTrendsAsync(variableNamesList, request.TrendsStartDate.Value, request.TrendsEndDate.Value, trendsSettings);
-
-                    // On ouvre une connexion pour insérer les points
                     using (var conn = new NpgsqlConnection(_databaseService.GetConnectionString()))
                     {
                         await conn.OpenAsync();
@@ -215,7 +206,7 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                                             insertCmd.Parameters.AddWithValue("@value", point.Value);
                                             int qualityValue = point.IsGoodQuality ? 192 : 0;
                                             insertCmd.Parameters.AddWithValue("@quality", qualityValue);
-                                            insertCmd.Parameters.AddWithValue("@companyId", 1); // <-- Ajout de l'ID de l'entreprise
+                                            insertCmd.Parameters.AddWithValue("@companyId", 1); 
 
                                             await insertCmd.ExecuteNonQueryAsync();
                                             pointsInserted++;
@@ -238,8 +229,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                         }
                     }
                 }
-
-                // --- PHASE 3 : RÉPONSE JSON TOUJOURS VALIDE ---
                 return Json(new
                 {
                     success = true,
@@ -335,8 +324,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                 }
 
                 Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-
-                // Get the connection settings
                 var connection = await GetWebServiceConnectionById(request.ConnectionId);
                 if (connection == null)
                 {
@@ -346,11 +333,7 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                 }
 
                 Console.WriteLine($"Connection Name: {connection.ConnectionName}");
-
-                // Create HttpClient with SSL bypass
                 var webService = _pcvueWebService;
-
-                // Get authentication token
                 Console.WriteLine("\n--- AUTHENTICATION ---");
                 var token = await webService.GetValidAccessTokenAsync(connection);
                 if (string.IsNullOrEmpty(token))
@@ -361,8 +344,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                 }
 
                 Console.WriteLine("✅ Authentication successful");
-
-                // Build the Variables endpoint URL
                 var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
                 var queryParams = new List<string>
                 {
@@ -378,8 +359,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
 
                 var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
                 Console.WriteLine($"Endpoint: {fullUrl}");
-
-                // Create and send request
                 var httpRequest = new HttpRequestMessage(HttpMethod.Get, fullUrl);
                 httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
                 httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
@@ -396,15 +375,10 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
 
                     try
                     {
-                        // Parse JSON response
                         var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-
-                        // Parse the response using our parsing service with System variable filtering
                         var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(
                             jsonData,
                             request.IncludeSystemVariables);
-
-                        // Print ONLY the parsed results to console
                         var connectionName = connection.ConnectionName ?? request.ConnectionId;
                         _variableBrowseParsingService.PrintParsedVariablesToConsole(
                             parseResult,
@@ -414,8 +388,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                         Console.WriteLine($"✅ Parsing completed successfully");
                         Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                         Console.WriteLine("=====================================================\n");
-
-                        // Return response with parsed data for meter selection table
                         return Json(new
                         {
                             success = true,
@@ -456,10 +428,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
         #endregion
 
         #region Helper Methods
-
-        /// <summary>
-        /// Get Web Service connection settings by connection ID
-        /// </summary>
         private async Task<PCVueWebServiceSettings?> GetWebServiceConnectionById(string connectionId)
         {
             try
@@ -507,9 +475,6 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
         }
 
         #endregion
-
-
-        // Ajoute ça juste ici :
         private async Task<bool> ProcessTrendsForVariable(WebServiceVariableItem variable, PCVueWebServiceSettings settings, string startDate, string endDate)
         {
             try

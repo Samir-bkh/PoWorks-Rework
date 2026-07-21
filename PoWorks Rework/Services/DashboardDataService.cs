@@ -1,12 +1,9 @@
-﻿using Npgsql;
+using Npgsql;
 using PoWorks_Rework.Models;
 using System.Data;
 
 namespace PoWorks_Rework.Services
 {
-    /// <summary>
-    /// COMPLETE: Dashboard service with isolated and safe database connections
-    /// </summary>
     public class DashboardDataService
     {
         private readonly DatabaseService _databaseService;
@@ -24,8 +21,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return result;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -96,8 +91,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return result;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -198,8 +191,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return meters;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -286,8 +277,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return meters;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -354,8 +343,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return data;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -368,10 +355,6 @@ namespace PoWorks_Rework.Services
                 string nameColumn = filters.GroupBy == "tenant" ? "COALESCE(t.\"DisplayName\", 'Zones Communes')" : "m.\"Name\"";
                 string unitColumn = filters.GroupBy == "tenant" ? "'kWh'::text" : "COALESCE(m.\"Unit\", 'kWh')";
                 string groupColumns = filters.GroupBy == "tenant" ? "m.\"TenantID\", t.\"DisplayName\"" : "m.\"MeterId\", m.\"Name\", m.\"Unit\"";
-
-                // =========================================================================
-                // COMPARISON MODE: Overlay (Hours, Days of the Month, or Months of the Year)
-                // =========================================================================
                 if (filters.IsComparisonMode)
                 {
                     string curveNameSql = "";
@@ -383,7 +366,6 @@ namespace PoWorks_Rework.Services
                     if (filters.DateFilter == "daily")
                     {
                         string periodSql = @"CASE EXTRACT(ISODOW FROM mr.""Timestamp"") WHEN 1 THEN 'Lundi' WHEN 2 THEN 'Mardi' WHEN 3 THEN 'Mercredi' WHEN 4 THEN 'Jeudi' WHEN 5 THEN 'Vendredi' WHEN 6 THEN 'Samedi' WHEN 7 THEN 'Dimanche' END";
-                        // Résultat : "Light1 [Jeudi]" ou "Société Beta [Jeudi]"
                         curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
                         xAxisSql = @"to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00')";
                     }
@@ -393,7 +375,7 @@ namespace PoWorks_Rework.Services
                         curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
                         xAxisSql = @"to_char(DATE_TRUNC('day', mr.""Timestamp""), 'DD')";
                     }
-                    else // yearly
+                    else 
                     {
                         string periodSql = @"to_char(DATE_TRUNC('year', mr.""Timestamp""), 'YYYY')";
                         curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
@@ -590,8 +572,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return tenants;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -627,8 +607,6 @@ namespace PoWorks_Rework.Services
             try
             {
                 if (!_databaseService.IsInitialized) return meters;
-
-                // --- ISOLATED CONNECTION ---
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 await connection.OpenAsync();
@@ -672,14 +650,10 @@ namespace PoWorks_Rework.Services
         private string BuildMeterLabel(string meterName, string unit, string tenantName)
         {
             var label = meterName;
-
-            // Only add unit if it exists and is not empty
             if (!string.IsNullOrWhiteSpace(unit))
             {
                 label += $" ({unit})";
             }
-
-            // Add tenant name if it exists and isn't a duplicate of the meter name
             if (!string.IsNullOrWhiteSpace(tenantName) && tenantName != meterName)
             {
                 label += $" - {tenantName}";

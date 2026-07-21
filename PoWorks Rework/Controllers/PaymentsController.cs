@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -27,8 +27,6 @@ namespace PoWorks_Rework.Controllers
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-
-                // --- 1. Le Registre des Paiements ---
                 string queryPayments = @"
                     SELECT p.""PaymentId"", p.""BillId"", p.""PaymentDate"", p.""AmountPaid"", p.""PaymentMethod"",
                            t.""CompanyName"" as ""TenantName""
@@ -54,29 +52,21 @@ namespace PoWorks_Rework.Controllers
                         });
                     }
                 }
-
-                // --- 2. KPI : Total Encaissé ---
                 string queryTotal = @"SELECT COALESCE(SUM(""AmountPaid""), 0) FROM ""Payments""";
                 using (var cmdTotal = new NpgsqlCommand(queryTotal, connection))
                 {
                     viewModel.TotalCollectedThisMonth = Convert.ToDecimal(cmdTotal.ExecuteScalar());
                 }
-
-                // --- 3. KPI : Factures en Attente ---
                 string queryPending = @"SELECT COUNT(*) FROM ""Bills"" WHERE ""Status"" = 'Validated'";
                 using (var cmdPending = new NpgsqlCommand(queryPending, connection))
                 {
                     viewModel.PendingBillsCount = Convert.ToInt32(cmdPending.ExecuteScalar());
                 }
-
-                // --- 4. KPI : Factures EN RETARD (Plus de 14 jours et toujours Validated) ---
                 string queryOverdue = @"SELECT COUNT(*) FROM ""Bills"" WHERE ""Status"" = 'Validated' AND ""PeriodEnd"" < CURRENT_DATE - INTERVAL '14 days'";
                 using (var cmdOverdue = new NpgsqlCommand(queryOverdue, connection))
                 {
                     viewModel.OverdueBillsCount = Convert.ToInt32(cmdOverdue.ExecuteScalar());
                 }
-
-                // --- 5. Liste des factures pour le menu déroulant du Modal ---
                 string queryInvoiceLookup = @"
                     SELECT b.""BillId"", b.""BillNumber"", b.""GrandTotal"", t.""CompanyName"",
                            (b.""GrandTotal"" - COALESCE((SELECT SUM(p.""AmountPaid"") FROM ""Payments"" p WHERE p.""BillId"" = b.""BillId""), 0)) as ""Remaining""
@@ -91,7 +81,7 @@ namespace PoWorks_Rework.Controllers
                     while (reader.Read())
                     {
                         decimal remaining = reader.GetDecimal(4);
-                        if (remaining > 0) // On ne montre que s'il reste quelque chose à payer
+                        if (remaining > 0) 
                         {
                             viewModel.ActiveInvoices.Add(new InvoiceLookupOption
                             {
@@ -113,8 +103,6 @@ namespace PoWorks_Rework.Controllers
 
             return View(viewModel);
         }
-
-        // --- NOUVEAU : Endpoint pour enregistrer le paiement depuis le Modal ---
         [HttpPost]
         public IActionResult RecordPayment(int billId, decimal amountPaid, string paymentMethod, string reference, string notes)
         {
@@ -133,7 +121,6 @@ namespace PoWorks_Rework.Controllers
                 using var transaction = connection.BeginTransaction();
                 try
                 {
-                    // A. Récupérer les infos de la facture
                     int tenantId = 0;
                     decimal grandTotal = 0;
                     string getBill = @"SELECT ""TenantID"", ""GrandTotal"" FROM ""Bills"" WHERE ""BillId"" = @id";
@@ -147,8 +134,6 @@ namespace PoWorks_Rework.Controllers
                             grandTotal = reader.GetDecimal(1);
                         }
                     }
-
-                    // B. Insérer la ligne de paiement
                     string insertPay = @"
                         INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"", ""Reference"", ""Notes"", ""RecordedBy"")
                         VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, @method, @ref, @notes, 'Admin')";
@@ -163,8 +148,6 @@ namespace PoWorks_Rework.Controllers
                         cmdInsert.Parameters.AddWithValue("notes", (object)notes ?? DBNull.Value);
                         cmdInsert.ExecuteNonQuery();
                     }
-
-                    // C. Calculer le total déjà payé au global pour cette facture
                     string checkTotalPaid = @"SELECT COALESCE(SUM(""AmountPaid""), 0) FROM ""Payments"" WHERE ""BillId"" = @billId";
                     decimal totalPaid = 0;
                     using (var cmdCheck = new NpgsqlCommand(checkTotalPaid, connection, transaction))
@@ -172,8 +155,6 @@ namespace PoWorks_Rework.Controllers
                         cmdCheck.Parameters.AddWithValue("billId", billId);
                         totalPaid = Convert.ToDecimal(cmdCheck.ExecuteScalar());
                     }
-
-                    // D. Mettre à jour le statut (Paid si tout est réglé, sinon reste Validated)
                     if (totalPaid >= grandTotal)
                     {
                         using var cmdUpdate = new NpgsqlCommand(@"UPDATE ""Bills"" SET ""Status"" = 'Paid' WHERE ""BillId"" = @id", connection, transaction);

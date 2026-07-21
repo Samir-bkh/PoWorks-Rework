@@ -1,4 +1,4 @@
-﻿using static PoWorks_Rework.Controllers.ImportController;
+using static PoWorks_Rework.Controllers.ImportController;
 namespace PoWorks_Rework.Models
 {
     public class ImportExportViewModel
@@ -16,13 +16,6 @@ namespace PoWorks_Rework.Models
 
 namespace PoWorks_Rework.Models
 {
-    // ================================
-    // TRENDS-RELATED MODELS
-    // ================================
-
-    /// <summary>
-    /// Request model for processing trends data for multiple variables
-    /// </summary>
     public class ProcessTrendsRequest
     {
         public string ConnectionId { get; set; } = "";
@@ -35,28 +28,24 @@ namespace PoWorks_Rework.Models
     public class TrendsOptions
     {
         public int ElementMaxNumber { get; set; } = 100000;
-        public int AggregateFunction { get; set; } = 0; // 0 = Raw, 1 = WindowPixelSize
+        public int AggregateFunction { get; set; } = 0; 
         public int AggregateParam1 { get; set; } = 0;
         public List<string> Properties { get; set; } = new() { "VariableName", "Description", "StandardLabel" };
-        public bool IncludeStartBound { get; set; } = false; // <-- ICI : FALSE
-        public bool IncludeEndBound { get; set; } = false;   // <-- ICI : FALSE
+        public bool IncludeStartBound { get; set; } = false; 
+        public bool IncludeEndBound { get; set; } = false;   
     }
 
     public class TrendCreateRequest
     {
         public string VariableName { get; set; } = "";
         public int ElementMaxNumber { get; set; } = 100000;
-        public int AggregateFunction { get; set; } = 0; // 0 = Raw, 1 = WindowPixelSize
+        public int AggregateFunction { get; set; } = 0; 
         public int AggregateParam1 { get; set; } = 0;
         public List<string> Properties { get; set; } = new() { "VariableName", "Description", "StandardLabel" };
         public string Context { get; set; } = "";
-        public bool IncludeStartBound { get; set; } = false; // <-- ICI : FALSE
-        public bool IncludeEndBound { get; set; } = false;   // <-- ICI : FALSE
+        public bool IncludeStartBound { get; set; } = false; 
+        public bool IncludeEndBound { get; set; } = false;   
     }
-
-    /// <summary>
-    /// Response model for trends processing (returned to client)
-    /// </summary>
     public class ProcessTrendsResponse
     {
         public bool Success { get; set; }
@@ -65,10 +54,6 @@ namespace PoWorks_Rework.Models
         public TrendsSummary Summary { get; set; } = new();
         public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
     }
-
-    /// <summary>
-    /// Result for a single variable's trends processing
-    /// </summary>
     public class VariableTrendsResult
     {
         public string VariableName { get; set; } = "";
@@ -81,10 +66,6 @@ namespace PoWorks_Rework.Models
         public DateTime? FirstTimestamp { get; set; }
         public DateTime? LastTimestamp { get; set; }
     }
-
-    /// <summary>
-    /// Individual trend data point (matches API response structure)
-    /// </summary>
     public class TrendDataPoint
     {
         public double Value { get; set; }
@@ -93,9 +74,6 @@ namespace PoWorks_Rework.Models
         public int QualityValue { get; set; }
         public object? Properties { get; set; }
         public string? Variable { get; set; }
-
-
-        // Helper properties for easier processing
         public DateTime? TimestampParsed
         {
             get
@@ -108,10 +86,6 @@ namespace PoWorks_Rework.Models
 
         public bool IsGoodQuality => Quality.Equals("Good", StringComparison.OrdinalIgnoreCase);
     }
-
-    /// <summary>
-    /// Summary information for trends processing
-    /// </summary>
     public class TrendsSummary
     {
         public int TotalVariables { get; set; }
@@ -124,10 +98,6 @@ namespace PoWorks_Rework.Models
 
         public double SuccessRate => TotalVariables > 0 ? (double)SuccessfulVariables / TotalVariables * 100 : 0;
     }
-
-    /// <summary>
-    /// Request model for importing web service variables with trends data
-    /// </summary>
     public class ImportWebServiceVariablesWithTrendsRequest
     {
         public List<WebServiceVariableWithTrends> Variables { get; set; } = new();
@@ -138,10 +108,6 @@ namespace PoWorks_Rework.Models
         public DateTime? TrendsEndDate { get; set; }
         public string ConnectionId { get; set; } = "";
     }
-
-    /// <summary>
-    /// Web service variable with associated trends data
-    /// </summary>
     public class WebServiceVariableWithTrends : WebServiceVariableItem
     {
         public List<TrendDataPoint> TrendsData { get; set; } = new();
@@ -151,10 +117,6 @@ namespace PoWorks_Rework.Models
         public DateTime? TrendsStartDate { get; set; }
         public DateTime? TrendsEndDate { get; set; }
     }
-
-    /// <summary>
-    /// Response model for variable import with trends
-    /// </summary>
     public class ImportVariablesWithTrendsResponse
     {
         public bool Success { get; set; }
@@ -163,10 +125,6 @@ namespace PoWorks_Rework.Models
         public TrendsSummary TrendsSummary { get; set; } = new();
         public List<VariableImportResult> Results { get; set; } = new();
     }
-
-    /// <summary>
-    /// Summary for variable import operations
-    /// </summary>
     public class ImportSummary
     {
         public int TotalVariables { get; set; }
@@ -176,10 +134,6 @@ namespace PoWorks_Rework.Models
         public int FailedVariables { get; set; }
         public List<string> Errors { get; set; } = new();
     }
-
-    /// <summary>
-    /// Result for individual variable import
-    /// </summary>
     public class VariableImportResult
     {
         public string VariableName { get; set; } = "";
@@ -187,18 +141,10 @@ namespace PoWorks_Rework.Models
         public bool TrendsSuccess { get; set; }
         public string? ImportErrorMessage { get; set; }
         public string? TrendsErrorMessage { get; set; }
-        public string Action { get; set; } = ""; // "Created", "Updated", "Skipped", "Failed"
+        public string Action { get; set; } = ""; 
         public int? MeterId { get; set; }
         public int TrendsDataPointsImported { get; set; }
     }
-
-    // ================================
-    // INTERNAL SERVICE MODELS (used by TrendsService)
-    // ================================
-
-    /// <summary>
-    /// Internal result model for trend request creation
-    /// </summary>
     public class TrendRequestResult
     {
         public bool Success { get; set; }
@@ -206,10 +152,6 @@ namespace PoWorks_Rework.Models
         public string? VariableName { get; set; }
         public string? ErrorMessage { get; set; }
     }
-
-    /// <summary>
-    /// Internal result model for trend data retrieval
-    /// </summary>
     public class TrendDataResult
     {
         public bool Success { get; set; }
@@ -218,10 +160,6 @@ namespace PoWorks_Rework.Models
         public bool MaxNumberExceeded { get; set; }
         public string? ErrorMessage { get; set; }
     }
-
-    /// <summary>
-    /// Internal result model for variable trends processing
-    /// </summary>
     public class VariableTrendResult
     {
         public string VariableName { get; set; } = "";
@@ -231,22 +169,12 @@ namespace PoWorks_Rework.Models
         public bool MaxNumberExceeded { get; set; }
         public string? ErrorMessage { get; set; }
     }
-
-    /// <summary>
-    /// API response structure for trends (matches PCVue API)
-    /// </summary>
     public class TrendApiResponse
     {
         public List<TrendDataPoint> Values { get; set; } = new();
         public bool MaxNumberExceeded { get; set; }
     }
 }
-
-// ================================
-// IMPORT CONTROLLER MODELS
-// ================================
-
-// HDS Models
 public class ImportReadingsRequest
 {
     public string TableName { get; set; }
@@ -283,8 +211,6 @@ public class ImportMetersRequest
     public bool SkipExisting { get; set; }
     public bool UpdateExisting { get; set; }
 }
-
-// VAREXP Models
 public class ImportVarexpMetersRequest
 {
     public List<VarexpMeterImportItem> Meters { get; set; } = new();
@@ -301,8 +227,6 @@ public class VarexpMeterImportItem
     public string? ParentMeterId { get; set; }
     public bool Active { get; set; } = true;
 }
-
-// Web Services Models
 public class BrowseVariablesRequest
 {
     public string ConnectionId { get; set; } = "";
@@ -345,8 +269,6 @@ public class ImportWebServiceMetersRequest
     public string? EndDate { get; set; }
     public string? ConnectionId { get; set; }
 }
-
-// General Models
 public class PrintMetersRequest
 {
     public string TableName { get; set; }

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -14,7 +14,7 @@ namespace PoWorks_Rework.Controllers
     public class BillsController : BaseController
     {
         private readonly ILogger<BillsController> _logger;
-        private readonly BillingService _billingService; // 👈 1. Le moteur de calcul est là !
+        private readonly BillingService _billingService; 
 
         public BillsController(DatabaseService databaseService, BillingService billingService, ILogger<BillsController> logger)
             : base(databaseService)
@@ -45,8 +45,6 @@ namespace PoWorks_Rework.Controllers
 
                 viewModel.MeterOptions = GetMeters();
                 viewModel.TenantOptions = GetTenants();
-
-                // Load initial real data
                 var searchResults = SearchBills("Tenant", "", 1, 10);
                 viewModel.SearchResults = searchResults.Items;
                 viewModel.TotalItems = searchResults.TotalCount;
@@ -98,17 +96,12 @@ namespace PoWorks_Rework.Controllers
 
             return View("Index", viewModel);
         }
-
-        // 👈 2. NOUVEAU : Une méthode pour déclencher le calcul !
         [HttpPost]
         public async Task<IActionResult> GenerateBillTest(int tenantId, DateTime startDate, DateTime endDate)
         {
             try
             {
-                // 1. Appelle le service pour calculer la facture
                 var newBill = await _billingService.CalculateBillAsync(tenantId, startDate, endDate);
-
-                // 2. Sauvegarde la facture dans la base de données
                 await _billingService.SaveBillAsync(newBill);
 
                 TempData["SuccessMessage"] = $"SUCCESS! Bill calculated AND SAVED for {newBill.TenantName}. Grand Total: RM {newBill.AmountInclTax}";
@@ -126,12 +119,9 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                // NOUVELLE CONNEXION ISOLÉE ET SÉCURISÉE
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-
-                // 1. On récupère les infos principales de la facture
                 string billQuery = @"
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
                            b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
@@ -162,11 +152,7 @@ namespace PoWorks_Rework.Controllers
                     Status = reader.GetString(8),
                     GeneratedAt = reader.GetDateTime(9)
                 };
-
-                // Très important : fermer le premier lecteur avant d'en ouvrir un second
                 reader.Close();
-
-                // 2. On récupère le détail de chaque compteur lié à cette facture
                 string lineQuery = @"
                     SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
                     FROM ""BillLineItems""
@@ -203,7 +189,6 @@ namespace PoWorks_Rework.Controllers
             var options = new List<DropdownOption>();
             try
             {
-                // NOUVELLE CONNEXION ISOLÉE
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
@@ -224,7 +209,6 @@ namespace PoWorks_Rework.Controllers
             var options = new List<DropdownOption>();
             try
             {
-                // NOUVELLE CONNEXION ISOLÉE
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
@@ -255,8 +239,6 @@ namespace PoWorks_Rework.Controllers
             public int TotalCount { get; set; }
             public int TotalPages { get; set; }
         }
-
-        // 👈 3. CORRECTION : On lit les vraies données SQL
         private SearchResult SearchBills(string searchCriteria, string searchTerm, int page, int pageSize)
         {
             var result = new SearchResult();
@@ -264,7 +246,6 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // NOUVELLE CONNEXION ISOLÉE
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
@@ -321,8 +302,6 @@ namespace PoWorks_Rework.Controllers
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-
-                // 1. Sécurité : Vérifier si c'est bien un brouillon
                 string checkQuery = @"SELECT ""Status"" FROM ""Bills"" WHERE ""BillId"" = @id";
                 using var checkCmd = new NpgsqlCommand(checkQuery, connection);
                 checkCmd.Parameters.AddWithValue("id", id);
@@ -333,28 +312,23 @@ namespace PoWorks_Rework.Controllers
                     TempData["ErrorMessage"] = "Only draft invoices can be deleted.";
                     return RedirectToAction("Details", new { id = id });
                 }
-
-                // 2. Suppression professionnelle via Transaction SQL
                 using var transaction = connection.BeginTransaction();
                 try
                 {
-                    // On supprime d'abord les lignes de détails (pour éviter l'erreur de clé étrangère)
                     using var deleteLinesCmd = new NpgsqlCommand(@"DELETE FROM ""BillLineItems"" WHERE ""BillId"" = @id", connection, transaction);
                     deleteLinesCmd.Parameters.AddWithValue("id", id);
                     deleteLinesCmd.ExecuteNonQuery();
-
-                    // Ensuite on supprime la facture principale
                     using var deleteBillCmd = new NpgsqlCommand(@"DELETE FROM ""Bills"" WHERE ""BillId"" = @id", connection, transaction);
                     deleteBillCmd.Parameters.AddWithValue("id", id);
                     deleteBillCmd.ExecuteNonQuery();
 
-                    transaction.Commit(); // On valide la destruction
+                    transaction.Commit(); 
                     TempData["SuccessMessage"] = "The draft invoice has been successfully deleted.";
                     return RedirectToAction("Index");
                 }
                 catch
                 {
-                    transaction.Rollback(); // Si erreur, on annule tout
+                    transaction.Rollback(); 
                     throw;
                 }
             }
@@ -376,18 +350,13 @@ namespace PoWorks_Rework.Controllers
                     TempData["ErrorMessage"] = "Statut invalide.";
                     return RedirectToAction("Details", new { id = id });
                 }
-
-                // On utilise notre connexion isolée et sécurisée
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-
-                // On ouvre une transaction (pour s'assurer que tout s'enregistre ou rien)
                 using var transaction = connection.BeginTransaction();
 
                 try
                 {
-                    // 1. Mise à jour du statut de la facture
                     string updateQuery = @"UPDATE ""Bills"" SET ""Status"" = @status WHERE ""BillId"" = @id";
                     using (var cmd = new NpgsqlCommand(updateQuery, connection, transaction))
                     {
@@ -395,14 +364,10 @@ namespace PoWorks_Rework.Controllers
                         cmd.Parameters.AddWithValue("id", id);
                         cmd.ExecuteNonQuery();
                     }
-
-                    // 2. LA MAGIE : Si on marque comme "Payé", on encaisse l'argent !
                     if (newStatus == "Paid")
                     {
                         decimal amount = 0;
                         int tenantId = 0;
-
-                        // Étape A : On lit le montant total et le locataire sur la facture
                         string getBillInfo = @"SELECT ""GrandTotal"", ""TenantID"" FROM ""Bills"" WHERE ""BillId"" = @id";
                         using (var cmdInfo = new NpgsqlCommand(getBillInfo, connection, transaction))
                         {
@@ -414,8 +379,6 @@ namespace PoWorks_Rework.Controllers
                                 tenantId = reader.GetInt32(1);
                             }
                         }
-
-                        // Étape B : On insère le reçu dans le registre des paiements
                         string insertPayment = @"
                             INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"") 
                             VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, 'Virement')";
@@ -429,12 +392,12 @@ namespace PoWorks_Rework.Controllers
                         }
                     }
 
-                    transaction.Commit(); // On valide définitivement les opérations !
+                    transaction.Commit(); 
                     TempData["SuccessMessage"] = $"The status has been updated ({newStatus}).";
                 }
                 catch
                 {
-                    transaction.Rollback(); // En cas de pépin, on annule tout
+                    transaction.Rollback(); 
                     throw;
                 }
 
@@ -455,9 +418,6 @@ namespace PoWorks_Rework.Controllers
             try
             {
                 using var connection = GetDatabaseConnection();
-          
-
-                // 1. On récupère les infos principales de la facture
                 string billQuery = @"
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
                            b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
@@ -479,7 +439,7 @@ namespace PoWorks_Rework.Controllers
                     }
 
                     bill.BillId = reader.GetInt32(0);
-                    bill.BillNumber = $"BILL-{bill.BillId:D4}"; // Format the ID into a nice bill number
+                    bill.BillNumber = $"BILL-{bill.BillId:D4}"; 
                     bill.TenantName = reader.GetString(1);
                     bill.PeriodStart = reader.GetDateTime(2);
                     bill.PeriodEnd = reader.GetDateTime(3);
@@ -490,8 +450,6 @@ namespace PoWorks_Rework.Controllers
                     bill.Status = reader.GetString(8);
                     bill.GeneratedAt = reader.GetDateTime(9);
                 }
-
-                // 2. On récupère le détail de chaque compteur lié à cette facture
                 string lineQuery = @"
                     SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
                     FROM ""BillLineItems""
@@ -514,14 +472,8 @@ namespace PoWorks_Rework.Controllers
                         });
                     }
                 }
-
-                // 3. Générer le document QuestPDF
                 var document = new InvoiceDocument(bill);
-
-                // 4. Convertir en tableau d'octets (fichier PDF)
                 byte[] pdfBytes = document.GeneratePdf();
-
-                // 5. L'envoyer au navigateur pour téléchargement
                 return File(pdfBytes, "application/pdf", $"{bill.BillNumber}.pdf");
             }
             catch (Exception ex)

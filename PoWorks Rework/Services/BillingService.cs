@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
 using System;
@@ -11,8 +11,6 @@ namespace PoWorks_Rework.Services
     {
         private readonly DatabaseService _databaseService;
         private readonly ILogger<BillingService> _logger;
-
-        // Taxe SST malaisienne (8%)
         private const decimal MALAYSIA_SST_RATE = 0.08m;
 
         public BillingService(DatabaseService databaseService, ILogger<BillingService> logger)
@@ -42,8 +40,6 @@ namespace PoWorks_Rework.Services
             {
                 await connection.OpenAsync();
             }
-
-            // 1. Get Tenant details (RM pricing and monthly subscription)
             string tenantQuery = @"
                 SELECT t.""DisplayName"", td.""Tarif_1"", td.""AbonnementMensuel"" 
                 FROM ""Tenants"" t
@@ -69,8 +65,6 @@ namespace PoWorks_Rework.Services
                     throw new Exception($"Tenant not found (ID: {tenantId})");
                 }
             }
-
-            // 2. Get active meters
             string metersQuery = @"SELECT ""MeterId"", ""Name"", ""Unit"" FROM ""Meters"" WHERE ""TenantID"" = @tenantId AND ""Active"" = true";
             using var cmdMeters = new NpgsqlCommand(metersQuery, connection);
             cmdMeters.Parameters.AddWithValue("tenantId", tenantId);
@@ -83,8 +77,6 @@ namespace PoWorks_Rework.Services
                     meters.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
                 }
             }
-
-            // 3. Calculate consumption
             foreach (var meter in meters)
             {
                 decimal consumption = await CalculateMeterConsumptionAsync(connection, meter.Id, meter.Unit, startDate, adjustedEndDate);
@@ -98,23 +90,16 @@ namespace PoWorks_Rework.Services
                         Unit = meter.Unit,
                         Consumption = consumption,
                         UnitPrice = unitPriceRM,
-                        // ON UTILISE LE BON NOM ICI :
                         LineTotalExclTax = Math.Round(consumption * unitPriceRM, 2)
                     };
 
                     bill.LineItems.Add(lineItem);
                     bill.TotalKWh += consumption;
-                    // ON UTILISE LE BON NOM ICI :
                     bill.AmountExclTax += lineItem.LineTotalExclTax;
                 }
             }
-
-            // 4. Add monthly fee
             bill.AmountExclTax += monthlyFeeRM;
-
-            // 5. Calculate Malaysian SST (8%) and Grand Total (RM)
             bill.TaxAmount = Math.Round(bill.AmountExclTax * MALAYSIA_SST_RATE, 2);
-            // ON UTILISE LE BON NOM ICI :
             bill.AmountInclTax = bill.AmountExclTax + bill.TaxAmount;
 
             return bill;
@@ -167,12 +152,9 @@ namespace PoWorks_Rework.Services
             {
                 await connection.OpenAsync();
             }
-
-            // On utilise une transaction : si une erreur survient, rien n'est sauvegardé à moitié
             using var transaction = await connection.BeginTransactionAsync();
             try
             {
-                // 1. Sauvegarde de la facture principale
                 string insertBillQuery = @"
                     INSERT INTO ""Bills"" (
                         ""TenantID"", ""PeriodStart"", ""PeriodEnd"", 
@@ -191,11 +173,7 @@ namespace PoWorks_Rework.Services
                 cmdBill.Parameters.AddWithValue("subTotal", bill.AmountExclTax);
                 cmdBill.Parameters.AddWithValue("tax", bill.TaxAmount);
                 cmdBill.Parameters.AddWithValue("grandTotal", bill.AmountInclTax);
-
-                // Récupère l'ID généré pour cette nouvelle facture
                 int newBillId = Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
-
-                // 2. Sauvegarde des lignes de détails (les compteurs)
                 string insertLineQuery = @"
                     INSERT INTO ""BillLineItems"" (
                         ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"", 
@@ -219,8 +197,6 @@ namespace PoWorks_Rework.Services
 
                     await cmdLine.ExecuteNonQueryAsync();
                 }
-
-                // Si tout s'est bien passé, on valide la transaction
                 await transaction.CommitAsync();
                 return newBillId;
             }

@@ -1,4 +1,4 @@
-﻿using PoWorks_Rework.Models;
+using PoWorks_Rework.Models;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -38,7 +38,6 @@ namespace PoWorks_Rework.Services
                 {
                     column.Item().Text("INVOICE").FontSize(28).SemiBold().FontColor(Colors.Blue.Darken2);
                     column.Item().Text($"Invoice Number: {_bill.BillNumber}").FontSize(12).SemiBold();
-                    // CORRECTION ICI : GeneratedAt
                     column.Item().Text($"Issue Date: {_bill.GeneratedAt.ToString("dd MMM yyyy")}");
                     column.Item().Text($"Billing Period: {_bill.PeriodStart.ToString("dd MMM yyyy")} to {_bill.PeriodEnd.ToString("dd MMM yyyy")}");
                 });
@@ -57,7 +56,6 @@ namespace PoWorks_Rework.Services
         {
             container.PaddingVertical(20).Column(column =>
             {
-                // Billed To Section
                 column.Item().PaddingBottom(20).Row(row =>
                 {
                     row.RelativeItem().Column(col =>
@@ -66,11 +64,7 @@ namespace PoWorks_Rework.Services
                         col.Item().Text(_bill.TenantName ?? "Unknown Tenant").FontSize(14).SemiBold();
                     });
                 });
-
-                // Items Table
                 column.Item().Element(ComposeTable);
-
-                // Totals Section
                 column.Item().PaddingTop(25).Element(ComposeTotals);
             });
         }
@@ -79,16 +73,13 @@ namespace PoWorks_Rework.Services
         {
             container.Table(table =>
             {
-                // Define columns
                 table.ColumnsDefinition(columns =>
                 {
-                    columns.RelativeColumn(3); // Meter Name
-                    columns.RelativeColumn(1); // Consumption
-                    columns.RelativeColumn(1); // Unit Price
-                    columns.RelativeColumn(1); // Total
+                    columns.RelativeColumn(3); 
+                    columns.RelativeColumn(1); 
+                    columns.RelativeColumn(1); 
+                    columns.RelativeColumn(1); 
                 });
-
-                // Header
                 table.Header(header =>
                 {
                     header.Cell().Element(CellStyle).Text("Meter / Description");
@@ -101,8 +92,6 @@ namespace PoWorks_Rework.Services
                         return container.DefaultTextStyle(x => x.SemiBold()).PaddingVertical(5).BorderBottom(1).BorderColor(Colors.Black);
                     }
                 });
-
-                // Rows
                 foreach (var item in _bill.LineItems)
                 {
                     table.Cell().Element(CellStyle).Text(item.MeterName);
@@ -122,7 +111,7 @@ namespace PoWorks_Rework.Services
         {
             container.Row(row =>
             {
-                row.RelativeItem(); // Empty space to push totals to the right
+                row.RelativeItem(); 
                 row.ConstantItem(250).Table(table =>
                 {
                     table.ColumnsDefinition(columns =>
@@ -138,7 +127,6 @@ namespace PoWorks_Rework.Services
                     table.Cell().PaddingBottom(5).AlignRight().Text($"RM {_bill.TaxAmount:N2}");
 
                     table.Cell().BorderTop(1).BorderColor(Colors.Black).PaddingTop(5).Text("Grand Total:").SemiBold().FontSize(14);
-                    // CORRECTION ICI : AmountInclTax
                     table.Cell().BorderTop(1).BorderColor(Colors.Black).PaddingTop(5).AlignRight().Text($"RM {_bill.AmountInclTax:N2}").SemiBold().FontSize(14);
                 });
             });

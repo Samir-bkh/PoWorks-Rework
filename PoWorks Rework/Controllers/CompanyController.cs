@@ -1,4 +1,3 @@
-﻿// Controllers/CompanyController.cs
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Models;
@@ -20,7 +19,6 @@ namespace PoWorks_Rework.Controllers
 
         public IActionResult Info()
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -29,15 +27,12 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Get company info from database
                 var companyInfo = GetCompanyInfo();
                 return View(companyInfo);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading company information");
-
-                // Return a default company info object if there's an error
                 var companyInfo = new CompanyInfo
                 {
                     CompanyName = "PoWorks",
@@ -62,7 +57,6 @@ namespace PoWorks_Rework.Controllers
         [HttpPost]
         public IActionResult SaveInfo(CompanyInfo companyInfo)
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -94,7 +88,6 @@ namespace PoWorks_Rework.Controllers
         {
             using (var connection = GetDatabaseConnection())
             {
-                // We'll always use the first record in the table
                 var sql = @"SELECT 
                     ""CompanyName"", ""RegistrationNumber"", ""Address1"", ""Address2"", 
                     ""PostCode"", ""Country"", ""City"", ""GstId"", ""GstPercentage"", 
@@ -127,8 +120,6 @@ namespace PoWorks_Rework.Controllers
                         }
                     }
                 }
-
-                // If no record exists, create a default one
                 var defaultCompanyInfo = new CompanyInfo
                 {
                     CompanyName = "PoWorks",
@@ -144,8 +135,6 @@ namespace PoWorks_Rework.Controllers
                     Fax = "123456",
                     Email = "info@abc.com"
                 };
-
-                // Insert the default record
                 SaveCompanyInfo(defaultCompanyInfo);
                 return defaultCompanyInfo;
             }
@@ -155,7 +144,6 @@ namespace PoWorks_Rework.Controllers
         {
             using (var connection = GetDatabaseConnection())
             {
-                // Check if any records exist
                 bool recordExists = false;
                 using (var checkCmd = new NpgsqlCommand("SELECT COUNT(*) FROM \"CompanyInfo\"", connection))
                 {
@@ -165,7 +153,6 @@ namespace PoWorks_Rework.Controllers
                 string sql;
                 if (recordExists)
                 {
-                    // Update the first record
                     sql = @"
                         UPDATE ""CompanyInfo"" 
                         SET 
@@ -185,7 +172,6 @@ namespace PoWorks_Rework.Controllers
                 }
                 else
                 {
-                    // Insert a new record
                     sql = @"
                         INSERT INTO ""CompanyInfo"" (
                             ""CompanyName"", ""RegistrationNumber"", ""Address1"", ""Address2"", 
@@ -219,7 +205,6 @@ namespace PoWorks_Rework.Controllers
 
         public IActionResult Settings()
         {
-            // Create a sample company settings object
             var companySettings = new CompanySettings
             {
                 DateFormat = "20-12-2016",
@@ -246,7 +231,6 @@ namespace PoWorks_Rework.Controllers
         {
             if (ModelState.IsValid)
             {
-                // Save the company settings to database logic goes here
 
                 TempData["SuccessMessage"] = "Company settings saved successfully.";
                 return RedirectToAction("Settings");

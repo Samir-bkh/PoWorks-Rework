@@ -1,11 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace PoWorks_Rework.Models
 {
-    // ==========================================
-    // 1. VIEW MODELS (For Web UI)
-    // ==========================================
 
     public class BillsViewModel
     {
@@ -15,13 +12,9 @@ namespace PoWorks_Rework.Models
         public int TotalPages { get; set; } = 1;
         public int CurrentPage { get; set; } = 1;
         public int TotalItems { get; set; } = 0;
-
-        // Dropdown options
         public List<DropdownOption> MeterOptions { get; set; } = new List<DropdownOption>();
         public List<DropdownOption> TenantOptions { get; set; } = new List<DropdownOption>();
     }
-
-    // Old simplified model used by your HTML table
     public class Bill
     {
         public int Id { get; set; }
@@ -37,17 +30,11 @@ namespace PoWorks_Rework.Models
         public string Value { get; set; } = "";
         public string Text { get; set; } = "";
     }
-
-    // ==========================================
-    // 2. DATABASE ENTITIES (Core Calculation Engine)
-    // ==========================================
-
-    // Represents a full bill in the SQL database
     public class BillEntity
     {
         public int BillId { get; set; }
         public int TenantID { get; set; }
-        public string? TenantName { get; set; } // Retrieved via SQL join
+        public string? TenantName { get; set; } 
         public string? BillNumber { get; set; }
         public DateTime PeriodStart { get; set; }
         public DateTime PeriodEnd { get; set; }
@@ -63,8 +50,6 @@ namespace PoWorks_Rework.Models
 
         public List<BillLineItemEntity> LineItems { get; set; } = new();
     }
-
-    // Represents a bill line item (e.g., consumption of a single meter)
     public class BillLineItemEntity
     {
         public int LineItemId { get; set; }
@@ -76,8 +61,6 @@ namespace PoWorks_Rework.Models
         public decimal UnitPrice { get; set; }
         public decimal LineTotalExclTax { get; set; }
     }
-
-    // Request model to generate a new bill
     public class GenerateBillRequest
     {
         public int TenantID { get; set; }

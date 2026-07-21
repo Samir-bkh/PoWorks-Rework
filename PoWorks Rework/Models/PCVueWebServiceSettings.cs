@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace PoWorks_Rework.Models
 {
@@ -11,7 +11,7 @@ namespace PoWorks_Rework.Models
         public string ConnectionName { get; set; } = "";
 
         [Display(Name = "Base URL")]
-        public string BaseUrl { get; set; } = ""; // e.g., https://pcvue-server:8080/api
+        public string BaseUrl { get; set; } = ""; 
 
         [Display(Name = "Client ID")]
         public string ClientId { get; set; } = "";
@@ -20,7 +20,7 @@ namespace PoWorks_Rework.Models
         public string ClientSecret { get; set; } = "";
 
         [Display(Name = "API Key")]
-        public string ApiKey { get; set; } = ""; // Alternative to OAuth
+        public string ApiKey { get; set; } = ""; 
 
         [Display(Name = "Username")]
         public string Username { get; set; } = "";
@@ -39,8 +39,6 @@ namespace PoWorks_Rework.Models
 
         [Display(Name = "PCVue Project Name")]
         public string ProjectName { get; set; } = "";
-
-        // Helper method to get authorization header value
         public string GetAuthHeaderValue()
         {
             return AuthType switch

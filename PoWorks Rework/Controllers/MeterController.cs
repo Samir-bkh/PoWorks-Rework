@@ -1,4 +1,3 @@
-﻿// Controllers/MeterController.cs
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
@@ -11,22 +10,16 @@ namespace PoWorks_Rework.Controllers
     public class MeterController : BaseController
     {
         private readonly MeterRepository _meterRepository;
-        private readonly ICompanyContext _companyContext; // AJOUT
+        private readonly ICompanyContext _companyContext; 
 
         public MeterController(DatabaseService databaseService, MeterRepository meterRepository, ICompanyContext companyContext)
             : base(databaseService)
         {
             _meterRepository = meterRepository;
-            _companyContext = companyContext; // AJOUT
+            _companyContext = companyContext; 
         }
-
-
-
-        // Controllers/MeterController.cs - Update the Management method
-        // Update the Management method in MeterController
         public async Task<IActionResult> Management(int? id = null, int page = 1, int pageSize = 10)
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -38,17 +31,14 @@ namespace PoWorks_Rework.Controllers
             {
                 SearchCriteria = searchCriteria,
                 CurrentPage = page,
-                TenantOptions = GetTenantOptions() // Add this line to load tenant options
+                TenantOptions = GetTenantOptions() 
             };
 
             try
             {
-                // Get search results
                 viewModel.SearchResults = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
                 viewModel.TotalItems = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
                 viewModel.TotalPages = (viewModel.TotalItems + pageSize - 1) / pageSize;
-
-                // Load selected meter if ID is provided
                 if (id.HasValue)
                 {
                     Console.WriteLine($"Selected meter ID: {id.Value}");
@@ -57,15 +47,12 @@ namespace PoWorks_Rework.Controllers
                     if (viewModel.SelectedMeter != null)
                     {
                         Console.WriteLine($"Selected meter: {viewModel.SelectedMeter.Name}, ID: {viewModel.SelectedMeter.Id}");
-
-                        // Get sub meters
                         viewModel.SubMeters = await _meterRepository.GetSubMetersAsync(id.Value);
                         Console.WriteLine($"Retrieved {viewModel.SubMeters.Count} sub meters for meter ID {id.Value}");
                     }
                 }
                 else if (viewModel.SearchResults.Count > 0)
                 {
-                    // Find a main meter to display by default
                     var mainMeter = viewModel.SearchResults.FirstOrDefault(m => m.Type.ToLower() == "main");
 
                     if (mainMeter != null)
@@ -75,12 +62,9 @@ namespace PoWorks_Rework.Controllers
                     }
                     else
                     {
-                        // If no main meter found, select the first one
                         viewModel.SelectedMeter = viewModel.SearchResults[0];
                         Console.WriteLine($"No main meter found, selected first meter: {viewModel.SelectedMeter.Name}, ID: {viewModel.SelectedMeter.Id}");
                     }
-
-                    // Get sub meters
                     viewModel.SubMeters = await _meterRepository.GetSubMetersAsync(viewModel.SelectedMeter.Id);
                     Console.WriteLine($"Retrieved {viewModel.SubMeters.Count} sub meters for meter ID {viewModel.SelectedMeter.Id}");
                 }
@@ -97,7 +81,6 @@ namespace PoWorks_Rework.Controllers
         [HttpPost]
         public async Task<IActionResult> Search(MeterSearchCriteria searchCriteria, int page = 1, int pageSize = 10)
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -110,15 +93,11 @@ namespace PoWorks_Rework.Controllers
                 {
                     SearchCriteria = searchCriteria,
                     CurrentPage = page,
-                    TenantOptions = GetTenantOptions() // Add this line to load tenant options
+                    TenantOptions = GetTenantOptions() 
                 };
-
-                // Get search results
                 viewModel.SearchResults = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
                 viewModel.TotalItems = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
                 viewModel.TotalPages = (viewModel.TotalItems + pageSize - 1) / pageSize;
-
-                // Select first meter if available
                 if (viewModel.SearchResults.Count > 0)
                 {
                     viewModel.SelectedMeter = viewModel.SearchResults[0];
@@ -137,7 +116,6 @@ namespace PoWorks_Rework.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(Meter meter, [FromServices] ILogger<MeterController> logger)
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 logger.LogError("Database not initialized when attempting to create meter");
@@ -147,35 +125,23 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // When saving as new from the details form, the meter will have an Id
-                // We need to reset it to ensure a new record is created
                 meter.Id = 0;
-
-                // Log the incoming meter data
                 logger.LogInformation("Creating meter: Name={Name}, Type={Type}, Unit={Unit}, LastReading={LastReading}, Active={Active}, ParentId={ParentId}, TenantId={TenantId}",
                     meter.Name, meter.Type, meter.Unit, meter.LastReading, meter.Active, meter.ParentMeterId, meter.TenantId);
-
-                // Ensure name is not empty (a critical field)
                 if (string.IsNullOrWhiteSpace(meter.Name))
                 {
                     meter.Name = "Unnamed Meter " + DateTime.Now.ToString("yyyyMMddHHmmss");
                     logger.LogWarning("Empty meter name was auto-filled with a timestamp");
                 }
-
-                // Ensure Unit is not null (critical fix for NOT NULL constraint)
                 if (string.IsNullOrWhiteSpace(meter.Unit))
                 {
-                    meter.Unit = "";  // Set to empty string instead of null
+                    meter.Unit = "";  
                     logger.LogWarning("Empty Unit field was set to empty string to satisfy NOT NULL constraint");
                 }
-
-                // Create a brand new connection directly
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
                     logger.LogInformation("New database connection opened successfully");
-
-                    // Insert using a transaction
                     using var transaction = await connection.BeginTransactionAsync();
                     try
                     {
@@ -189,34 +155,25 @@ namespace PoWorks_Rework.Controllers
         ""Type"" = @Type,
         ""Active"" = @Active,
         ""TenantID"" = @TenantId
-    WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId"; // AJOUT DU MUR ICI !
+    WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId"; 
 
                         using var cmd = new NpgsqlCommand(sql, connection, transaction);
-
-                        // On n'oublie pas d'envoyer la valeur du mur :
                         cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
 
                         cmd.Parameters.AddWithValue("@Name", meter.Name);
-                        // Never pass NULL for Unit, use empty string instead
                         cmd.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
-
-                        // Parse parent meter ID if provided
                         int? parentId = null;
                         if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
                         {
                             parentId = pid;
                         }
                         cmd.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-
-                        // Parse last reading if provided
                         int lastReading = 0;
                         if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int reading))
                         {
                             lastReading = reading;
                         }
                         cmd.Parameters.AddWithValue("@LastReading", lastReading);
-
-                        // Ensure valid type
                         string type = "main";
                         if (!string.IsNullOrWhiteSpace(meter.Type) &&
                             (meter.Type.ToLower() == "main" || meter.Type.ToLower() == "sub"))
@@ -226,8 +183,6 @@ namespace PoWorks_Rework.Controllers
                         cmd.Parameters.AddWithValue("@Type", type);
 
                         cmd.Parameters.AddWithValue("@Active", meter.Active);
-
-                        // Parse tenant ID if provided
                         int? tenantId = null;
                         if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
                         {
@@ -263,8 +218,6 @@ namespace PoWorks_Rework.Controllers
                 logger.LogError(ex, "Unexpected error creating meter");
                 TempData["ErrorMessage"] = $"Error creating meter: {ex.Message}";
             }
-
-            // If we get here, there was an error - create a view model for the form
             var viewModel = new MeterManagementViewModel
             {
                 SelectedMeter = meter,
@@ -273,12 +226,9 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Get search results with empty criteria - using a new connection
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
-
-                    // Get meters
                     string sql = @"
                 SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
                        m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
@@ -297,7 +247,7 @@ namespace PoWorks_Rework.Controllers
                         {
                             Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
                             Name = reader.GetString(reader.GetOrdinal("Name")),
-                            Unit = reader.GetString(reader.GetOrdinal("Unit")), // Unit will never be NULL now
+                            Unit = reader.GetString(reader.GetOrdinal("Unit")), 
                             ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
                             ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
                             LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
@@ -308,8 +258,6 @@ namespace PoWorks_Rework.Controllers
                         });
                     }
                 }
-
-                // Get count for pagination
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
@@ -327,8 +275,6 @@ namespace PoWorks_Rework.Controllers
 
             return View("Management", viewModel);
         }
-
-        // Add this method to debug form submissions
         [HttpPost]
         public async Task<IActionResult> Debug()
         {
@@ -347,24 +293,18 @@ namespace PoWorks_Rework.Controllers
         {
             Console.WriteLine("=== UPDATE METHOD CALLED ===");
             Console.WriteLine($"Method reached at: {DateTime.Now}");
-
-            // Log all form data received
             Console.WriteLine("=== FORM DATA RECEIVED ===");
             foreach (var key in Request.Form.Keys)
             {
                 Console.WriteLine($"Form Field: {key} = {Request.Form[key]}");
             }
             Console.WriteLine("=========================");
-
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 Console.WriteLine("Database not initialized");
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
                 return RedirectToAction("General", "Settings");
             }
-
-            // DEBUG: Log all received model data
             Console.WriteLine($"=== METER OBJECT DATA ===");
             Console.WriteLine($"Meter ID: {meter.Id}");
             Console.WriteLine($"Meter Name: '{meter.Name}'");
@@ -376,8 +316,6 @@ namespace PoWorks_Rework.Controllers
             Console.WriteLine($"Meter TenantId: '{meter.TenantId}'");
             Console.WriteLine($"Meter Active: {meter.Active}");
             Console.WriteLine($"=========================");
-
-            // DEBUG: Check ModelState validity and show errors
             Console.WriteLine($"ModelState.IsValid: {ModelState.IsValid}");
 
             if (!ModelState.IsValid)
@@ -401,8 +339,6 @@ namespace PoWorks_Rework.Controllers
                     }
                 }
                 Console.WriteLine("========================");
-
-                // Show detailed error message to user
                 var errorMessages = ModelState
                     .Where(x => x.Value.Errors.Count > 0)
                     .Select(x => $"{x.Key}: {string.Join(", ", x.Value.Errors.Select(e => e.ErrorMessage))}")
@@ -416,13 +352,10 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Create a brand new connection for this operation
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
                     Console.WriteLine("Database connection opened for update");
-
-                    // Begin a transaction
                     using var transaction = await connection.BeginTransactionAsync();
                     Console.WriteLine("Transaction started");
 
@@ -446,16 +379,12 @@ namespace PoWorks_Rework.Controllers
                         cmd.Parameters.AddWithValue("@Name", meter.Name ?? "");
                         cmd.Parameters.AddWithValue("@Label", meter.Label ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@Unit", string.IsNullOrEmpty(meter.Unit) ? "" : meter.Unit);
-
-                        // Parse parent meter ID if provided
                         int? parentId = null;
                         if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
                         {
                             parentId = pid;
                         }
                         cmd.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-
-                        // Parse last reading if provided
                         int lastReading = 0;
                         if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int reading))
                         {
@@ -465,8 +394,6 @@ namespace PoWorks_Rework.Controllers
 
                         cmd.Parameters.AddWithValue("@Type", meter.Type.ToLower());
                         cmd.Parameters.AddWithValue("@Active", meter.Active);
-
-                        // Parse tenant ID if provided
                         int? tenantId = null;
                         if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
                         {
@@ -500,14 +427,12 @@ namespace PoWorks_Rework.Controllers
             }
 
             Console.WriteLine("Redirecting back to Management page");
-            // Redirect back to the management page with the meter ID
             return RedirectToAction("Management", new { id = meter.Id });
         }
 
 
         public async Task<IActionResult> Readings(int page = 1, int pageSize = 10)
         {
-            // Check if database is initialized
             if (!_databaseService.IsInitialized)
             {
                 TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
@@ -519,12 +444,9 @@ namespace PoWorks_Rework.Controllers
                 var searchCriteria = new MeterSearchCriteria();
                 var meters = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
                 var totalCount = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
-
-                // FIX: Create the correct view model that the view expects
                 var viewModel = new MeterReadingsViewModel
                 {
-                    // Map the meter data to readings format
-                    Readings = new List<MeterReading>(), // Empty for now
+                    Readings = new List<MeterReading>(), 
                     AvailableMeters = meters.Select(m => new MeterOption
                     {
                         MeterId = m.Id,
@@ -545,9 +467,6 @@ namespace PoWorks_Rework.Controllers
                 return View(new MeterReadingsViewModel());
             }
         }
-
-
-        // Add this method to the MeterController class
         private List<SelectListItem> GetTenantOptions()
         {
             var options = new List<SelectListItem>
@@ -557,7 +476,6 @@ namespace PoWorks_Rework.Controllers
 
             try
             {
-                // Create a brand new connection for this operation
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     connection.Open();
@@ -570,7 +488,7 @@ WHERE t.""CompanyId"" = @CompanyId
 ORDER BY td.""CompanyName""";
 
                     using var cmd = new NpgsqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId); // LE MUR !
+                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId); 
                     using var reader = cmd.ExecuteReader();
 
                     while (reader.Read())

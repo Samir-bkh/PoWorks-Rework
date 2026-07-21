@@ -1,4 +1,3 @@
-﻿// Controllers/DashboardApiController.cs - FIXED: Date Filtering and Filter Dependencies
 using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
@@ -19,10 +18,6 @@ namespace PoWorks_Rework.Controllers
             _logger = logger;
             _dashboardDataService = dashboardDataService;
         }
-
-        /// <summary>
-        /// UNCHANGED: Get tenants for dropdown
-        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetTenants()
         {
@@ -37,10 +32,6 @@ namespace PoWorks_Rework.Controllers
                 return Json(new List<object>());
             }
         }
-
-        /// <summary>
-        /// NEW: Get intelligent date range suggestions based on available data
-        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetDateRangeSuggestions()
         {
@@ -76,10 +67,6 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-
-        /// <summary>
-        /// NEW: Get available date ranges in database
-        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetAvailableDateRanges()
         {
@@ -104,10 +91,6 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, hasData = false });
             }
         }
-
-        /// <summary>
-        /// FIXED: Get meters that have data in specified date range
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> GetMetersWithData([FromBody] GetMetersRequest request)
         {
@@ -167,10 +150,6 @@ namespace PoWorks_Rework.Controllers
                 });
             }
         }
-
-        /// <summary>
-        /// ENHANCED: Get meters by tenant with date range consideration
-        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetMetersByTenant(int tenantId, int limit = 25, DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -180,8 +159,6 @@ namespace PoWorks_Rework.Controllers
                 {
                     limit = 25;
                 }
-
-                // If dates provided, get meters with data in that range
                 if (startDate.HasValue && endDate.HasValue)
                 {
                     var filters = new MeterReadingFilters
@@ -215,7 +192,6 @@ namespace PoWorks_Rework.Controllers
                 }
                 else
                 {
-                    // Fallback to original method for tenant meters
                     var meters = await _dashboardDataService.GetMetersByTenantAsync(tenantId, limit);
 
                     return Json(new
@@ -234,10 +210,6 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, meters = new List<object>(), error = ex.Message });
             }
         }
-
-        /// <summary>
-        /// FIXED: Main consumption data endpoint
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> GetConsumptionData([FromBody] DashboardFilterRequest request)
         {
@@ -267,8 +239,6 @@ namespace PoWorks_Rework.Controllers
                 
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
-
-                // Appel direct et propre au service
                 var consumptionData = await _dashboardDataService.GetMeterReadingsAsync(filters);
 
                 if (!consumptionData.Any())
@@ -305,10 +275,6 @@ namespace PoWorks_Rework.Controllers
                 return Json(_dashboardDataService.GenerateDemoChartData($"Error loading data: {ex.Message}"));
             }
         }
-
-        /// <summary>
-        /// ENHANCED: Dashboard statistics with date range info
-        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetDashboardStats(DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -360,10 +326,6 @@ namespace PoWorks_Rework.Controllers
             }
         }
     }
-
-    /// <summary>
-    /// ENHANCED: Dashboard filter request with date validation
-    /// </summary>
     public class DashboardFilterRequest
     {
         public string DateFilter { get; set; } = "monthly";
@@ -375,10 +337,6 @@ namespace PoWorks_Rework.Controllers
         public bool IsComparisonMode { get; set; }
         public string GroupBy { get; set; } = "meter";
     }
-
-    /// <summary>
-    /// NEW: Request model for getting meters with data
-    /// </summary>
     public class GetMetersRequest
     {
         public DateTime? StartDate { get; set; }
