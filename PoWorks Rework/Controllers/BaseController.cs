@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace PoWorks_Rework.Controllers
 {
+    [Authorize]
     public abstract class BaseController : Controller
     {
         protected readonly DatabaseService _databaseService;

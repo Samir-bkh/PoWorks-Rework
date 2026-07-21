@@ -1,134 +1,61 @@
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Npgsql;
-using PoWorks_Rework.Models;
-using PoWorks_Rework.Services;
-using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Controllers
 {
     public class AuthController : Controller
     {
-        private readonly DatabaseService _databaseService;
+        private readonly UserManager<IdentityUser> _userManager;
+        private readonly SignInManager<IdentityUser> _signInManager;
 
-        public AuthController(DatabaseService databaseService)
+        public AuthController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager)
         {
-            _databaseService = databaseService;
+            _userManager = userManager;
+            _signInManager = signInManager;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Login()
+        public IActionResult Login(string returnUrl = null)
         {
-            await EnsureAdminUserExistsAsync();
-            if (User.Identity != null && User.Identity.IsAuthenticated)
-            {
-                return Redirect("/");
-            }
+            ViewData["ReturnUrl"] = returnUrl;
             return View();
-        }
-        [HttpGet, HttpPost]
-        public async Task<IActionResult> Logout()
-        {
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            return RedirectToAction("Login");
         }
 
         [HttpPost]
-        public async Task<IActionResult> Login(string username, string password)
+        public async Task<IActionResult> Login(string username, string password, bool rememberMe, string returnUrl = null)
         {
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            ViewData["ReturnUrl"] = returnUrl;
+
+            if (ModelState.IsValid)
             {
-                ViewBag.Error = "Veuillez entrer un nom d'utilisateur et un mot de passe.";
-                return View();
-            }
+                var result = await _signInManager.PasswordSignInAsync(username, password, rememberMe, lockoutOnFailure: false);
 
-            User? user = null;
-            try
-            {
-                using var connection = _databaseService.CreateNewConnection();
-                await connection.OpenAsync();
-
-                string sql = @"SELECT ""UserId"", ""Username"", ""PasswordHash"", ""Role"", ""CompanyId"", ""IsActive"" 
-                               FROM ""Users"" WHERE ""Username"" = @username";
-
-                using var cmd = new NpgsqlCommand(sql, connection);
-                cmd.Parameters.AddWithValue("username", username);
-
-                using var reader = await cmd.ExecuteReaderAsync();
-                if (await reader.ReadAsync())
+                if (result.Succeeded)
                 {
-                    user = new User
+                    if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                     {
-                        UserId = reader.GetInt32(0),
-                        Username = reader.GetString(1),
-                        PasswordHash = reader.GetString(2),
-                        Role = reader.GetString(3),
-                        CompanyId = reader.GetInt32(4),
-                        IsActive = reader.GetBoolean(5)
-                    };
+                        return Redirect(returnUrl);
+                    }
+                    return RedirectToAction("Index", "Home");
                 }
-            }
-            catch (Exception ex)
-            {
-                ViewBag.Error = "Erreur de connexion à la base de données : " + ex.Message;
-                return View();
-            }
-            if (user != null && !user.PasswordHash.StartsWith("$2"))
-            {
-                if (password == user.PasswordHash)
-                {
-                    string newHash = BCrypt.Net.BCrypt.HashPassword(password);
-                    using var updateConn = _databaseService.CreateNewConnection();
-                    await updateConn.OpenAsync();
-                    using var updateCmd = new NpgsqlCommand("UPDATE \"Users\" SET \"PasswordHash\" = @hash WHERE \"UserId\" = @id", updateConn);
-                    updateCmd.Parameters.AddWithValue("hash", newHash);
-                    updateCmd.Parameters.AddWithValue("id", user.UserId);
-                    await updateCmd.ExecuteNonQueryAsync();
-                    user.PasswordHash = newHash;
-                }
-            }
-            if (user == null || !user.IsActive || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
-            {
-        
-                ViewBag.Error = "Nom d'utilisateur ou mot de passe incorrect.";
-                return View();
-            }
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Role, user.Role),
-                new Claim("CompanyId", user.CompanyId.ToString())
-            };
 
-            var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+            }
 
-            await HttpContext.SignInAsync(
-                CookieAuthenticationDefaults.AuthenticationScheme,
-                new ClaimsPrincipal(claimsIdentity),
-                new AuthenticationProperties { IsPersistent = true });
-
-            return Redirect("/");
+            return View();
         }
-        private async Task EnsureAdminUserExistsAsync()
-        {
-            try
-            {
-                using var connection = _databaseService.CreateNewConnection();
-                await connection.OpenAsync();
-                using var cmdCount = new NpgsqlCommand("SELECT COUNT(*) FROM \"Users\"", connection);
-                var count = Convert.ToInt32(await cmdCount.ExecuteScalarAsync());
 
-                if (count == 0)
-                {
-                    string hash = BCrypt.Net.BCrypt.HashPassword("admin");
-                    using var cmdInsert = new NpgsqlCommand(
-                        "INSERT INTO \"Users\" (\"Username\", \"PasswordHash\", \"Role\", \"CompanyId\") VALUES ('admin', @hash, 'SuperAdmin', 1)", connection);
-                    cmdInsert.Parameters.AddWithValue("hash", hash);
-                    await cmdInsert.ExecuteNonQueryAsync();
-                }
-            }
-            catch {  }
+        public async Task<IActionResult> Logout()
+        {
+            await _signInManager.SignOutAsync();
+            return RedirectToAction("Login", "Auth");
+        }
+
+        [HttpGet]
+        public IActionResult AccessDenied()
+        {
+            return View();
         }
     }
 }

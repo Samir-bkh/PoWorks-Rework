@@ -1,0 +1,60 @@
+@model IEnumerable<PoWorks_Rework.Controllers.UserViewModel>
+
+@{
+    ViewData["Title"] = "User Management";
+}
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>User Management</h2>
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Add New User
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Username</th>
+                        <th>Assigned Tenant</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in Model)
+                    {
+                        <tr>
+                            <td class="fw-bold" style="vertical-align: middle;">@user.UserName</td>
+                            <td style="vertical-align: middle;">
+                                @if (user.TenantId == "N/A")
+                                {
+                                    <span class="text-muted fst-italic">No Tenant Assigned</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-info text-dark">@user.TenantId</span>
+                                }
+                            </td>
+                            <td class="text-end" style="vertical-align: middle;">
+                                @if (user.UserName.ToLower() != "admin")
+                                {
+                                    <form asp-action="Delete" asp-route-id="@user.Id" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this user?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i> Delete
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">System Admin</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

@@ -1,10 +1,11 @@
+@model Microsoft.AspNetCore.Identity.IdentityUser
 @{
-    ViewData["Title"] = "Login";
-    Layout = null;
+    ViewData["Title"] = "Créer un compte administrateur";
+    Layout = null; 
 }
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -22,7 +23,7 @@
         <div class="auth-card">
             <div class="text-center mb-4">
                 <i class="fas fa-bolt text-primary fa-3x mb-3"></i>
-                <h4>Login</h4>
+                <h4>Création de compte</h4>
             </div>
 
             @if (!ViewData.ModelState.IsValid)
@@ -32,23 +33,22 @@
                 </div>
             }
 
-            <form asp-controller="Auth" asp-action="Login" method="post">
-                <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
-                
+            <form asp-controller="Auth" asp-action="Register" method="post">
                 <div class="mb-3">
-                    <label class="form-label">Username</label>
+                    <label class="form-label">Nom d'utilisateur</label>
                     <input type="text" name="username" class="form-control" required />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Password</label>
+                    <label class="form-label">Mot de passe</label>
                     <input type="password" name="password" class="form-control" required />
+                    <div class="form-text text-muted small">Minimum 6 caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial.</div>
                 </div>
-                <div class="mb-3 form-check">
-                    <input type="checkbox" name="rememberMe" class="form-check-input" id="rememberMe" value="true" />
-                    <label class="form-check-label" for="rememberMe">Remember me</label>
-                </div>
-                <button type="submit" class="btn btn-primary w-100 mb-3">Login</button>
+                <button type="submit" class="btn btn-primary w-100 mb-3">S'inscrire</button>
             </form>
+            
+            <div class="text-center">
+                <a asp-action="Login" class="text-decoration-none">Déjà un compte ? Se connecter</a>
+            </div>
         </div>
     </div>
 </body>

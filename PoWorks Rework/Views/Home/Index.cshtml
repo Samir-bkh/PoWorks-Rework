@@ -3,6 +3,16 @@
     Layout = "_Layout";
 }
 
+
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="alert alert-info shadow-sm mb-4">
+    <i class="bi bi-building"></i> <strong>Active Workspace :</strong> @ViewData["CurrentTenant"]
+</div>
+
+
 <style>
     /* Full Screen Mode for the chart */
     .chart-fullscreen {

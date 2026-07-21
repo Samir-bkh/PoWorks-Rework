@@ -68,6 +68,14 @@
                 <i class="bi bi-sliders"></i> General Settings
             </a>
         </li>
-		
-    </ul>
+		@if (User.Identity?.Name?.ToLower() == "admin")
+		{
+		<li class="@GetActiveClass("UserManagement=")">
+			<a asp-controller="UserManagement" asp-action="Index">
+				<i class="bi bi-person-badge"></i> User Management
+			</a>
+		</li>
+		}
+
+	</ul>
 </div>

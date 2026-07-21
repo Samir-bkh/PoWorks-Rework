@@ -1,0 +1,47 @@
+@{
+    ViewData["Title"] = "Create User";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-6 offset-md-3">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">Create New User</h4>
+                </div>
+                <div class="card-body">
+                    @if (!ViewData.ModelState.IsValid)
+                    {
+                        <div class="alert alert-danger">
+                            @Html.ValidationSummary(string.Empty, new { @class = "mb-0" })
+                        </div>
+                    }
+
+                    <form asp-action="Create" method="post">
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" name="username" class="form-control" required />
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Assign to Tenant (ID or Name)</label>
+                            <input type="text" name="tenantId" class="form-control" placeholder="e.g. Tenant_A" required />
+                            <div class="form-text">This value will link the user to their specific data.</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">Password</label>
+                            <input type="password" name="password" class="form-control" required />
+                            <div class="form-text">Requires at least 6 characters, uppercase, lowercase, number, and special character.</div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Create User</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
