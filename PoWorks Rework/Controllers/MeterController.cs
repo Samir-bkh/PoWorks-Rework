@@ -431,7 +431,7 @@ namespace PoWorks_Rework.Controllers
         }
 
 
-        public async Task<IActionResult> Readings(int page = 1, int pageSize = 10)
+        public async Task<IActionResult> Readings()
         {
             if (!_databaseService.IsInitialized)
             {
@@ -442,8 +442,9 @@ namespace PoWorks_Rework.Controllers
             try
             {
                 var searchCriteria = new MeterSearchCriteria();
-                var meters = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
-                var totalCount = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
+ 
+                var meters = await _meterRepository.GetMetersAsync(searchCriteria, 1, 999999);
+                var totalCount = meters.Count;
 
                 var viewModel = new MeterReadingsViewModel
                 {
@@ -452,12 +453,12 @@ namespace PoWorks_Rework.Controllers
                     {
                         MeterId = m.Id,
                         Name = m.Name,
-                        Unit = m.Unit,
-                        Type = m.Type
+                        Unit = m.Unit ?? "",
+                        Type = m.Type ?? ""
                     }).ToList(),
                     TotalItems = totalCount,
-                    CurrentPage = page,
-                    TotalPages = (totalCount + pageSize - 1) / pageSize
+                    CurrentPage = 1,
+                    TotalPages = 1
                 };
 
                 return View(viewModel);

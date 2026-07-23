@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Controllers
@@ -33,6 +34,15 @@ namespace PoWorks_Rework.Controllers
 
                 if (result.Succeeded)
                 {
+ 
+                    var user = await _userManager.FindByNameAsync(username);
+                    if (user != null)
+                    {
+                        var claims = await _userManager.GetClaimsAsync(user);
+     
+                        await _signInManager.SignInWithClaimsAsync(user, rememberMe, claims);
+                    }
+
                     if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                     {
                         return Redirect(returnUrl);
@@ -49,6 +59,7 @@ namespace PoWorks_Rework.Controllers
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();
+        
             return RedirectToAction("Login", "Auth");
         }
 

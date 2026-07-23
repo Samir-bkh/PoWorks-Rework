@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using PoWorks_Rework.Data;
 
-
 Console.WriteLine("1. PROGRAM START");
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,7 +66,7 @@ System.Net.ServicePointManager.SecurityProtocol =
 
 builder.Services.AddHostedService<AutoImportWorker>();
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICompanyContext, WebCompanyContext>();
+builder.Services.AddScoped<ICompanyContext, CompanyContext>();
 builder.Services.AddSingleton<EncryptionService>();
 
 builder.Services.AddAuthorization(options =>

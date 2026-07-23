@@ -3,17 +3,18 @@ using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
 
-
 namespace PoWorks_Rework.Controllers
 {
     public class TenantManagementController : BaseController
     {
         private readonly ILogger<TenantManagementController> _logger;
+        private readonly ICompanyContext _companyContext;
 
-        public TenantManagementController(DatabaseService databaseService, ILogger<TenantManagementController> logger)
+        public TenantManagementController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<TenantManagementController> logger)
             : base(databaseService)
         {
             _logger = logger;
+            _companyContext = companyContext;
         }
 
         private int GetCurrentUserId()
@@ -21,6 +22,7 @@ namespace PoWorks_Rework.Controllers
             var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
             return claim != null && int.TryParse(claim.Value, out int userId) ? userId : 1;
         }
+
         [HttpGet]
         public IActionResult Create()
         {
@@ -48,6 +50,7 @@ namespace PoWorks_Rework.Controllers
 
             return View("~/Views/Tenant/Management.cshtml", viewModel);
         }
+
         [HttpPost]
         public IActionResult SaveTenant(Tenant tenant, IFormCollection form)
         {
@@ -139,25 +142,28 @@ namespace PoWorks_Rework.Controllers
                 return View("~/Views/Tenant/Management.cshtml", viewModel);
             }
         }
+
         private int CreateNewTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation("Creating new tenant");
-            int currentUserId = GetCurrentUserId(); 
+            int currentUserId = GetCurrentUserId();
+            int currentCompanyId = _companyContext.CurrentCompanyId; 
 
-            
             var insertTenantCommand = new NpgsqlCommand(
                 @"INSERT INTO ""Tenants"" (""DisplayName"", ""Misc"", ""UserId"", ""CompanyId"") 
-          VALUES (@displayName, @misc, @userId, 1) 
+          VALUES (@displayName, @misc, @userId, @companyId) 
           RETURNING ""TenantID""",
                 connection, transaction);
 
             insertTenantCommand.Parameters.AddWithValue("@displayName", tenant.CompanyName);
             insertTenantCommand.Parameters.AddWithValue("@misc", tenant.Unit ?? (object)DBNull.Value);
             insertTenantCommand.Parameters.AddWithValue("@userId", currentUserId);
+            insertTenantCommand.Parameters.AddWithValue("@companyId", currentCompanyId); 
 
             _logger.LogInformation("Executing tenant insert command");
             int tenantId = (int)insertTenantCommand.ExecuteScalar();
             _logger.LogInformation($"New tenant created with ID: {tenantId}");
+
             var insertDetailsSql = @"
                 INSERT INTO ""TenantDetails"" 
                    (""TenantID"", ""ContactName"", ""ContactPhone"", ""ContactEmail"",
@@ -177,10 +183,14 @@ namespace PoWorks_Rework.Controllers
 
             return tenantId;
         }
+
         private int UpdateExistingTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation($"Updating existing tenant with ID: {tenant.Id}");
             int tenantId = tenant.Id;
+
+
+
             var updateTenantCommand = new NpgsqlCommand(
                 @"UPDATE ""Tenants"" 
                   SET ""DisplayName"" = @displayName, ""Misc"" = @misc 
@@ -194,6 +204,7 @@ namespace PoWorks_Rework.Controllers
             _logger.LogInformation("Executing tenant update command");
             updateTenantCommand.ExecuteNonQuery();
             _logger.LogInformation("Tenant updated successfully");
+
             var checkCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM ""TenantDetails"" WHERE ""TenantID"" = @tenantId",
                 connection, transaction);
@@ -202,6 +213,7 @@ namespace PoWorks_Rework.Controllers
             _logger.LogInformation("Checking if tenant details exist");
             int detailsCount = Convert.ToInt32(checkCommand.ExecuteScalar());
             _logger.LogInformation($"Tenant details exist: {detailsCount > 0}");
+
             string detailsSql = detailsCount > 0
                 ? @"UPDATE ""TenantDetails"" SET
                     ""ContactName"" = @contactName, 
@@ -233,6 +245,7 @@ namespace PoWorks_Rework.Controllers
 
             return tenantId;
         }
+
         private void SetTenantDetailsParameters(NpgsqlCommand command, Tenant tenant, int tenantId)
         {
             command.Parameters.AddWithValue("@tenantId", tenantId);

@@ -16,7 +16,7 @@ namespace PoWorks_Rework.Services
         private string? _refreshToken;
         private DateTime _tokenExpiry;
 
-        // NOUVEAU : Mémoire du dernier rafraîchissement
+
         private DateTime _lastTokenRefreshTime = DateTime.MinValue;
 
         public PCVueWebService(HttpClient httpClient, ILogger<PCVueWebService> logger)
@@ -27,7 +27,7 @@ namespace PoWorks_Rework.Services
 
         public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings, bool forceRefresh = false)
         {
-            // Vérification rapide sans bloquer les autres threads
+   
             if (!forceRefresh && !string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
             {
                 return _accessToken;
@@ -36,10 +36,10 @@ namespace PoWorks_Rework.Services
             await _tokenLock.WaitAsync();
             try
             {
-                // BOUCLIER ANTI-SPAM (Thundering Herd)
+              
                 if (forceRefresh)
                 {
-                    // Si le jeton a été rafraîchi il y a moins de 5 secondes, on annule le forceRefresh
+                 
                     if ((DateTime.UtcNow - _lastTokenRefreshTime).TotalSeconds < 5)
                     {
                         _logger.LogInformation("Token was just refreshed by another thread. Bypassing force refresh.");
@@ -51,7 +51,7 @@ namespace PoWorks_Rework.Services
                 }
                 else if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
                 {
-                    return _accessToken; // Double-vérification au cas où un autre thread a fait le travail
+                    return _accessToken; 
                 }
 
                 if (!string.IsNullOrEmpty(_refreshToken))
@@ -122,7 +122,7 @@ namespace PoWorks_Rework.Services
 
                             int actualLifespan = Math.Min(tokenResponse.ExpiresIn - 60, 240);
                             _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
-                            _lastTokenRefreshTime = DateTime.UtcNow; // ENREGISTREMENT DU SUCCÈS
+                            _lastTokenRefreshTime = DateTime.UtcNow; 
 
                             _logger.LogInformation("OAuth token acquired successfully. Cached for {CacheSeconds} seconds.", actualLifespan);
 
@@ -186,7 +186,7 @@ namespace PoWorks_Rework.Services
                         var expiresIn = tokenData.TryGetProperty("expires_in", out var expiresElement) ? expiresElement.GetInt32() : 3600;
                         int actualLifespan = Math.Min(expiresIn - 60, 240);
                         _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
-                        _lastTokenRefreshTime = DateTime.UtcNow; // ENREGISTREMENT DU SUCCÈS
+                        _lastTokenRefreshTime = DateTime.UtcNow; 
 
                         return _accessToken;
                     }
@@ -288,6 +288,7 @@ namespace PoWorks_Rework.Services
         public string? ErrorMessage { get; set; }
         public string? TokenInfo { get; set; }
     }
+    
 
     public class ValidationResult
     {

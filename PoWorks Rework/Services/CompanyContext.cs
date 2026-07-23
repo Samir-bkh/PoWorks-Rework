@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 
 namespace PoWorks_Rework.Services
 {
@@ -6,11 +7,12 @@ namespace PoWorks_Rework.Services
     {
         int CurrentCompanyId { get; }
     }
-    public class WebCompanyContext : ICompanyContext
+
+    public class CompanyContext : ICompanyContext
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public WebCompanyContext(IHttpContextAccessor httpContextAccessor)
+        public CompanyContext(IHttpContextAccessor httpContextAccessor)
         {
             _httpContextAccessor = httpContextAccessor;
         }
@@ -19,16 +21,30 @@ namespace PoWorks_Rework.Services
         {
             get
             {
-                var user = _httpContextAccessor.HttpContext?.User;
-                if (user != null && user.Identity != null && user.Identity.IsAuthenticated)
+                var httpContext = _httpContextAccessor.HttpContext;
+                var user = httpContext?.User;
+
+                if (user == null) return 1;
+
+         
+                if (user.Identity?.Name?.ToLower() == "admin")
                 {
-                    var companyClaim = user.FindFirst("CompanyId");
-                    if (companyClaim != null && int.TryParse(companyClaim.Value, out int companyId))
+                    var cookieValue = httpContext?.Request.Cookies["AdminSelectedCompanyId"];
+                    if (!string.IsNullOrEmpty(cookieValue) && int.TryParse(cookieValue, out int selectedCompanyId))
                     {
-                        return companyId;
+                
+                        return selectedCompanyId;
                     }
                 }
-                return 1;
+
+          
+                var companyClaim = user.FindFirst("CompanyId");
+                if (companyClaim != null && int.TryParse(companyClaim.Value, out int companyId))
+                {
+                    return companyId;
+                }
+
+                return 1; 
             }
         }
     }

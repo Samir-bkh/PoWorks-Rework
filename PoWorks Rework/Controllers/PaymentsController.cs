@@ -11,34 +11,42 @@ namespace PoWorks_Rework.Controllers
     public class PaymentsController : BaseController
     {
         private readonly ILogger<PaymentsController> _logger;
+        private readonly ICompanyContext _companyContext;
 
-        public PaymentsController(DatabaseService databaseService, ILogger<PaymentsController> logger)
+        public PaymentsController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<PaymentsController> logger)
             : base(databaseService)
         {
             _logger = logger;
+            _companyContext = companyContext;
         }
 
         public IActionResult Index()
         {
             var viewModel = new PaymentDashboardViewModel();
+            int currentCompanyId = _companyContext.CurrentCompanyId;
 
             try
             {
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
+
+               
                 string queryPayments = @"
                     SELECT p.""PaymentId"", p.""BillId"", p.""PaymentDate"", p.""AmountPaid"", p.""PaymentMethod"",
                            t.""CompanyName"" as ""TenantName""
                     FROM ""Payments"" p
                     JOIN ""Bills"" b ON p.""BillId"" = b.""BillId""
+                    JOIN ""Tenants"" tn ON b.""TenantID"" = tn.""TenantID""
                     LEFT JOIN ""TenantDetails"" t ON b.""TenantID"" = t.""TenantID""
+                    WHERE tn.""CompanyId"" = @companyId
                     ORDER BY p.""PaymentDate"" DESC
                     LIMIT 100";
 
                 using (var cmd = new NpgsqlCommand(queryPayments, connection))
-                using (var reader = cmd.ExecuteReader())
                 {
+                    cmd.Parameters.AddWithValue("companyId", currentCompanyId);
+                    using var reader = cmd.ExecuteReader();
                     while (reader.Read())
                     {
                         viewModel.RecentPayments.Add(new PaymentEntity
@@ -52,36 +60,64 @@ namespace PoWorks_Rework.Controllers
                         });
                     }
                 }
-                string queryTotal = @"SELECT COALESCE(SUM(""AmountPaid""), 0) FROM ""Payments""";
+
+
+                string queryTotal = @"
+                    SELECT COALESCE(SUM(p.""AmountPaid""), 0) 
+                    FROM ""Payments"" p
+                    JOIN ""Bills"" b ON p.""BillId"" = b.""BillId""
+                    JOIN ""Tenants"" tn ON b.""TenantID"" = tn.""TenantID""
+                    WHERE tn.""CompanyId"" = @companyId";
                 using (var cmdTotal = new NpgsqlCommand(queryTotal, connection))
                 {
+                    cmdTotal.Parameters.AddWithValue("companyId", currentCompanyId);
                     viewModel.TotalCollectedThisMonth = Convert.ToDecimal(cmdTotal.ExecuteScalar());
                 }
-                string queryPending = @"SELECT COUNT(*) FROM ""Bills"" WHERE ""Status"" = 'Validated'";
+
+              
+                string queryPending = @"
+                    SELECT COUNT(*) 
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" tn ON b.""TenantID"" = tn.""TenantID""
+                    WHERE b.""Status"" = 'Validated' AND tn.""CompanyId"" = @companyId";
                 using (var cmdPending = new NpgsqlCommand(queryPending, connection))
                 {
+                    cmdPending.Parameters.AddWithValue("companyId", currentCompanyId);
                     viewModel.PendingBillsCount = Convert.ToInt32(cmdPending.ExecuteScalar());
                 }
-                string queryOverdue = @"SELECT COUNT(*) FROM ""Bills"" WHERE ""Status"" = 'Validated' AND ""PeriodEnd"" < CURRENT_DATE - INTERVAL '14 days'";
+
+             
+                string queryOverdue = @"
+                    SELECT COUNT(*) 
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" tn ON b.""TenantID"" = tn.""TenantID""
+                    WHERE b.""Status"" = 'Validated' 
+                    AND b.""PeriodEnd"" < CURRENT_DATE - INTERVAL '14 days' 
+                    AND tn.""CompanyId"" = @companyId";
                 using (var cmdOverdue = new NpgsqlCommand(queryOverdue, connection))
                 {
+                    cmdOverdue.Parameters.AddWithValue("companyId", currentCompanyId);
                     viewModel.OverdueBillsCount = Convert.ToInt32(cmdOverdue.ExecuteScalar());
                 }
+
+       
                 string queryInvoiceLookup = @"
                     SELECT b.""BillId"", b.""BillNumber"", b.""GrandTotal"", t.""CompanyName"",
                            (b.""GrandTotal"" - COALESCE((SELECT SUM(p.""AmountPaid"") FROM ""Payments"" p WHERE p.""BillId"" = b.""BillId""), 0)) as ""Remaining""
                     FROM ""Bills"" b
+                    JOIN ""Tenants"" tn ON b.""TenantID"" = tn.""TenantID""
                     LEFT JOIN ""TenantDetails"" t ON b.""TenantID"" = t.""TenantID""
-                    WHERE b.""Status"" = 'Validated'
+                    WHERE b.""Status"" = 'Validated' AND tn.""CompanyId"" = @companyId
                     ORDER BY b.""BillNumber""";
 
                 using (var cmdLookup = new NpgsqlCommand(queryInvoiceLookup, connection))
-                using (var reader = cmdLookup.ExecuteReader())
                 {
+                    cmdLookup.Parameters.AddWithValue("companyId", currentCompanyId);
+                    using var reader = cmdLookup.ExecuteReader();
                     while (reader.Read())
                     {
                         decimal remaining = reader.GetDecimal(4);
-                        if (remaining > 0) 
+                        if (remaining > 0)
                         {
                             viewModel.ActiveInvoices.Add(new InvoiceLookupOption
                             {
@@ -103,6 +139,7 @@ namespace PoWorks_Rework.Controllers
 
             return View(viewModel);
         }
+
         [HttpPost]
         public IActionResult RecordPayment(int billId, decimal amountPaid, string paymentMethod, string reference, string notes)
         {
@@ -123,17 +160,32 @@ namespace PoWorks_Rework.Controllers
                 {
                     int tenantId = 0;
                     decimal grandTotal = 0;
-                    string getBill = @"SELECT ""TenantID"", ""GrandTotal"" FROM ""Bills"" WHERE ""BillId"" = @id";
+
+            
+                    string getBill = @"
+                        SELECT b.""TenantID"", b.""GrandTotal"" 
+                        FROM ""Bills"" b 
+                        JOIN ""Tenants"" tn ON b.""TenantID"" = tn.""TenantID""
+                        WHERE b.""BillId"" = @id AND tn.""CompanyId"" = @companyId";
+
                     using (var cmdBill = new NpgsqlCommand(getBill, connection, transaction))
                     {
                         cmdBill.Parameters.AddWithValue("id", billId);
+                        cmdBill.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
+
                         using var reader = cmdBill.ExecuteReader();
                         if (reader.Read())
                         {
                             tenantId = reader.GetInt32(0);
                             grandTotal = reader.GetDecimal(1);
                         }
+                        else
+                        {
+                            TempData["ErrorMessage"] = "Bill not found or access denied.";
+                            return RedirectToAction("Index");
+                        }
                     }
+
                     string insertPay = @"
                         INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"", ""Reference"", ""Notes"", ""RecordedBy"")
                         VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, @method, @ref, @notes, 'Admin')";
@@ -148,6 +200,7 @@ namespace PoWorks_Rework.Controllers
                         cmdInsert.Parameters.AddWithValue("notes", (object)notes ?? DBNull.Value);
                         cmdInsert.ExecuteNonQuery();
                     }
+
                     string checkTotalPaid = @"SELECT COALESCE(SUM(""AmountPaid""), 0) FROM ""Payments"" WHERE ""BillId"" = @billId";
                     decimal totalPaid = 0;
                     using (var cmdCheck = new NpgsqlCommand(checkTotalPaid, connection, transaction))
@@ -155,6 +208,7 @@ namespace PoWorks_Rework.Controllers
                         cmdCheck.Parameters.AddWithValue("billId", billId);
                         totalPaid = Convert.ToDecimal(cmdCheck.ExecuteScalar());
                     }
+
                     if (totalPaid >= grandTotal)
                     {
                         using var cmdUpdate = new NpgsqlCommand(@"UPDATE ""Bills"" SET ""Status"" = 'Paid' WHERE ""BillId"" = @id", connection, transaction);

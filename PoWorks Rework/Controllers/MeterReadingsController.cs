@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
@@ -9,7 +10,7 @@ namespace PoWorks_Rework.Controllers
     public class MeterReadingsController : BaseController
     {
         private readonly ILogger<MeterReadingsController> _logger;
-        private readonly ICompanyContext _companyContext; 
+        private readonly ICompanyContext _companyContext;
         public MeterReadingsController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<MeterReadingsController> logger)
             : base(databaseService)
         {
@@ -156,6 +157,7 @@ namespace PoWorks_Rework.Controllers
                 string query = BuildReadingsQuery(tableName, meterIds, startDate, endDate, page, pageSize);
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
+                command.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
                 AddDateParameters(command, startDate, endDate);
                 AddPaginationParameters(command, page, pageSize);
 
@@ -173,12 +175,11 @@ namespace PoWorks_Rework.Controllers
                 string query = BuildCountQuery(tableName, meterIds, startDate, endDate);
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
-
-              
+                command.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
                 AddDateParameters(command, startDate, endDate);
 
                 var result = await command.ExecuteScalarAsync();
-                return Convert.ToInt32(result);
+                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
             });
         }
 
@@ -191,17 +192,16 @@ namespace PoWorks_Rework.Controllers
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
                 var ids = string.Join(",", meterIds);
-                var whereClause = $"WHERE mr.\"MeterId\" IN ({ids})";
+                var whereClause = $"WHERE m.\"CompanyId\" = @CompanyId AND mr.\"MeterId\" IN ({ids})";
 
                 if (startDate.HasValue || endDate.HasValue)
                 {
-                    whereClause += " AND ";
                     if (startDate.HasValue && endDate.HasValue)
-                        whereClause += "mr.\"Timestamp\" BETWEEN @startDate AND @endDate";
+                        whereClause += " AND mr.\"Timestamp\" BETWEEN @startDate AND @endDate";
                     else if (startDate.HasValue)
-                        whereClause += "mr.\"Timestamp\" >= @startDate";
+                        whereClause += " AND mr.\"Timestamp\" >= @startDate";
                     else if (endDate.HasValue)
-                        whereClause += "mr.\"Timestamp\" <= @endDate";
+                        whereClause += " AND mr.\"Timestamp\" <= @endDate";
                 }
 
                 string query = $@"
@@ -215,10 +215,11 @@ namespace PoWorks_Rework.Controllers
                         COUNT(DISTINCT mr.""MeterId"") as MeterCount,
                         array_agg(DISTINCT m.""Name"") as MeterNames
                     FROM ""MeterReadings"" mr
-                    LEFT JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+                    JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
                     {whereClause}";
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
+                command.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
                 AddDateParameters(command, startDate, endDate);
 
                 using var reader = await command.ExecuteReaderAsync();
@@ -242,89 +243,6 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
-        private async Task<List<MeterReading>> GetReadingsByTypeSingle(int? meterId, string viewType, int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
-        {
-            int currentCompanyId = _companyContext.CurrentCompanyId;
-            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
-            {
-                var offset = (page - 1) * pageSize;
-                string sql = viewType.ToLower() switch
-                {
-                    "daily" => BuildDailyReadingsQuery(meterId, startDate, endDate, offset, pageSize),
-                    "monthly" => BuildMonthlyReadingsQuery(meterId, startDate, endDate, offset, pageSize),
-                    "yearly" => BuildYearlyReadingsQuery(meterId, startDate, endDate, offset, pageSize),
-                    _ => BuildRawReadingsQuery(meterId, startDate, endDate, offset, pageSize)
-                };
-
-                using var command = new NpgsqlCommand(sql, connection, transaction);
-                AddParametersToCommand(command, meterId, startDate, endDate, offset, pageSize);
-                using var reader = await command.ExecuteReaderAsync();
-                return await ReadMeterReadingsFromDataReader(reader, viewType);
-            });
-        }
-
-        private async Task<int> GetReadingsCountSingle(int? meterId, string viewType, DateTime? startDate = null, DateTime? endDate = null)
-        {
-            int currentCompanyId = _companyContext.CurrentCompanyId;
-            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
-            {
-                string sql = viewType.ToLower() switch
-                {
-                    "daily" => BuildCountQuerySingle("MeterReadingsDaily", "ReadingDate", meterId, startDate, endDate),
-                    "monthly" => BuildCountQuerySingle("MeterReadingsMonthly", "Year, Month", meterId, startDate, endDate),
-                    "yearly" => BuildCountQuerySingle("MeterReadingsYearly", "Year", meterId, startDate, endDate),
-                    _ => BuildCountQuerySingle("MeterReadings", "Timestamp", meterId, startDate, endDate)
-                };
-
-                using var command = new NpgsqlCommand(sql, connection, transaction);
-                AddParametersToCommand(command, meterId, startDate, endDate, 0, 0);
-                var result = await command.ExecuteScalarAsync();
-                return Convert.ToInt32(result);
-            });
-        }
-
-        private async Task<MeterStats> CalculateMeterStats(int meterId, DateTime? startDate = null, DateTime? endDate = null)
-        {
-            int currentCompanyId = _companyContext.CurrentCompanyId;
-            return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
-            {
-                var whereClause = "WHERE \"MeterId\" = @MeterId";
-                if (startDate.HasValue) whereClause += " AND \"Timestamp\" >= @StartDate";
-                if (endDate.HasValue) whereClause += " AND \"Timestamp\" <= @EndDate";
-
-                string sql = $@"
-                    SELECT 
-                        COUNT(*) as ReadingCount,
-                        MIN(""Value"") as MinValue,
-                        MAX(""Value"") as MaxValue,
-                        AVG(""Value"") as AvgValue,
-                        MIN(""Timestamp"") as FirstReading,
-                        MAX(""Timestamp"") as LastReading
-                    FROM ""MeterReadings""
-                    {whereClause}";
-
-                using var command = new NpgsqlCommand(sql, connection, transaction);
-                command.Parameters.AddWithValue("@MeterId", meterId);
-                if (startDate.HasValue) command.Parameters.AddWithValue("@StartDate", startDate.Value);
-                if (endDate.HasValue) command.Parameters.AddWithValue("@EndDate", endDate.Value);
-
-                using var reader = await command.ExecuteReaderAsync();
-                if (await reader.ReadAsync())
-                {
-                    return new MeterStats
-                    {
-                        ReadingCount = reader.GetInt32("ReadingCount"),
-                        MinValue = reader.IsDBNull(reader.GetOrdinal("MinValue")) ? 0 : reader.GetDecimal("MinValue"),
-                        MaxValue = reader.IsDBNull(reader.GetOrdinal("MaxValue")) ? 0 : reader.GetDecimal("MaxValue"),
-                        AvgValue = reader.IsDBNull(reader.GetOrdinal("AvgValue")) ? 0 : reader.GetDecimal("AvgValue"),
-                        FirstReading = reader.IsDBNull(reader.GetOrdinal("FirstReading")) ? DateTime.MinValue : reader.GetDateTime("FirstReading"),
-                        LastReading = reader.IsDBNull(reader.GetOrdinal("LastReading")) ? DateTime.MinValue : reader.GetDateTime("LastReading")
-                    };
-                }
-                return new MeterStats();
-            });
-        }
-
         private async Task<List<MeterOption>> GetAvailableMeters()
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -337,10 +255,11 @@ namespace PoWorks_Rework.Controllers
                         COALESCE(m.""Type"", 'Unknown') as ""Type"", m.""Active"",
                         CASE WHEN m.""ParentId"" IS NULL THEN 'Main' ELSE 'Sub' END as ""MeterType""
                     FROM ""Meters"" m
-                    WHERE m.""Active"" = true
+                    WHERE m.""CompanyId"" = @CompanyId AND m.""Active"" = true
                     ORDER BY CASE WHEN m.""ParentId"" IS NULL THEN 0 ELSE 1 END, m.""Name"" ASC";
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
+                command.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
                 using var reader = await command.ExecuteReaderAsync();
 
                 while (await reader.ReadAsync())
@@ -357,127 +276,9 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
-        private string BuildRawReadingsQuery(int? meterId, DateTime? startDate, DateTime? endDate, int offset, int pageSize)
-        {
-            var whereClause = "WHERE 1=1";
-            if (meterId.HasValue) whereClause += " AND mr.\"MeterId\" = @MeterId";
-            if (startDate.HasValue) whereClause += " AND mr.\"Timestamp\" >= @StartDate";
-            if (endDate.HasValue) whereClause += " AND mr.\"Timestamp\" <= @EndDate";
-
-            return $@"
-                SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
-                       mr.""Timestamp"", mr.""Value"", COALESCE(mr.""Quality"", -1)::INTEGER as ""Quality""
-                FROM ""MeterReadings"" mr
-                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY mr.""Timestamp"" DESC
-                LIMIT @PageSize OFFSET @Offset";
-        }
-
-        private string BuildDailyReadingsQuery(int? meterId, DateTime? startDate, DateTime? endDate, int offset, int pageSize)
-        {
-            var whereClause = "WHERE 1=1";
-            if (meterId.HasValue) whereClause += " AND dr.\"MeterId\" = @MeterId";
-            if (startDate.HasValue) whereClause += " AND dr.\"ReadingDate\" >= @StartDate";
-            if (endDate.HasValue) whereClause += " AND dr.\"ReadingDate\" <= @EndDate";
-
-            return $@"
-                SELECT dr.""DailyReadingId"" as ""ReadingId"", dr.""MeterId"", m.""Name"" as ""MeterName"",
-                       dr.""ReadingDate""::timestamp as ""Timestamp"", dr.""AvgValue"" as ""Value"", 
-                       dr.""MinValue"", dr.""MaxValue"", dr.""SumValue"", dr.""ReadingCount""
-                FROM ""MeterReadingsDaily"" dr
-                JOIN ""Meters"" m ON dr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY dr.""ReadingDate"" DESC
-                LIMIT @PageSize OFFSET @Offset";
-        }
-
-        private string BuildMonthlyReadingsQuery(int? meterId, DateTime? startDate, DateTime? endDate, int offset, int pageSize)
-        {
-            var whereClause = "WHERE 1=1";
-            if (meterId.HasValue) whereClause += " AND mr.\"MeterId\" = @MeterId";
-            if (startDate.HasValue) whereClause += " AND make_date(mr.\"Year\", mr.\"Month\", 1) >= @StartDate";
-            if (endDate.HasValue) whereClause += " AND make_date(mr.\"Year\", mr.\"Month\", 1) <= @EndDate";
-
-            return $@"
-                SELECT mr.""MonthlyReadingId"" as ""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"",
-                       make_date(mr.""Year"", mr.""Month"", 1) as ""Timestamp"", mr.""AvgValue"" as ""Value"",
-                       mr.""MinValue"", mr.""MaxValue"", mr.""SumValue"", mr.""ReadingCount"", mr.""Year"", mr.""Month""
-                FROM ""MeterReadingsMonthly"" mr
-                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY mr.""Year"" DESC, mr.""Month"" DESC
-                LIMIT @PageSize OFFSET @Offset";
-        }
-
-        private string BuildYearlyReadingsQuery(int? meterId, DateTime? startDate, DateTime? endDate, int offset, int pageSize)
-        {
-            var whereClause = "WHERE 1=1";
-            if (meterId.HasValue) whereClause += " AND yr.\"MeterId\" = @MeterId";
-            if (startDate.HasValue) whereClause += " AND make_date(yr.\"Year\", 1, 1) >= @StartDate";
-            if (endDate.HasValue) whereClause += " AND make_date(yr.\"Year\", 1, 1) <= @EndDate";
-
-            return $@"
-                SELECT yr.""YearlyReadingId"" as ""ReadingId"", yr.""MeterId"", m.""Name"" as ""MeterName"",
-                       make_date(yr.""Year"", 1, 1) as ""Timestamp"", yr.""AvgValue"" as ""Value"",
-                       yr.""MinValue"", yr.""MaxValue"", yr.""SumValue"", yr.""ReadingCount"", yr.""Year""
-                FROM ""MeterReadingsYearly"" yr
-                JOIN ""Meters"" m ON yr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY yr.""Year"" DESC
-                LIMIT @PageSize OFFSET @Offset";
-        }
-
         private string BuildReadingsQuery(string tableName, List<int> meterIds, DateTime? startDate, DateTime? endDate, int page, int pageSize)
         {
-            var whereClause = BuildWhereClause(meterIds, startDate, endDate);
-            var offset = (page - 1) * pageSize;
-
-            return $@"
-                SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as MeterName, mr.""Timestamp"", mr.""Value"", mr.""Quality""
-                FROM ""{tableName}"" mr
-                LEFT JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY mr.""Timestamp"" DESC, mr.""MeterId""
-                LIMIT @pageSize OFFSET @offset";
-        }
-
-        private string BuildCountQuery(string tableName, List<int> meterIds, DateTime? startDate, DateTime? endDate)
-        {
-            var whereClause = BuildWhereClause(meterIds, startDate, endDate);
-            return $@"SELECT COUNT(*) FROM ""{tableName}"" mr {whereClause}";
-        }
-
-        private string BuildCountQuerySingle(string tableName, string dateColumn, int? meterId, DateTime? startDate, DateTime? endDate)
-        {
-            var whereClause = "WHERE 1=1";
-            if (meterId.HasValue) whereClause += " AND \"MeterId\" = @MeterId";
-
-            if (startDate.HasValue || endDate.HasValue)
-            {
-                if (tableName == "MeterReadingsMonthly")
-                {
-                    if (startDate.HasValue) whereClause += " AND make_date(\"Year\", \"Month\", 1) >= @StartDate";
-                    if (endDate.HasValue) whereClause += " AND make_date(\"Year\", \"Month\", 1) <= @EndDate";
-                }
-                else if (tableName == "MeterReadingsYearly")
-                {
-                    if (startDate.HasValue) whereClause += " AND make_date(\"Year\", 1, 1) >= @StartDate";
-                    if (endDate.HasValue) whereClause += " AND make_date(\"Year\", 1, 1) <= @EndDate";
-                }
-                else
-                {
-                    if (startDate.HasValue) whereClause += $" AND \"{dateColumn}\" >= @StartDate";
-                    if (endDate.HasValue) whereClause += $" AND \"{dateColumn}\" <= @EndDate";
-                }
-            }
-
-            return $@"SELECT COUNT(*) FROM ""{tableName}"" {whereClause}";
-        }
-
-        private string BuildWhereClause(List<int> meterIds, DateTime? startDate, DateTime? endDate)
-        {
-            var conditions = new List<string>();
+            var conditions = new List<string> { "m.\"CompanyId\" = @CompanyId" };
 
             if (meterIds.Any())
             {
@@ -492,9 +293,42 @@ namespace PoWorks_Rework.Controllers
             else if (endDate.HasValue)
                 conditions.Add("mr.\"Timestamp\" <= @endDate");
 
-            return conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
+            var whereClause = "WHERE " + string.Join(" AND ", conditions);
+
+            return $@"
+                SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as MeterName, mr.""Timestamp"", mr.""Value"", mr.""Quality""
+                FROM ""{tableName}"" mr
+                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+                {whereClause}
+                ORDER BY mr.""Timestamp"" DESC, mr.""MeterId""
+                LIMIT @pageSize OFFSET @offset";
         }
 
+        private string BuildCountQuery(string tableName, List<int> meterIds, DateTime? startDate, DateTime? endDate)
+        {
+            var conditions = new List<string> { "m.\"CompanyId\" = @CompanyId" };
+
+            if (meterIds.Any())
+            {
+                var ids = string.Join(",", meterIds);
+                conditions.Add($"mr.\"MeterId\" IN ({ids})");
+            }
+
+            if (startDate.HasValue && endDate.HasValue)
+                conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
+            else if (startDate.HasValue)
+                conditions.Add("mr.\"Timestamp\" >= @startDate");
+            else if (endDate.HasValue)
+                conditions.Add("mr.\"Timestamp\" <= @endDate");
+
+            var whereClause = "WHERE " + string.Join(" AND ", conditions);
+
+            return $@"
+                SELECT COUNT(*) 
+                FROM ""{tableName}"" mr
+                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+                {whereClause}";
+        }
 
         private void AddDateParameters(NpgsqlCommand command, DateTime? startDate, DateTime? endDate)
         {
@@ -512,16 +346,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        private void AddParametersToCommand(NpgsqlCommand command, int? meterId, DateTime? startDate, DateTime? endDate, int offset, int pageSize)
+        private void AddPaginationParameters(NpgsqlCommand command, int page, int pageSize)
         {
-            if (meterId.HasValue) command.Parameters.AddWithValue("@MeterId", meterId.Value);
-            if (startDate.HasValue) command.Parameters.AddWithValue("@StartDate", startDate.Value);
-            if (endDate.HasValue) command.Parameters.AddWithValue("@EndDate", endDate.Value);
-            if (pageSize > 0)
-            {
-                command.Parameters.AddWithValue("@PageSize", pageSize);
-                command.Parameters.AddWithValue("@Offset", offset);
-            }
+            command.Parameters.AddWithValue("@pageSize", pageSize);
+            command.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
         }
 
         private string GetTableNameForViewType(string viewType)
@@ -533,12 +361,6 @@ namespace PoWorks_Rework.Controllers
                 "yearly" => "MeterReadingsYearly",
                 _ => "MeterReadings"
             };
-        }
-
-        private void AddPaginationParameters(NpgsqlCommand command, int page, int pageSize)
-        {
-            command.Parameters.AddWithValue("@pageSize", pageSize);
-            command.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
         }
 
         private async Task<List<MeterReading>> ReadMeterReadingsFromDataReader(NpgsqlDataReader reader, string viewType)
@@ -591,6 +413,7 @@ namespace PoWorks_Rework.Controllers
 
         #endregion
     }
+
     public static class NpgsqlDataReaderExtensions
     {
         public static bool HasColumn(this NpgsqlDataReader reader, string columnName)

@@ -11,17 +11,13 @@ namespace PoWorks_Rework.Controllers
     public class TenantController : BaseController
     {
         private readonly ILogger<TenantController> _logger;
+        private readonly ICompanyContext _companyContext;
 
-        public TenantController(DatabaseService databaseService, ILogger<TenantController> logger)
+        public TenantController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<TenantController> logger)
             : base(databaseService)
         {
             _logger = logger;
-        }
-
-        private int GetCurrentUserId()
-        {
-            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
-            return claim != null && int.TryParse(claim.Value, out int userId) ? userId : 1;
+            _companyContext = companyContext;
         }
 
         public IActionResult Management(int? id = null)
@@ -147,30 +143,32 @@ namespace PoWorks_Rework.Controllers
                         "Phone" => @"WHERE ""td"".""ContactPhone"" ILIKE @searchTerm",
                         _ => @"WHERE ""td"".""CompanyName"" ILIKE @searchTerm"
                     };
+
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
 
-                int currentUserId = GetCurrentUserId();
+                int currentCompanyId = _companyContext.CurrentCompanyId;
+
+             
                 if (string.IsNullOrEmpty(whereClause))
                 {
-                    whereClause = @"WHERE ""t"".""UserId"" = @currentUserId";
+                    whereClause = @"WHERE ""t"".""CompanyId"" = @companyId";
                 }
                 else
                 {
-                    whereClause += @" AND ""t"".""UserId"" = @currentUserId";
+                    whereClause += @" AND ""t"".""CompanyId"" = @companyId";
                 }
 
                 string countSql = @"
-    SELECT COUNT(*) 
-    FROM ""Tenants"" ""t""
-    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
-    " + whereClause;
+                    SELECT COUNT(*) 
+                    FROM ""Tenants"" ""t""
+                    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
+                    " + whereClause;
 
                 using (var countCommand = new NpgsqlCommand(countSql, connection))
                 {
-                  
-                    countCommand.Parameters.AddWithValue("@currentUserId", currentUserId);
+                    countCommand.Parameters.AddWithValue("@companyId", currentCompanyId);
 
                     if (!string.IsNullOrEmpty(searchTerm))
                     {
@@ -183,24 +181,24 @@ namespace PoWorks_Rework.Controllers
 
                 int offset = (page - 1) * pageSize;
                 string searchSql = @"
-    SELECT 
-        ""t"".""TenantID"",
-        ""td"".""CompanyName"",
-        ""td"".""ContactName"",
-        ""td"".""ContactEmail"",
-        ""td"".""ContactPhone"",
-        0 AS Outstanding,
-        0 AS Overdue,
-        TRUE AS Active
-    FROM ""Tenants"" ""t""
-    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
-    " + whereClause + @"
-    ORDER BY ""td"".""CompanyName""
-    LIMIT @pageSize OFFSET @offset";
+                    SELECT 
+                        ""t"".""TenantID"",
+                        ""td"".""CompanyName"",
+                        ""td"".""ContactName"",
+                        ""td"".""ContactEmail"",
+                        ""td"".""ContactPhone"",
+                        0 AS Outstanding,
+                        0 AS Overdue,
+                        TRUE AS Active
+                    FROM ""Tenants"" ""t""
+                    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
+                    " + whereClause + @"
+                    ORDER BY ""td"".""CompanyName""
+                    LIMIT @pageSize OFFSET @offset";
 
                 using (var searchCommand = new NpgsqlCommand(searchSql, connection))
                 {
-                    searchCommand.Parameters.AddWithValue("@currentUserId", currentUserId);
+                    searchCommand.Parameters.AddWithValue("@companyId", currentCompanyId);
 
                     if (!string.IsNullOrEmpty(searchTerm))
                     {
@@ -247,27 +245,28 @@ namespace PoWorks_Rework.Controllers
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-                int currentUserId = GetCurrentUserId();
+
+                int currentCompanyId = _companyContext.CurrentCompanyId;
 
                 var command = new NpgsqlCommand(@"
-    SELECT 
-        ""t"".""TenantID"", 
-        ""td"".""CompanyName"", 
-        ""td"".""ContactName"", 
-        ""td"".""ContactEmail"", 
-        ""td"".""ContactPhone"",
-        ""td"".""CompanyAddress"",
-        ""td"".""CompanyLocation"",
-        ""td"".""CompanyMisc"",
-        COALESCE(""td"".""Tarif_1""::numeric, 0.0),
-        COALESCE(""td"".""Tarif_2""::numeric, 0.0),
-        COALESCE(""td"".""Tarif_3""::numeric, 0.0)
-    FROM ""Tenants"" ""t""
-    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
-    WHERE ""t"".""TenantID"" = @tenantId AND ""t"".""UserId"" = @currentUserId", connection);
+                    SELECT 
+                        ""t"".""TenantID"", 
+                        ""td"".""CompanyName"", 
+                        ""td"".""ContactName"", 
+                        ""td"".""ContactEmail"", 
+                        ""td"".""ContactPhone"",
+                        ""td"".""CompanyAddress"",
+                        ""td"".""CompanyLocation"",
+                        ""td"".""CompanyMisc"",
+                        COALESCE(""td"".""Tarif_1""::numeric, 0.0),
+                        COALESCE(""td"".""Tarif_2""::numeric, 0.0),
+                        COALESCE(""td"".""Tarif_3""::numeric, 0.0)
+                    FROM ""Tenants"" ""t""
+                    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
+                    WHERE ""t"".""TenantID"" = @tenantId AND ""t"".""CompanyId"" = @companyId", connection);
 
                 command.Parameters.AddWithValue("@tenantId", id);
-                command.Parameters.AddWithValue("@currentUserId", currentUserId);
+                command.Parameters.AddWithValue("@companyId", currentCompanyId);
 
                 using (var reader = command.ExecuteReader())
                 {

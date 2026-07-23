@@ -1,3 +1,5 @@
+@model PoWorks_Rework.Controllers.CreateUserViewModel
+
 @{
     ViewData["Title"] = "Create User";
 }
@@ -18,21 +20,55 @@
                     }
 
                     <form asp-action="Create" method="post">
+                        
+                        <!-- Username -->
                         <div class="mb-3">
                             <label class="form-label">Username</label>
-                            <input type="text" name="username" class="form-control" required />
+                            <input type="text" asp-for="Username" class="form-control" required />
                         </div>
                         
+                        <!-- Company Selection -->
                         <div class="mb-3">
-                            <label class="form-label">Assign to Tenant (ID or Name)</label>
-                            <input type="text" name="tenantId" class="form-control" placeholder="e.g. Tenant_A" required />
-                            <div class="form-text">This value will link the user to their specific data.</div>
+                            <label for="companyId" class="form-label">Company / Project</label>
+                            <select asp-for="CompanyId" id="companyId" class="form-control" onchange="toggleNewCompanyField()">
+                                @foreach (var item in (List<SelectListItem>)ViewBag.Companies)
+                                {
+                                    <option value="@item.Value">@item.Text</option>
+                                }
+                            </select>
+                            <div class="form-text">Select an existing company or create a new one for this user.</div>
                         </div>
 
+                        <div class="mb-3" id="newCompanyField" style="display:none;">
+                            <label for="newCompanyName" class="form-label">New Company Name</label>
+                            <input type="text" asp-for="NewCompanyName" id="newCompanyName" class="form-control" placeholder="e.g. Central Hospital" />
+                        </div>
+
+                        <!-- Password -->
                         <div class="mb-4">
                             <label class="form-label">Password</label>
-                            <input type="password" name="password" class="form-control" required />
+                            <input type="password" asp-for="Password" class="form-control" required />
                             <div class="form-text">Requires at least 6 characters, uppercase, lowercase, number, and special character.</div>
+                        </div>
+
+                        <!-- Bloc Permissions -->
+                        <div class="mb-4 p-3 border rounded bg-light">
+                            <label class="form-label fw-bold mb-3"><i class="bi bi-shield-lock"></i> Access Permissions</label>
+                            
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="CanViewPcVueConfig">
+                                <label class="form-check-label" asp-for="CanViewPcVueConfig">Allow access to <strong>PcVue Config</strong></label>
+                            </div>
+                            
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="CanViewImportExport">
+                                <label class="form-check-label" asp-for="CanViewImportExport">Allow access to <strong>Import/Export</strong></label>
+                            </div>
+                            
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" asp-for="CanViewGeneralSettings">
+                                <label class="form-check-label text-danger" asp-for="CanViewGeneralSettings">Allow access to <strong>General Settings (Database & Server)</strong></label>
+                            </div>
                         </div>
                         
                         <div class="d-flex justify-content-between">
@@ -45,3 +81,16 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        function toggleNewCompanyField() {
+            var select = document.getElementById('companyId');
+            var field = document.getElementById('newCompanyField');
+            field.style.display = select.value === 'NEW' ? 'block' : 'none';
+        }
+        
+  
+        document.addEventListener("DOMContentLoaded", toggleNewCompanyField);
+    </script>
+}

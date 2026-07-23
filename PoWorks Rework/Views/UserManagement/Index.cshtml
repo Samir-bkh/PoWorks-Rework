@@ -18,7 +18,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>Username</th>
-                        <th>Assigned Tenant</th>
+                        <th>Assigned Company / Project</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -28,14 +28,7 @@
                         <tr>
                             <td class="fw-bold" style="vertical-align: middle;">@user.UserName</td>
                             <td style="vertical-align: middle;">
-                                @if (user.TenantId == "N/A")
-                                {
-                                    <span class="text-muted fst-italic">No Tenant Assigned</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-info text-dark">@user.TenantId</span>
-                                }
+                                <span class="badge bg-info text-dark">@user.CompanyName</span>
                             </td>
                             <td class="text-end" style="vertical-align: middle;">
                                 @if (user.UserName.ToLower() != "admin")

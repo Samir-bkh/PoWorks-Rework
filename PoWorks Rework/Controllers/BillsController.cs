@@ -14,13 +14,15 @@ namespace PoWorks_Rework.Controllers
     public class BillsController : BaseController
     {
         private readonly ILogger<BillsController> _logger;
-        private readonly BillingService _billingService; 
+        private readonly BillingService _billingService;
+        private readonly ICompanyContext _companyContext;
 
-        public BillsController(DatabaseService databaseService, BillingService billingService, ILogger<BillsController> logger)
+        public BillsController(DatabaseService databaseService, BillingService billingService, ICompanyContext companyContext, ILogger<BillsController> logger)
             : base(databaseService)
         {
             _logger = logger;
             _billingService = billingService;
+            _companyContext = companyContext;
         }
 
         public IActionResult Index()
@@ -96,6 +98,7 @@ namespace PoWorks_Rework.Controllers
 
             return View("Index", viewModel);
         }
+
         [HttpPost]
         public async Task<IActionResult> GenerateBillTest(int tenantId, DateTime startDate, DateTime endDate)
         {
@@ -122,20 +125,23 @@ namespace PoWorks_Rework.Controllers
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
+
+        
                 string billQuery = @"
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
                            b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
                     FROM ""Bills"" b
                     JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
-                    WHERE b.""BillId"" = @id";
+                    WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
 
                 using var cmdBill = new NpgsqlCommand(billQuery, connection);
                 cmdBill.Parameters.AddWithValue("id", id);
+                cmdBill.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
 
                 using var reader = cmdBill.ExecuteReader();
                 if (!reader.Read())
                 {
-                    TempData["ErrorMessage"] = "Bill not found.";
+                    TempData["ErrorMessage"] = "Bill not found or access denied.";
                     return RedirectToAction("Index");
                 }
 
@@ -153,6 +159,7 @@ namespace PoWorks_Rework.Controllers
                     GeneratedAt = reader.GetDateTime(9)
                 };
                 reader.Close();
+
                 string lineQuery = @"
                     SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
                     FROM ""BillLineItems""
@@ -193,7 +200,9 @@ namespace PoWorks_Rework.Controllers
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
 
-                var command = new NpgsqlCommand(@"SELECT ""MeterId"", ""Name"" FROM ""Meters"" WHERE ""Active"" = true ORDER BY ""Name""", connection);
+                var command = new NpgsqlCommand(@"SELECT ""MeterId"", ""Name"" FROM ""Meters"" WHERE ""Active"" = true AND ""CompanyId"" = @companyId ORDER BY ""Name""", connection);
+                command.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
+
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
                 {
@@ -217,7 +226,10 @@ namespace PoWorks_Rework.Controllers
                     SELECT t.""TenantID"", td.""CompanyName"" 
                     FROM ""Tenants"" t
                     JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
+                    WHERE t.""CompanyId"" = @companyId
                     ORDER BY td.""CompanyName""", connection);
+
+                command.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
 
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
@@ -239,6 +251,7 @@ namespace PoWorks_Rework.Controllers
             public int TotalCount { get; set; }
             public int TotalPages { get; set; }
         }
+
         private SearchResult SearchBills(string searchCriteria, string searchTerm, int page, int pageSize)
         {
             var result = new SearchResult();
@@ -254,7 +267,7 @@ namespace PoWorks_Rework.Controllers
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""TotalKWh"", b.""GrandTotal""
                     FROM ""Bills"" b
                     JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
-                    WHERE 1=1 ";
+                    WHERE t.""CompanyId"" = @companyId ";
 
                 if (!string.IsNullOrEmpty(searchTerm))
                 {
@@ -265,6 +278,8 @@ namespace PoWorks_Rework.Controllers
                 query += " ORDER BY b.\"GeneratedAt\" DESC";
 
                 using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
+
                 using var reader = command.ExecuteReader();
 
                 while (reader.Read())
@@ -302,33 +317,49 @@ namespace PoWorks_Rework.Controllers
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
-                string checkQuery = @"SELECT ""Status"" FROM ""Bills"" WHERE ""BillId"" = @id";
+
+                string checkQuery = @"
+                    SELECT b.""Status"" 
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
+                    WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
+
                 using var checkCmd = new NpgsqlCommand(checkQuery, connection);
                 checkCmd.Parameters.AddWithValue("id", id);
+                checkCmd.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
+
                 var status = checkCmd.ExecuteScalar()?.ToString();
+
+                if (status == null)
+                {
+                    TempData["ErrorMessage"] = "Bill not found or access denied.";
+                    return RedirectToAction("Index");
+                }
 
                 if (status != "Draft")
                 {
                     TempData["ErrorMessage"] = "Only draft invoices can be deleted.";
                     return RedirectToAction("Details", new { id = id });
                 }
+
                 using var transaction = connection.BeginTransaction();
                 try
                 {
                     using var deleteLinesCmd = new NpgsqlCommand(@"DELETE FROM ""BillLineItems"" WHERE ""BillId"" = @id", connection, transaction);
                     deleteLinesCmd.Parameters.AddWithValue("id", id);
                     deleteLinesCmd.ExecuteNonQuery();
+
                     using var deleteBillCmd = new NpgsqlCommand(@"DELETE FROM ""Bills"" WHERE ""BillId"" = @id", connection, transaction);
                     deleteBillCmd.Parameters.AddWithValue("id", id);
                     deleteBillCmd.ExecuteNonQuery();
 
-                    transaction.Commit(); 
+                    transaction.Commit();
                     TempData["SuccessMessage"] = "The draft invoice has been successfully deleted.";
                     return RedirectToAction("Index");
                 }
                 catch
                 {
-                    transaction.Rollback(); 
+                    transaction.Rollback();
                     throw;
                 }
             }
@@ -353,6 +384,25 @@ namespace PoWorks_Rework.Controllers
                 string connString = _databaseService.GetConnectionString();
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
+
+        
+                string checkQuery = @"
+                    SELECT b.""BillId"" 
+                    FROM ""Bills"" b
+                    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
+                    WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
+
+                using (var checkCmd = new NpgsqlCommand(checkQuery, connection))
+                {
+                    checkCmd.Parameters.AddWithValue("id", id);
+                    checkCmd.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
+                    if (checkCmd.ExecuteScalar() == null)
+                    {
+                        TempData["ErrorMessage"] = "Bill not found or access denied.";
+                        return RedirectToAction("Index");
+                    }
+                }
+
                 using var transaction = connection.BeginTransaction();
 
                 try
@@ -364,6 +414,7 @@ namespace PoWorks_Rework.Controllers
                         cmd.Parameters.AddWithValue("id", id);
                         cmd.ExecuteNonQuery();
                     }
+
                     if (newStatus == "Paid")
                     {
                         decimal amount = 0;
@@ -379,6 +430,7 @@ namespace PoWorks_Rework.Controllers
                                 tenantId = reader.GetInt32(1);
                             }
                         }
+
                         string insertPayment = @"
                             INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"") 
                             VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, 'Virement')";
@@ -392,12 +444,12 @@ namespace PoWorks_Rework.Controllers
                         }
                     }
 
-                    transaction.Commit(); 
+                    transaction.Commit();
                     TempData["SuccessMessage"] = $"The status has been updated ({newStatus}).";
                 }
                 catch
                 {
-                    transaction.Rollback(); 
+                    transaction.Rollback();
                     throw;
                 }
 
@@ -410,23 +462,24 @@ namespace PoWorks_Rework.Controllers
                 return RedirectToAction("Details", new { id = id });
             }
         }
-    
 
-    [HttpGet]
+        [HttpGet]
         public IActionResult DownloadPdf(int id)
         {
             try
             {
                 using var connection = GetDatabaseConnection();
+
                 string billQuery = @"
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
                            b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
                     FROM ""Bills"" b
                     JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
-                    WHERE b.""BillId"" = @id";
+                    WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
 
                 using var cmdBill = new NpgsqlCommand(billQuery, connection);
                 cmdBill.Parameters.AddWithValue("id", id);
+                cmdBill.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
 
                 var bill = new BillEntity();
 
@@ -434,12 +487,12 @@ namespace PoWorks_Rework.Controllers
                 {
                     if (!reader.Read())
                     {
-                        TempData["ErrorMessage"] = "Bill not found.";
+                        TempData["ErrorMessage"] = "Bill not found or access denied.";
                         return RedirectToAction("Index");
                     }
 
                     bill.BillId = reader.GetInt32(0);
-                    bill.BillNumber = $"BILL-{bill.BillId:D4}"; 
+                    bill.BillNumber = $"BILL-{bill.BillId:D4}";
                     bill.TenantName = reader.GetString(1);
                     bill.PeriodStart = reader.GetDateTime(2);
                     bill.PeriodEnd = reader.GetDateTime(3);
@@ -450,6 +503,7 @@ namespace PoWorks_Rework.Controllers
                     bill.Status = reader.GetString(8);
                     bill.GeneratedAt = reader.GetDateTime(9);
                 }
+
                 string lineQuery = @"
                     SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
                     FROM ""BillLineItems""
@@ -472,6 +526,7 @@ namespace PoWorks_Rework.Controllers
                         });
                     }
                 }
+
                 var document = new InvoiceDocument(bill);
                 byte[] pdfBytes = document.GeneratePdf();
                 return File(pdfBytes, "application/pdf", $"{bill.BillNumber}.pdf");

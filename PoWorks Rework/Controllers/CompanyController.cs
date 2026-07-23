@@ -10,11 +10,13 @@ namespace PoWorks_Rework.Controllers
     public class CompanyController : BaseController
     {
         private readonly ILogger<CompanyController> _logger;
+        private readonly ICompanyContext _companyContext; 
 
-        public CompanyController(DatabaseService databaseService, ILogger<CompanyController> logger)
+        public CompanyController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<CompanyController> logger)
             : base(databaseService)
         {
             _logger = logger;
+            _companyContext = companyContext; 
         }
 
         public IActionResult Info()
@@ -35,18 +37,18 @@ namespace PoWorks_Rework.Controllers
                 _logger.LogError(ex, "Error loading company information");
                 var companyInfo = new CompanyInfo
                 {
-                    CompanyName = "PoWorks",
-                    RegistrationNumber = "PO123",
-                    Address1 = "Damansara",
-                    Address2 = "Kuala Lumpur",
-                    PostCode = "8888",
-                    Country = "Malaysia",
-                    City = "KL",
-                    GstId = "32184",
-                    GstPercentage = 6.00m,
-                    Phone = "123456",
-                    Fax = "123456",
-                    Email = "info@abc.com"
+                    CompanyName = "Company Name",
+                    RegistrationNumber = "",
+                    Address1 = "",
+                    Address2 = "",
+                    PostCode = "",
+                    Country = "",
+                    City = "",
+                    GstId = "",
+                    GstPercentage = 0.00m,
+                    Phone = "",
+                    Fax = "",
+                    Email = ""
                 };
 
                 TempData["ErrorMessage"] = $"Error loading company information: {ex.Message}";
@@ -86,6 +88,8 @@ namespace PoWorks_Rework.Controllers
 
         private CompanyInfo GetCompanyInfo()
         {
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+
             using (var connection = GetDatabaseConnection())
             {
                 var sql = @"SELECT 
@@ -93,10 +97,12 @@ namespace PoWorks_Rework.Controllers
                     ""PostCode"", ""Country"", ""City"", ""GstId"", ""GstPercentage"", 
                     ""Phone"", ""Fax"", ""Email"", ""LogoPath"" 
                 FROM ""CompanyInfo"" 
-                LIMIT 1";
+                WHERE ""CompanyInfoId"" = @companyId LIMIT 1";
 
                 using (var cmd = new NpgsqlCommand(sql, connection))
                 {
+                    cmd.Parameters.AddWithValue("companyId", currentCompanyId);
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         if (reader.Read())
@@ -120,33 +126,27 @@ namespace PoWorks_Rework.Controllers
                         }
                     }
                 }
+
                 var defaultCompanyInfo = new CompanyInfo
                 {
-                    CompanyName = "PoWorks",
-                    RegistrationNumber = "PO123",
-                    Address1 = "Damansara",
-                    Address2 = "Kuala Lumpur",
-                    PostCode = "8888",
-                    Country = "Malaysia",
-                    City = "KL",
-                    GstId = "32184",
-                    GstPercentage = 6.00m,
-                    Phone = "123456",
-                    Fax = "123456",
-                    Email = "info@abc.com"
+                    CompanyName = $"New Company {currentCompanyId}",
+                    GstPercentage = 0.00m
                 };
-                SaveCompanyInfo(defaultCompanyInfo);
                 return defaultCompanyInfo;
             }
         }
 
         private void SaveCompanyInfo(CompanyInfo companyInfo)
         {
+            int currentCompanyId = _companyContext.CurrentCompanyId;
+
             using (var connection = GetDatabaseConnection())
             {
                 bool recordExists = false;
-                using (var checkCmd = new NpgsqlCommand("SELECT COUNT(*) FROM \"CompanyInfo\"", connection))
+
+                using (var checkCmd = new NpgsqlCommand("SELECT COUNT(*) FROM \"CompanyInfo\" WHERE \"CompanyInfoId\" = @companyId", connection))
                 {
+                    checkCmd.Parameters.AddWithValue("companyId", currentCompanyId);
                     recordExists = Convert.ToInt32(checkCmd.ExecuteScalar()) > 0;
                 }
 
@@ -168,23 +168,24 @@ namespace PoWorks_Rework.Controllers
                             ""Phone"" = @Phone, 
                             ""Fax"" = @Fax, 
                             ""Email"" = @Email
-                        WHERE ""CompanyInfoId"" = (SELECT MIN(""CompanyInfoId"") FROM ""CompanyInfo"")";
+                        WHERE ""CompanyInfoId"" = @companyId";
                 }
                 else
                 {
                     sql = @"
                         INSERT INTO ""CompanyInfo"" (
-                            ""CompanyName"", ""RegistrationNumber"", ""Address1"", ""Address2"", 
+                            ""CompanyInfoId"", ""CompanyName"", ""RegistrationNumber"", ""Address1"", ""Address2"", 
                             ""PostCode"", ""Country"", ""City"", ""GstId"", ""GstPercentage"", 
                             ""Phone"", ""Fax"", ""Email"")
                         VALUES (
-                            @CompanyName, @RegistrationNumber, @Address1, @Address2, 
+                            @companyId, @CompanyName, @RegistrationNumber, @Address1, @Address2, 
                             @PostCode, @Country, @City, @GstId, @GstPercentage, 
                             @Phone, @Fax, @Email)";
                 }
 
                 using (var cmd = new NpgsqlCommand(sql, connection))
                 {
+                    cmd.Parameters.AddWithValue("@companyId", currentCompanyId);
                     cmd.Parameters.AddWithValue("@CompanyName", companyInfo.CompanyName ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@RegistrationNumber", companyInfo.RegistrationNumber ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@Address1", companyInfo.Address1 ?? (object)DBNull.Value);
@@ -226,16 +227,30 @@ namespace PoWorks_Rework.Controllers
             return View(companySettings);
         }
 
+
+        [HttpPost]
+        public IActionResult SwitchCompany(int companyId, string returnUrl)
+        {
+            if (User.Identity?.Name?.ToLower() == "admin")
+            {
+                Response.Cookies.Append("AdminSelectedCompanyId", companyId.ToString(), new CookieOptions
+                {
+                    Expires = DateTimeOffset.UtcNow.AddDays(1),
+                    HttpOnly = true
+                });
+            }
+
+            return LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
+        }
+
         [HttpPost]
         public IActionResult SaveSettings(CompanySettings companySettings)
         {
             if (ModelState.IsValid)
             {
-
                 TempData["SuccessMessage"] = "Company settings saved successfully.";
                 return RedirectToAction("Settings");
             }
-
             return View("Settings", companySettings);
         }
     }

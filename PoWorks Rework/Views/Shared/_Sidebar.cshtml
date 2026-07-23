@@ -1,76 +1,99 @@
 ﻿<div class="sidebar-header">
-    <h3>PoWorks</h3>
+	<h3>PoWorks</h3>
 </div>
 <div class="sidebar-menu">
-    <ul class="list-unstyled">
-        @{
-            var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
-            var currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? string.Empty;
+	<ul class="list-unstyled">
+		@{
+		var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+		var currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? string.Empty;
 
-            // Cette petite fonction empêche ton éditeur de casser le code HTML
-            string GetActiveClass(string c, string a = "") 
-            {
-                if (string.IsNullOrEmpty(a)) 
-                {
-                    return currentController == c ? "active" : "";
-                }
-                return (currentController == c && currentAction == a) ? "active" : "";
-            }
-        }
+	
+		string GetActiveClass(string c, string a = "")
+		{
+		if (string.IsNullOrEmpty(a))
+		{
+		return currentController == c ? "active" : "";
+		}
+		return (currentController == c && currentAction == a) ? "active" : "";
+		}
 
-        <li class="@GetActiveClass("Home")">
-            <a asp-controller="Home" asp-action="Index">
-                <i class="bi bi-house-fill"></i> Dashboard
-            </a>
-        </li>
-        <li class="@GetActiveClass("Company", "Info")">
-            <a asp-controller="Company" asp-action="Info">
-                <i class="bi bi-info-circle-fill"></i> Company Info
-            </a>
-        </li>
-        <li class="@GetActiveClass("Company", "Settings")">
-            <a asp-controller="Company" asp-action="Settings">
-                <i class="bi bi-gear-fill"></i> Company Settings
-            </a>
-        </li>
-		<li class="@GetActiveClass("PcVueConfig=")">
+		
+		bool isAdmin = User.Identity?.Name?.ToLower() == "admin";
+		}
+
+		
+		<li class="@GetActiveClass("Home=")">
+			<a asp-controller="Home" asp-action="Index">
+				<i class="bi bi-house-fill"></i> Dashboard
+			</a>
+		</li>
+		<li class="@GetActiveClass("Company=", "Info")">
+			<a asp-controller="Company" asp-action="Info">
+				<i class="bi bi-info-circle-fill"></i> Company Info
+			</a>
+		</li>
+		<li class="@GetActiveClass("Company", "Settings")">
+			<a asp-controller="Company" asp-action="Settings">
+				<i class="bi bi-gear-fill"></i> Company Settings
+			</a>
+		</li>
+
+		
+		@if (User.HasClaim("Permission", "ViewPcVueConfig") || isAdmin)
+		{
+		<li class="@GetActiveClass("PcVueConfig")">
 			<a asp-controller="PcVueConfig" asp-action="Index">
 				<i class="bi bi-server"></i> PcVue Config
 			</a>
 		</li>
-        <li class="@GetActiveClass("Tenant")">
-            <a asp-controller="Tenant" asp-action="Management">
-                <i class="bi bi-people-fill"></i> Tenant Management
-            </a>
-        </li>
-        <li class="@GetActiveClass("Meter")">
-            <a asp-controller="Meter" asp-action="Management">
-                <i class="bi bi-speedometer"></i> Meter Management
-            </a>
-        </li>
-        <li class="@GetActiveClass("Bills")">
-            <a asp-controller="Bills" asp-action="Index">
-                <i class="bi bi-receipt"></i> Bills
-            </a>
-        </li>
-        <li class="@GetActiveClass("Payments")">
-            <a asp-controller="Payments" asp-action="Index">
-                <i class="bi bi-credit-card"></i> Payments
-            </a>
-        </li>
-        <li class="@GetActiveClass("Import")">
-            <a asp-controller="Import" asp-action="Index">
-                <i class="bi bi-arrow-down-up"></i> Import/Export
-            </a>
-        </li>
-        <li class="@GetActiveClass("Settings")">
-            <a asp-controller="Settings" asp-action="General">
-                <i class="bi bi-sliders"></i> General Settings
-            </a>
-        </li>
-		@if (User.Identity?.Name?.ToLower() == "admin")
+		}
+
+
+		<li class="@GetActiveClass("Tenant")">
+			<a asp-controller="Tenant" asp-action="Management">
+				<i class="bi bi-people-fill"></i> Tenant Management
+			</a>
+		</li>
+		<li class="@GetActiveClass("Meter")">
+			<a asp-controller="Meter" asp-action="Management">
+				<i class="bi bi-speedometer"></i> Meter Management
+			</a>
+		</li>
+		<li class="@GetActiveClass("Bills")">
+			<a asp-controller="Bills" asp-action="Index">
+				<i class="bi bi-receipt"></i> Bills
+			</a>
+		</li>
+		<li class="@GetActiveClass("Payments")">
+			<a asp-controller="Payments" asp-action="Index">
+				<i class="bi bi-credit-card"></i> Payments
+			</a>
+		</li>
+
+		
+		@if (User.HasClaim("Permission", "ViewImportExport") || isAdmin)
 		{
-		<li class="@GetActiveClass("UserManagement=")">
+		<li class="@GetActiveClass("Import")">
+			<a asp-controller="Import" asp-action="Index">
+				<i class="bi bi-arrow-down-up"></i> Import/Export
+			</a>
+		</li>
+		}
+
+	
+		@if (User.HasClaim("Permission", "ViewGeneralSettings") || isAdmin)
+		{
+		<li class="@GetActiveClass("Settings")">
+			<a asp-controller="Settings" asp-action="General">
+				<i class="bi bi-sliders"></i> General Settings
+			</a>
+		</li>
+		}
+
+
+		@if (isAdmin)
+		{
+		<li class="@GetActiveClass("UserManagement")">
 			<a asp-controller="UserManagement" asp-action="Index">
 				<i class="bi bi-person-badge"></i> User Management
 			</a>
