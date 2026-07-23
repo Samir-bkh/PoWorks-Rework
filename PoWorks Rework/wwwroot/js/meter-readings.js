@@ -409,36 +409,55 @@ const MeterReadings = {
     updatePaginationInfo: function (pagination) {
         this.config.currentPage = pagination.currentPage;
     },
-
-    viewReadingDetails: function (readingId) {
-        const modal = new bootstrap.Modal(document.getElementById('readingDetailsModal'));
-        const content = document.getElementById('readingDetailsContent');
-        const row = document.querySelector(`tr[data-reading-id="${readingId}"]`);
+viewReadingDetails: function (readingId) {
+        console.log("STEP 1: Click detected on reading ID", readingId);
         
-        if(row) {
-            const meterName = row.cells[0].innerText.trim();
-            const timestamp = row.cells[1].innerText.trim();
-            const value = row.cells[2].innerText.trim();
+        const modalEl = document.getElementById('readingDetailsModal');
+        if (!modalEl) {
+            alert("Error: Modal element not found in DOM.");
+            return;
+        }
+
+        try {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            const content = document.getElementById('readingDetailsContent');
+            const row = document.querySelector(`tr[data-reading-id="${readingId}"]`);
             
-            content.innerHTML = `
-                <div class="alert alert-light border border-primary">
-                    <h4 class="alert-heading text-primary"><i class="bi bi-speedometer2"></i> ${meterName}</h4>
-                    <hr>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p class="mb-1 text-muted">Timestamp</p>
-                            <p class="fs-5">${timestamp}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <p class="mb-1 text-muted">Recorded Value</p>
-                            <p class="fs-3 fw-bold text-success">${value}</p>
+            console.log("STEP 2: Elements search...", { 
+                ModalFound: !!content, 
+                RowFound: !!row 
+            });
+
+            if (row && content) {
+                const meterName = row.cells[0].innerText.trim();
+                const timestamp = row.cells[1].innerText.trim();
+                const value = row.cells[2].innerText.trim();
+                
+                content.innerHTML = `
+                    <div class="alert alert-light border border-primary text-start m-3">
+                        <h4 class="alert-heading text-primary"><i class="bi bi-speedometer2"></i> ${meterName}</h4>
+                        <hr>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <p class="mb-1 text-muted">Timestamp</p>
+                                <p class="fs-5 fw-bold">${timestamp}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1 text-muted">Recorded Value</p>
+                                <p class="fs-3 fw-bold text-success">${value}</p>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
-            modal.show();
+                `;
+                modal.show();
+                console.log("STEP 3: Success, modal is open!");
+            } else {
+                alert("Error: Cannot find table row for this ID.");
+            }
+        } catch (error) {
+            console.error("Bootstrap critical error:", error);
         }
     }
-};
+    };
 
 window.MeterReadings = MeterReadings;

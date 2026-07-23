@@ -3,7 +3,7 @@
     ViewData["Title"] = "Meter Readings";
 }
 
-<!-- Status Messages -->
+
 @if (TempData["SuccessMessage"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -90,7 +90,7 @@
             </div>
             <div class="card-body">
                 <div class="row">
-                    <!-- UPDATED: Multi-Select Meter Component -->
+                
                     <div class="col-md-6">
                         <label for="meterSelect" class="form-label">Select Meters</label>
 
@@ -188,7 +188,7 @@
             </div>
         </div>
 
-        <!-- UPDATED: Statistics Panel for Multiple Meters -->
+       
         <div id="statsPanel" class="card mb-4" style="@(Model.HasAnyMeterSelected ? "" : "display: none;")">
             <div class="card-header bg-info text-white">
                 <h6 class="mb-0">
@@ -206,7 +206,7 @@
                 </h6>
             </div>
             <div class="card-body">
-                <!-- UPDATED: Multi-meter info row -->
+       
                 @if (Model.HasMultipleMetersSelected)
                 {
                     <div class="row mb-3">
@@ -326,12 +326,31 @@
                         </div>
                     }
                 </div>
+            
+<div class="modal fade" id="readingDetailsModal" tabindex="-1" aria-labelledby="readingDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="readingDetailsModalLabel">Reading Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="readingDetailsContent">
+
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
+
     <style>
         /* Multi-Select Meter Component CSS */
         .meter-multi-select { position: relative; }
