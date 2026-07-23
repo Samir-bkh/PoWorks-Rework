@@ -19,19 +19,9 @@
     </div>
 }
 
-@if (TempData["InfoMessage"] != null)
-{
-    <div class="alert alert-info alert-dismissible fade show" role="alert">
-        @TempData["InfoMessage"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-}
-
-
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h4>Meters</h4>
-        
     </div>
     <div class="card-body">
         <!-- Tabs -->
@@ -45,7 +35,7 @@
         </ul>
 
         <!-- Search Area -->
-        <form asp-action="Search" method="post">
+        <form asp-action="Search" method="post" id="searchForm">
             <div class="meter-search-area mb-4">
                 <div class="row mb-2">
                     <div class="col-md-2">
@@ -55,7 +45,6 @@
                         <select class="form-select" id="SearchField" asp-for="SearchCriteria.SearchField" onchange="updateMeterSearchOptions()">
                             <option value="Name">Name or Label</option>
                             <option value="Type">Type</option>
-                            <!-- REMOVED: <option value="Parent">Parent</option> -->
                             <option value="Tenant">Tenant</option>
                         </select>
                     </div>
@@ -65,41 +54,30 @@
                         <label for="SearchTerm" class="form-label">Search Term</label>
                     </div>
                     <div class="col-md-4">
-                        <!-- Container for dynamic search inputs -->
                         <div id="searchTermContainer">
-                            <!-- Text input for Name (default) -->
                             <input type="text" class="form-control" id="textInput" asp-for="SearchCriteria.SearchTerm"
-                                   style="display: @(Model.SearchCriteria.SearchField == "Name" ? "block" : "none")">
-
-                            <!-- Dropdown for Type -->
+                                   style="display: @(Model.SearchCriteria?.SearchField == "Name" ? "block" : "none")">
                             <select class="form-select" id="typeSelect" name="SearchCriteria.SearchTerm"
-                                    style="display: @(Model.SearchCriteria.SearchField == "Type" ? "block" : "none")">
+                                    style="display: @(Model.SearchCriteria?.SearchField == "Type" ? "block" : "none")">
                                 <option value="">Select Type</option>
-                                <option value="Main" selected="@(Model.SearchCriteria.SearchTerm == "Main")">Main</option>
-                                <option value="Sub" selected="@(Model.SearchCriteria.SearchTerm == "Sub")">Sub</option>
+                                <option value="Main" selected="@(Model.SearchCriteria?.SearchTerm == "Main")">Main</option>
+                                <option value="Sub" selected="@(Model.SearchCriteria?.SearchTerm == "Sub")">Sub</option>
                             </select>
-
-                            <!-- Dropdown for Tenant -->
                             <select class="form-select" id="tenantSelect" name="SearchCriteria.SearchTerm"
-                                    style="display: @(Model.SearchCriteria.SearchField == "Tenant" ? "block" : "none")">
+                                    style="display: @(Model.SearchCriteria?.SearchField == "Tenant" ? "block" : "none")">
                                 <option value="">Select Tenant</option>
-                                @foreach (var tenant in Model.TenantOptions)
-                                {
-                                    <option value="@tenant.Text" selected="@(Model.SearchCriteria.SearchTerm == tenant.Text)">@tenant.Text</option>
+                                @if(Model.TenantOptions != null) {
+                                    @foreach (var tenant in Model.TenantOptions)
+                                    {
+                                        <option value="@tenant.Text" selected="@(Model.SearchCriteria?.SearchTerm == tenant.Text)">@tenant.Text</option>
+                                    }
                                 }
                             </select>
                         </div>
                     </div>
-                   <div class="col-md-6 d-flex align-items-center">
+                    <div class="col-md-6 d-flex align-items-center">
                         <button type="submit" class="btn btn-primary me-2">Search</button>
                         <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#newMeterModal">New Meter</button>
-                        
-                        <!-- LE BOUTON MAGIQUE -->
-                        <form asp-action="CleanGhostMeters" method="post" class="m-0" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer tous les compteurs contenant \'Backnet\' avec un K ?');">
-                            <button type="submit" class="btn btn-warning fw-bold text-dark">
-                                <i class="bi bi-magic"></i> Clean 'Backnet'
-                            </button>
-                        </form>
                     </div>
                 </div>
             </div>
@@ -108,13 +86,30 @@
         <!-- Search Results -->
         <div class="card mb-4">
             <div class="card-header bg-light">
-                <h5 class="mb-0">Search Results</h5>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">Search Results</h5>
+                </div>
+                
+                <div id="bulkActionBar" class="bg-primary-subtle p-2 rounded d-flex align-items-center justify-content-between border border-primary" style="display: none !important;">
+                    <div>
+                        <span class="badge bg-primary fs-6"><span id="selectedCount">0</span> selected</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-sm btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#bulkEditModal"><i class="bi bi-pencil-square"></i> Edit Selected</button>
+                        <button class="btn btn-sm btn-warning fw-bold text-dark" onclick="unassignBulkTenant()"><i class="bi bi-person-x"></i> Unassign</button>
+                        <div class="vr mx-1"></div>
+                        <button class="btn btn-sm btn-danger fw-bold" onclick="deleteBulkMeters()"><i class="bi bi-trash"></i> Delete</button>
+                    </div>
+                </div>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover mb-0">
                         <thead>
                             <tr>
+                                <th class="text-center" style="width: 50px;">
+                                    <input class="form-check-input" type="checkbox" id="selectAllMeters">
+                                </th>
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>Parent</th>
@@ -125,32 +120,50 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var meter in Model.SearchResults)
-                            {
-                                <tr class="@(Model.SelectedMeter?.Id == meter.Id ? "table-primary" : "")">
-                                    <td><a asp-action="Management" asp-route-id="@meter.Id">@meter.Name</a></td>
-                                    <td>@meter.Type</td>
-                                    <td>@meter.ParentMeterName</td>
-                                    <td>@meter.LastReading</td>
-                                    <td>@meter.Unit</td>
-                                    <td>@meter.TenantName</td>
-                                    <td class="text-center">
-                                        @if (meter.Active)
-                                        {
-                                            <i class="bi bi-check"></i>
-                                        }
-                                    </td>
-                                </tr>
+                            <tr id="selectAllBannerRow" style="display: none;">
+                                <td colspan="8" class="text-center bg-primary-subtle text-primary border-primary py-2">
+                                    <span id="bannerTextNormal">
+                                        All <strong><span id="bannerPageCount">50</span></strong> meters on this page are selected. 
+                                        <a href="#" class="fw-bold text-decoration-none ms-2" onclick="selectAllAcrossPages(event)">
+                                            Select all matching meters in database
+                                        </a>
+                                    </span>
+                                    <span id="bannerTextAll" style="display: none;">
+                                        <i class="bi bi-check-circle-fill"></i> All matching meters are selected.
+                                        <a href="#" class="fw-bold text-decoration-none ms-2 text-danger" onclick="clearAllAcrossPages(event)">
+                                            Clear selection
+                                        </a>
+                                    </span>
+                                </td>
+                            </tr>
+                            
+                            @if(Model.SearchResults != null) {
+                                @foreach (var meter in Model.SearchResults)
+                                {
+                                    <tr class="@(Model.SelectedMeter?.Id == meter.Id ? "table-primary" : "")">
+                                        <td class="text-center">
+                                            <input class="form-check-input meter-checkbox" type="checkbox" value="@meter.Id">
+                                        </td>
+                                        <td><a asp-action="Management" asp-route-id="@meter.Id">@meter.Name</a></td>
+                                        <td>@meter.Type</td>
+                                        <td>@meter.ParentMeterName</td>
+                                        <td>@meter.LastReading</td>
+                                        <td>@meter.Unit</td>
+                                        <td>@meter.TenantName</td>
+                                        <td class="text-center">
+                                            @if (meter.Active) { <i class="bi bi-check"></i> }
+                                        </td>
+                                    </tr>
+                                }
                             }
-                            @if (!Model.SearchResults.Any())
+                            @if (Model.SearchResults == null || !Model.SearchResults.Any())
                             {
-                                <tr>
-                                    <td colspan="7" class="text-center">No meters found.</td>
-                                </tr>
+                                <tr><td colspan="8" class="text-center">No meters found.</td></tr>
                             }
                         </tbody>
                     </table>
                 </div>
+                
                 <div class="d-flex justify-content-between align-items-center p-2 bg-light border-top">
                     <div>
                         <nav aria-label="Page navigation">
@@ -158,25 +171,19 @@
                                 @if (Model.CurrentPage > 1)
                                 {
                                     <li class="page-item">
-                                        <a class="page-link" asp-action="Management" asp-route-page="@(Model.CurrentPage - 1)" aria-label="Previous">
-                                            <span aria-hidden="true">&laquo;</span>
-                                        </a>
+                                        <a class="page-link" asp-action="Management" asp-route-page="@(Model.CurrentPage - 1)" aria-label="Previous">&laquo;</a>
                                     </li>
                                 }
-
                                 @for (int i = Math.Max(1, Model.CurrentPage - 2); i <= Math.Min(Model.TotalPages, Model.CurrentPage + 2); i++)
                                 {
                                     <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
                                         <a class="page-link" asp-action="Management" asp-route-page="@i">@i</a>
                                     </li>
                                 }
-
                                 @if (Model.CurrentPage < Model.TotalPages)
                                 {
                                     <li class="page-item">
-                                        <a class="page-link" asp-action="Management" asp-route-page="@(Model.CurrentPage + 1)" aria-label="Next">
-                                            <span aria-hidden="true">&raquo;</span>
-                                        </a>
+                                        <a class="page-link" asp-action="Management" asp-route-page="@(Model.CurrentPage + 1)" aria-label="Next">&raquo;</a>
                                     </li>
                                 }
                             </ul>
@@ -198,105 +205,67 @@
                         <h5 class="mb-0">Meter Details</h5>
                     </div>
                     <div class="card-body">
-                        <!-- Hidden ID field for the Update action -->
                         <input type="hidden" name="Id" value="@Model.SelectedMeter.Id" />
 
                         <div class="row mb-3">
-                            <div class="col-md-2">
-                                <label for="Name" class="form-label">Name</label>
-                            </div>
+                            <div class="col-md-2"><label for="Name" class="form-label">Name</label></div>
                             <div class="col-md-4">
                                 <input type="text" class="form-control" id="Name" name="Name" value="@Model.SelectedMeter.Name">
                                 <small class="form-text text-muted">Technical name used internally</small>
                             </div>
-                            <div class="col-md-2">
-                                <label for="ParentMeterId" class="form-label">Parent</label>
-                            </div>
+                            <div class="col-md-2"><label for="ParentMeterId" class="form-label">Parent</label></div>
                             <div class="col-md-4">
                                 @{
-                          
-                                    var parentOptions = new List<SelectListItem>
-                            {
-                            new SelectListItem { Value = "", Text = "None" }
-                            };
-
-                                    foreach (var meter in Model.SearchResults.Where(m => m.Id != Model.SelectedMeter.Id))
-                                    {
-                                        bool isSelected = meter.Id.ToString() == Model.SelectedMeter.ParentMeterId;
-                                        parentOptions.Add(new SelectListItem
-                    {
-                        Value = meter.Id.ToString(),
-                        Text = meter.Name,
-                        Selected = isSelected
-                    });
+                                    var parentOptions = new List<SelectListItem> { new SelectListItem { Value = "", Text = "None" } };
+                                    if(Model.SearchResults != null) {
+                                        foreach (var meter in Model.SearchResults.Where(m => m.Id != Model.SelectedMeter.Id))
+                                        {
+                                            bool isSelected = meter.Id.ToString() == Model.SelectedMeter.ParentMeterId;
+                                            parentOptions.Add(new SelectListItem { Value = meter.Id.ToString(), Text = meter.Name, Selected = isSelected });
+                                        }
                                     }
                                 }
-                                <select class="form-select" id="ParentMeterId" name="ParentMeterId"
-                                        asp-items="parentOptions">
-                                </select>
+                                <select class="form-select" id="ParentMeterId" name="ParentMeterId" asp-items="parentOptions"></select>
                             </div>
                         </div>
 
-                        <!-- NEW: Label field row -->
+                        <!-- Label field row -->
                         <div class="row mb-3">
-                            <div class="col-md-2">
-                                <label for="Label" class="form-label">Label</label>
-                            </div>
+                            <div class="col-md-2"><label for="Label" class="form-label">Label</label></div>
                             <div class="col-md-4">
                                 <input type="text" class="form-control" id="Label" name="Label" value="@Model.SelectedMeter.Label" placeholder="Display name for this meter">
                                 <small class="form-text text-muted">Friendly name displayed in the interface</small>
                             </div>
-                            <div class="col-md-2">
-                                <label for="TenantId" class="form-label">Tenant</label>
-                            </div>
+                            <div class="col-md-2"><label for="TenantId" class="form-label">Tenant</label></div>
                             <div class="col-md-4">
-                                <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions">
-                                </select>
+                                <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions ?? new List<SelectListItem>()"></select>
                                 <small class="form-text text-muted">Link this meter to a tenant from the database</small>
                             </div>
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-2">
-                                <label for="Unit" class="form-label">Unit</label>
-                            </div>
-                            <div class="col-md-4">
-                                <input type="text" class="form-control" id="Unit" name="Unit" value="@Model.SelectedMeter.Unit">
-                            </div>
-                            <div class="col-md-2">
-                                <label for="LastReading" class="form-label">Last Reading</label>
-                            </div>
-                            <div class="col-md-4">
-                                <input type="text" class="form-control" id="LastReading" name="LastReading" value="@Model.SelectedMeter.LastReading">
-                            </div>
+                            <div class="col-md-2"><label for="Unit" class="form-label">Unit</label></div>
+                            <div class="col-md-4"><input type="text" class="form-control" id="Unit" name="Unit" value="@Model.SelectedMeter.Unit"></div>
+                            <div class="col-md-2"><label for="LastReading" class="form-label">Last Reading</label></div>
+                            <div class="col-md-4"><input type="text" class="form-control bg-light" id="LastReading" name="LastReading" value="@Model.SelectedMeter.LastReading" readonly></div>
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-2">
-                                <label for="Type" class="form-label">Type</label>
-                            </div>
+                            <div class="col-md-2"><label for="Type" class="form-label">Type</label></div>
                             <div class="col-md-4">
                                 @{
-                                
-                                    var typeOptions = new List<SelectListItem>
-                            {
-                            new SelectListItem { Value = "Main", Text = "Main", Selected = Model.SelectedMeter.Type == "Main" },
-                            new SelectListItem { Value = "Sub", Text = "Sub", Selected = Model.SelectedMeter.Type == "Sub" }
-                            };
+                                    var typeOptions = new List<SelectListItem> {
+                                        new SelectListItem { Value = "Main", Text = "Main", Selected = Model.SelectedMeter.Type == "Main" },
+                                        new SelectListItem { Value = "Sub", Text = "Sub", Selected = Model.SelectedMeter.Type == "Sub" }
+                                    };
                                 }
-                                <select class="form-select" id="Type" name="Type"
-                                        asp-items="typeOptions">
-                                </select>
+                                <select class="form-select" id="Type" name="Type" asp-items="typeOptions"></select>
                             </div>
-                            <div class="col-md-2">
-                                <label for="Active" class="form-label">Active</label>
-                            </div>
+                            <div class="col-md-2"><label for="Active" class="form-label">Active</label></div>
                             <div class="col-md-4">
                                 <div class="form-check mt-2">
                                     @Html.CheckBox("Active", Model.SelectedMeter.Active, new { @class = "form-check-input" })
-                                    <label class="form-check-label" for="Active">
-                                        Active
-                                    </label>
+                                    <label class="form-check-label" for="Active">Active</label>
                                 </div>
                             </div>
                         </div>
@@ -307,17 +276,14 @@
                     </div>
                 </div>
             </form>
-
+            
             <!-- Sub Meters -->
             <div class="card">
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Sub Meters</h5>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#newSubMeterModal">Add Sub Meter</button>
-                    </div>
                 </div>
                 <div class="card-body">
-                    @if (Model.SubMeters.Any())
+                    @if (Model.SubMeters != null && Model.SubMeters.Any())
                     {
                         <div class="table-responsive">
                             <table class="table table-bordered table-hover mb-0">
@@ -340,12 +306,7 @@
                                             <td>@subMeter.LastReading</td>
                                             <td>@subMeter.Unit</td>
                                             <td>@subMeter.TenantName</td>
-                                            <td class="text-center">
-                                                @if (subMeter.Active)
-                                                {
-                                                    <i class="bi bi-check"></i>
-                                                }
-                                            </td>
+                                            <td class="text-center">@if (subMeter.Active) { <i class="bi bi-check"></i> }</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -362,99 +323,83 @@
     </div>
 </div>
 
+<!-- Bulk Edit Modal -->
+<div class="modal fade" id="bulkEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bulk Edit Meters</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="cbUpdateTenant" onchange="toggleBulkField('bulkTenantSelect')">
+                    <label class="form-check-label fw-bold" for="cbUpdateTenant">Change Tenant</label>
+                </div>
+                <select class="form-select mb-4" id="bulkTenantSelect" disabled>
+                    <option value="">-- Select a Tenant --</option>
+                    @if(Model.TenantOptions != null) {
+                        @foreach (var tenant in Model.TenantOptions.Where(t => t.Value != ""))
+                        {
+                            <option value="@tenant.Value">@tenant.Text</option>
+                        }
+                    }
+                </select>
+
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="cbUpdateUnit" onchange="toggleBulkField('bulkUnitInput')">
+                    <label class="form-check-label fw-bold" for="cbUpdateUnit">Change Unit</label>
+                </div>
+                <input type="text" class="form-control mb-4" id="bulkUnitInput" disabled placeholder="e.g. kWh, m3...">
+
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="cbUpdateType" onchange="toggleBulkField('bulkTypeSelect')">
+                    <label class="form-check-label fw-bold" for="cbUpdateType">Change Type</label>
+                </div>
+                <select class="form-select mb-4" id="bulkTypeSelect" disabled>
+                    <option value="Main">Main</option>
+                    <option value="Sub">Sub</option>
+                </select>
+
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="cbUpdateParent" onchange="toggleBulkField('bulkParentSelect')">
+                    <label class="form-check-label fw-bold" for="cbUpdateParent">Change Parent Meter</label>
+                </div>
+                <select class="form-select mb-2" id="bulkParentSelect" disabled>
+                    <option value="">None (Top Level)</option>
+                    @if(Model.SearchResults != null) {
+                        @foreach (var meter in Model.SearchResults)
+                        {
+                            <option value="@meter.Id">@meter.Name</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="applyBulkEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- New Meter Modal -->
-<!-- New Meter Modal (UPDATED) -->
-<div class="modal fade" id="newMeterModal" tabindex="-1" aria-labelledby="newMeterModalLabel" aria-hidden="true">
+<div class="modal fade" id="newMeterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form asp-action="Create" method="post">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="newMeterModalLabel">New Meter</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title">New Meter</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="Name" class="form-label">Name</label>
-                        </div>
-                        <div class="col-md-9">
-                            <input type="text" class="form-control" id="Name" name="Name" required>
-                            <small class="form-text text-muted">Technical name used internally</small>
-                        </div>
-                    </div>
-                    <!-- NEW: Label field -->
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="Label" class="form-label">Label</label>
-                        </div>
-                        <div class="col-md-9">
-                            <input type="text" class="form-control" id="Label" name="Label" placeholder="Display name for this meter">
-                            <small class="form-text text-muted">Friendly name displayed in the interface</small>
-                        </div>
+                     <div class="row mb-3">
+                        <div class="col-md-3"><label class="form-label">Name</label></div>
+                        <div class="col-md-9"><input type="text" class="form-control" name="Name" required></div>
                     </div>
                     <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="ParentMeterId" class="form-label">Parent</label>
-                        </div>
-                        <div class="col-md-9">
-                            <select class="form-select" id="ParentMeterId" name="ParentMeterId">
-                                <option value="">None</option>
-                                @foreach (var meter in Model.SearchResults)
-                                {
-                                    <option value="@meter.Id">@meter.Name</option>
-                                }
-                            </select>
-                        </div>
-                    </div>
-                    <!-- Rest of the modal fields remain the same... -->
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="Unit" class="form-label">Unit</label>
-                        </div>
-                        <div class="col-md-9">
-                            <input type="text" class="form-control" id="Unit" name="Unit">
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="LastReading" class="form-label">Last Reading</label>
-                        </div>
-                        <div class="col-md-9">
-                            <input type="text" class="form-control" id="LastReading" name="LastReading" value="0">
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="Type" class="form-label">Type</label>
-                        </div>
-                        <div class="col-md-9">
-                            <select class="form-select" id="Type" name="Type">
-                                <option value="Main" selected>Main</option>
-                                <option value="Sub">Sub</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="TenantId" class="form-label">Tenant</label>
-                        </div>
-                        <div class="col-md-9">
-                            <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions">
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-3">
-                            <label for="Active" class="form-label">Active</label>
-                        </div>
-                        <div class="col-md-9">
-                            <div class="form-check">
-                                @Html.CheckBox("Active", true, new { @class = "form-check-input" })
-                                <label class="form-check-label" for="Active">
-                                    Active
-                                </label>
-                            </div>
-                        </div>
+                        <div class="col-md-3"><label class="form-label">Label</label></div>
+                        <div class="col-md-9"><input type="text" class="form-control" name="Label"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -465,100 +410,35 @@
         </div>
     </div>
 </div>
-<!-- New Sub Meter Modal -->
-@if (Model.SelectedMeter != null)
-{
-    <div class="modal fade" id="newSubMeterModal" tabindex="-1" aria-labelledby="newSubMeterModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <form asp-action="Create" method="post">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="newSubMeterModalLabel">New Sub Meter</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterName" class="form-label">Name</label>
-                            </div>
-                            <div class="col-md-9">
-                                <input type="text" class="form-control" id="SubMeterName" name="Name" required>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterParentId" class="form-label">Parent</label>
-                            </div>
-                            <div class="col-md-9">
-                                <!-- Hidden field with the parent meter ID -->
-                                <input type="hidden" id="SubMeterParentId" name="ParentMeterId" value="@Model.SelectedMeter.Id">
-                                <input type="text" class="form-control" value="@Model.SelectedMeter.Name" readonly>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterUnit" class="form-label">Unit</label>
-                            </div>
-                            <div class="col-md-9">
-                                <input type="text" class="form-control" id="SubMeterUnit" name="Unit">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterLastReading" class="form-label">Last Reading</label>
-                            </div>
-                            <div class="col-md-9">
-                                <input type="text" class="form-control" id="SubMeterLastReading" name="LastReading" value="0">
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterType" class="form-label">Type</label>
-                            </div>
-                            <div class="col-md-9">
-                                <!-- Always create as Sub type -->
-                                <input type="hidden" name="Type" value="Sub">
-                                <input type="text" class="form-control" value="Sub" readonly>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterTenantId" class="form-label">Tenant</label>
-                            </div>
-                            <div class="col-md-9">
-                                <select class="form-select" id="SubMeterTenantId" name="TenantId" asp-items="Model.TenantOptions">
-                                </select>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label for="SubMeterActive" class="form-label">Active</label>
-                            </div>
-                            <div class="col-md-9">
-                                <div class="form-check">
-                                    @Html.CheckBox("Active", true, new { @class = "form-check-input", id = "SubMeterActive" })
-                                    <label class="form-check-label" for="SubMeterActive">
-                                        Active
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Create</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-}
-
 
 @section Scripts {
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        function updateMeterSearchOptions() {
+            const criteria = document.getElementById('SearchField').value;
+            
+            document.getElementById('textInput').style.display = 'none';
+            document.getElementById('typeSelect').style.display = 'none';
+            document.getElementById('tenantSelect').style.display = 'none';
+            
+            document.getElementById('textInput').name = '';
+            document.getElementById('typeSelect').name = '';
+            document.getElementById('tenantSelect').name = '';
+            
+            if (criteria === 'Name') {
+                document.getElementById('textInput').style.display = 'block';
+                document.getElementById('textInput').name = 'SearchCriteria.SearchTerm';
+            } else if (criteria === 'Type') {
+                document.getElementById('typeSelect').style.display = 'block';
+                document.getElementById('typeSelect').name = 'SearchCriteria.SearchTerm';
+            } else if (criteria === 'Tenant') {
+                document.getElementById('tenantSelect').style.display = 'block';
+                document.getElementById('tenantSelect').name = 'SearchCriteria.SearchTerm';
+            }
+        }
 
+        document.addEventListener('DOMContentLoaded', function() {
+            updateMeterSearchOptions();
+            
             const tenantId = '@Model.SelectedMeter?.TenantId';
             if (tenantId) {
                 const tenantSelect = document.getElementById('TenantId');
@@ -572,37 +452,144 @@
                 }
             }
         });
-        function updateMeterSearchOptions() {
-                   const criteria = document.getElementById('SearchField').value;
 
-     
-                   document.getElementById('textInput').style.display = 'none';
-                   document.getElementById('typeSelect').style.display = 'none';
-                   document.getElementById('tenantSelect').style.display = 'none';
-
-    
-                   document.getElementById('textInput').name = '';
-                   document.getElementById('typeSelect').name = '';
-                   document.getElementById('tenantSelect').name = '';
-
-                   if (criteria === 'Name') {
-                       document.getElementById('textInput').style.display = 'block';
-                       document.getElementById('textInput').name = 'SearchCriteria.SearchTerm';
-                   } else if (criteria === 'Type') {
-                       document.getElementById('typeSelect').style.display = 'block';
-                       document.getElementById('typeSelect').name = 'SearchCriteria.SearchTerm';
-                   } else if (criteria === 'Tenant') {
-                       document.getElementById('tenantSelect').style.display = 'block';
-                       document.getElementById('tenantSelect').name = 'SearchCriteria.SearchTerm';
-                   }
-                   
-               }
-
+        // ==========================================
+        // GMAIL STYLE BULK ACTION LOGIC
+        // ==========================================
+        let isSelectingAcrossPages = false;
+        
+        function updateBulkUI() {
+            const selectAll = document.getElementById('selectAllMeters');
+            const checkboxes = document.querySelectorAll('.meter-checkbox');
+            const bulkActionBar = document.getElementById('bulkActionBar');
+            const selectedCount = document.getElementById('selectedCount');
+            const selectAllBannerRow = document.getElementById('selectAllBannerRow');
             
-               document.addEventListener('DOMContentLoaded', function() {
-                   updateMeterSearchOptions();
-               });
+            const checkedCount = document.querySelectorAll('.meter-checkbox:checked').length;
+            const itemsOnPage = checkboxes.length;
+            
+            if (isSelectingAcrossPages) {
+                selectedCount.innerText = "All matching";
+                bulkActionBar.style.setProperty('display', 'flex', 'important');
+                return;
+            }
+
+            selectedCount.innerText = checkedCount;
+            bulkActionBar.style.setProperty('display', checkedCount > 0 ? 'flex' : 'none', 'important');
+            
+            if(selectAll) {
+                selectAll.checked = (checkedCount === itemsOnPage && itemsOnPage > 0);
+            }
+
+            if (selectAll && selectAll.checked && itemsOnPage > 0) {
+                selectAllBannerRow.style.display = 'table-row';
+                document.getElementById('bannerPageCount').innerText = itemsOnPage;
+                document.getElementById('bannerTextNormal').style.display = 'inline';
+                document.getElementById('bannerTextAll').style.display = 'none';
+            } else {
+                if(selectAllBannerRow) selectAllBannerRow.style.display = 'none';
+            }
+        }
+
+        window.selectAllAcrossPages = function(e) {
+            e.preventDefault();
+            isSelectingAcrossPages = true;
+            document.getElementById('bannerTextNormal').style.display = 'none';
+            document.getElementById('bannerTextAll').style.display = 'inline';
+            updateBulkUI();
+        };
+
+        window.clearAllAcrossPages = function(e) {
+            e.preventDefault();
+            isSelectingAcrossPages = false;
+            document.getElementById('selectAllMeters').checked = false;
+            document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = false);
+            updateBulkUI();
+        };
+
+        document.getElementById('selectAllMeters')?.addEventListener('change', e => {
+            isSelectingAcrossPages = false;
+            document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = e.target.checked);
+            updateBulkUI();
+        });
+
+        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.addEventListener('change', () => {
+            isSelectingAcrossPages = false;
+            updateBulkUI();
+        }));
+
+        window.toggleBulkField = function(fieldId) {
+            const field = document.getElementById(fieldId);
+            field.disabled = !field.disabled;
+        };
+
+        window.unassignBulkTenant = function() {
+            if(!confirm('Are you sure you want to unassign tenants for selected meters?')) return;
+            sendBulkEditRequest({ UpdateTenant: true, TenantId: null });
+        };
+
+        window.applyBulkEdit = function() {
+            const updateTenant = document.getElementById('cbUpdateTenant').checked;
+            const tenantId = document.getElementById('bulkTenantSelect').value;
+            const updateUnit = document.getElementById('cbUpdateUnit').checked;
+            const unit = document.getElementById('bulkUnitInput').value;
+            const updateType = document.getElementById('cbUpdateType').checked;
+            const type = document.getElementById('bulkTypeSelect').value;
+            const updateParent = document.getElementById('cbUpdateParent').checked;
+            const parentId = document.getElementById('bulkParentSelect').value;
+
+            if(!updateTenant && !updateUnit && !updateType && !updateParent) {
+                alert("Please select at least one field to update.");
+                return;
+            }
+
+            sendBulkEditRequest({
+                UpdateTenant: updateTenant, TenantId: tenantId ? parseInt(tenantId) : null,
+                UpdateUnit: updateUnit, Unit: unit,
+                UpdateType: updateType, Type: type,
+                UpdateParent: updateParent, ParentId: parentId ? parseInt(parentId) : null
+            });
+        };
+
+        function sendBulkEditRequest(editData) {
+            const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
+            const searchField = document.getElementById('SearchField') ? document.getElementById('SearchField').value : null;
+            const searchTerm = document.querySelector('input[name="SearchCriteria.SearchTerm"]') ? document.querySelector('input[name="SearchCriteria.SearchTerm"]').value : null;
+
+            if(selectedIds.length === 0 && !isSelectingAcrossPages) return;
+
+            const payload = { 
+                MeterIds: selectedIds, 
+                SelectAllMatching: isSelectingAcrossPages,
+                SearchField: searchField,
+                SearchTerm: searchTerm,
+                ...editData
+            };
+
+            fetch('/Meter/BulkEditMeters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(res => res.json()).then(data => {
+                if (data.success) location.reload();
+                else alert('Error: ' + data.message);
+            });
+        }
+
+        window.deleteBulkMeters = function() {
+            const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
+            if(!confirm(`Warning: You are about to permanently delete ${selectedIds.length} meters and all their historical readings. Are you sure?`)) return;
+
+            fetch('/Meter/BulkDeleteMeters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(selectedIds)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) location.reload();
+                else alert('Error: ' + data.message);
+            });
+        };
     </script>
 }
-
-@using Microsoft.AspNetCore.Mvc.Rendering

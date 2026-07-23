@@ -11,14 +11,13 @@ namespace PoWorks_Rework.Models
         public int TotalPages { get; set; } = 1;
         public int CurrentPage { get; set; } = 1;
         public int TotalItems { get; set; } = 0;
-
         public List<SelectListItem> TenantOptions { get; set; } = new List<SelectListItem>();
     }
 
     public class MeterSearchCriteria
     {
         public string SearchField { get; set; } = "Name";
-        public string SearchTerm { get; set; } = "";
+        public string? SearchTerm { get; set; }
     }
 
     public class Meter
@@ -34,5 +33,25 @@ namespace PoWorks_Rework.Models
         public string? TenantId { get; set; }
         public string? TenantName { get; set; }
         public bool Active { get; set; } = true;
+    }
+
+    public class BulkEditMetersRequest
+    {
+        public List<int> MeterIds { get; set; } = new List<int>();
+        public bool SelectAllMatching { get; set; }
+        public string? SearchField { get; set; }
+        public string? SearchTerm { get; set; }
+
+        public bool UpdateTenant { get; set; }
+        public int? TenantId { get; set; }
+
+        public bool UpdateUnit { get; set; }
+        public string? Unit { get; set; }
+
+        public bool UpdateType { get; set; }
+        public string? Type { get; set; }
+
+        public bool UpdateParent { get; set; }
+        public int? ParentId { get; set; }
     }
 }

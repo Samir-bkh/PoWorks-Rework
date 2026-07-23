@@ -25,7 +25,10 @@ namespace PoWorks_Rework.Services
             while (!stoppingToken.IsCancellationRequested)
             {
                 try { await RunImportCycleAsync(stoppingToken); }
-                catch (Exception ex) { _logger.LogError(ex, "CRITICAL ERROR"); }
+                catch (Exception ex)
+                {
+                    _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message}", ex.Message);
+                }
                 await Task.Delay(TimeSpan.FromMinutes(_cycleDelayMinutes), stoppingToken);
             }
         }
@@ -147,6 +150,7 @@ namespace PoWorks_Rework.Services
                         FROM ""TempMeterReadings""
                         ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, transaction);
 
+                    insertCmd.CommandTimeout = 300; 
                     await insertCmd.ExecuteNonQueryAsync();
                 });
             }

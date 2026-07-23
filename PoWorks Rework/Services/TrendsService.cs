@@ -20,7 +20,7 @@ namespace PoWorks_Rework.Services
         {
             try
             {
-                _logger.LogInformation("Creating trend request for variable: {VariableName}", variableName);
+                _logger.LogDebug("Creating trend request for variable: {VariableName}", variableName);
 
                 var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
                 if (string.IsNullOrEmpty(token))

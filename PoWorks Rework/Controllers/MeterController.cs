@@ -545,7 +545,6 @@ ORDER BY td.""CompanyName""";
                 return Json(new { success = false, message = ex.Message });
             }
         }
-
         [HttpPost]
         public async Task<IActionResult> CleanGhostMeters()
         {
@@ -557,12 +556,12 @@ ORDER BY td.""CompanyName""";
                 await connection.OpenAsync();
                 using var transaction = await connection.BeginTransactionAsync();
 
-         
+                
                 string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%')";
                 using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, transaction);
                 await cmdReadings.ExecuteNonQueryAsync();
 
-          
+             
                 string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%'";
                 using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, transaction);
                 int deletedCount = await cmdMeters.ExecuteNonQueryAsync();
@@ -577,15 +576,67 @@ ORDER BY td.""CompanyName""";
 
             return RedirectToAction("Management");
         }
-    }
 
-    public class BulkTenantAssignRequest
-    {
-        public List<int> MeterIds { get; set; } = new();
-        public int? TenantId { get; set; }
-    }
+        [HttpPost]
+        public async Task<IActionResult> BulkEditMeters([FromBody] BulkEditMetersRequest request)
+        {
+            if (!_databaseService.IsInitialized)
+                return Json(new { success = false, message = "Database not configured." });
 
+            try
+            {
+                List<int> idsToUpdate = request.MeterIds ?? new List<int>();
 
+                if (request.SelectAllMatching)
+                {
+                    var criteria = new MeterSearchCriteria
+                    {
+                        SearchField = request.SearchField ?? "Name",
+                        SearchTerm = request.SearchTerm
+                    };
 
+                    var matchingMeters = await _meterRepository.GetMetersAsync(criteria, 1, 999999);
+                    idsToUpdate = matchingMeters.Select(m => m.Id).ToList();
+                }
 
-}
+                if (!idsToUpdate.Any())
+                    return Json(new { success = false, message = "No meters matched the criteria." });
+
+                if (!request.UpdateTenant && !request.UpdateUnit && !request.UpdateType && !request.UpdateParent)
+                    return Json(new { success = false, message = "No fields selected for update." });
+
+                using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
+                await connection.OpenAsync();
+                using var tx = await connection.BeginTransactionAsync();
+
+                var setClauses = new List<string>();
+                if (request.UpdateTenant) setClauses.Add("\"TenantID\" = @TenantId");
+                if (request.UpdateUnit) setClauses.Add("\"Unit\" = @Unit");
+                if (request.UpdateType) setClauses.Add("\"Type\" = @Type");
+                if (request.UpdateParent) setClauses.Add("\"ParentId\" = @ParentId");
+
+                string sql = $@"UPDATE ""Meters"" SET {string.Join(", ", setClauses)} WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
+
+                using var cmd = new NpgsqlCommand(sql, connection, tx);
+
+                if (request.UpdateTenant) cmd.Parameters.AddWithValue("@TenantId", request.TenantId.HasValue ? request.TenantId.Value : DBNull.Value);
+                if (request.UpdateUnit) cmd.Parameters.AddWithValue("@Unit", request.Unit ?? "");
+                if (request.UpdateType) cmd.Parameters.AddWithValue("@Type", request.Type ?? "main");
+                if (request.UpdateParent) cmd.Parameters.AddWithValue("@ParentId", request.ParentId.HasValue ? request.ParentId.Value : DBNull.Value);
+
+                cmd.Parameters.AddWithValue("@MeterIds", idsToUpdate.ToArray());
+                cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+
+                int rows = await cmd.ExecuteNonQueryAsync();
+                await tx.CommitAsync();
+
+                TempData["SuccessMessage"] = $"{rows} meters successfully updated.";
+                return Json(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+    } 
+} 
