@@ -93,17 +93,17 @@ namespace PoWorks_Rework.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetReadings(int? meterId, string viewType = "raw", int page = 1, int pageSize = 50, DateTime? startDate = null, DateTime? endDate = null)
+        public async Task<IActionResult> GetReadings(string meterIds, string viewType = "raw", int page = 1, int pageSize = 50, DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
                 if (!_databaseService.IsInitialized)
-                {
                     return Json(new { success = false, error = "Database not configured" });
-                }
 
-                var readings = await GetReadingsByTypeSingle(meterId, viewType, page, pageSize, startDate, endDate);
-                var totalCount = await GetReadingsCountSingle(meterId, viewType, startDate, endDate);
+                var selectedIds = ParseMeterIds(meterIds);
+
+                var readings = await GetReadingsByType(selectedIds, viewType, page, pageSize, startDate, endDate);
+                var totalCount = await GetReadingsCount(selectedIds, viewType, startDate, endDate);
                 var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
                 return Json(new
@@ -121,56 +121,50 @@ namespace PoWorks_Rework.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting readings: meterId={meterId}, viewType={viewType}");
+                _logger.LogError(ex, $"Error getting readings: meterIds={meterIds}, viewType={viewType}");
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetMeterStats(int meterId, DateTime? startDate = null, DateTime? endDate = null)
+        public async Task<IActionResult> GetMeterStats(string meterIds, DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
-                if (!_databaseService.IsInitialized)
-                {
-                    return Json(new { success = false, error = "Database not configured" });
-                }
+                if (!_databaseService.IsInitialized) return Json(new { success = false, error = "Database not configured" });
 
-                var stats = await CalculateMeterStats(meterId, startDate, endDate);
+                var selectedIds = ParseMeterIds(meterIds);
+                var stats = await CalculateMultiMeterStats(selectedIds, startDate, endDate);
+
                 return Json(new { success = true, data = stats });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error getting meter stats for meter {meterId}");
+                _logger.LogError(ex, "Error getting meter stats");
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
         #region Private Helper Methods
 
-        private async Task<List<MeterReading>> GetReadingsByType(List<int> meterIds, string viewType,
-            int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
+        private async Task<List<MeterReading>> GetReadingsByType(List<int> meterIds, string viewType, int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
         {
-            int currentCompanyId = _companyContext.CurrentCompanyId; 
+            int currentCompanyId = _companyContext.CurrentCompanyId;
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                var readings = new List<MeterReading>();
                 string tableName = GetTableNameForViewType(viewType);
                 string query = BuildReadingsQuery(tableName, meterIds, startDate, endDate, page, pageSize);
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
-                AddMeterIdsParameters(command, meterIds);
                 AddDateParameters(command, startDate, endDate);
                 AddPaginationParameters(command, page, pageSize);
 
                 using var reader = await command.ExecuteReaderAsync();
-                readings = await ReadMeterReadingsFromDataReader(reader, viewType);
-                return readings;
+                return await ReadMeterReadingsFromDataReader(reader, viewType);
             });
         }
 
-        private async Task<int> GetReadingsCount(List<int> meterIds, string viewType,
-            DateTime? startDate = null, DateTime? endDate = null)
+        private async Task<int> GetReadingsCount(List<int> meterIds, string viewType, DateTime? startDate = null, DateTime? endDate = null)
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
@@ -179,7 +173,8 @@ namespace PoWorks_Rework.Controllers
                 string query = BuildCountQuery(tableName, meterIds, startDate, endDate);
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
-                AddMeterIdsParameters(command, meterIds);
+
+              
                 AddDateParameters(command, startDate, endDate);
 
                 var result = await command.ExecuteScalarAsync();
@@ -187,8 +182,7 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
-        private async Task<MeterStats> CalculateMultiMeterStats(List<int> meterIds,
-            DateTime? startDate = null, DateTime? endDate = null)
+        private async Task<MeterStats> CalculateMultiMeterStats(List<int> meterIds, DateTime? startDate = null, DateTime? endDate = null)
         {
             var stats = new MeterStats();
             if (!meterIds.Any()) return stats;
@@ -196,7 +190,9 @@ namespace PoWorks_Rework.Controllers
             int currentCompanyId = _companyContext.CurrentCompanyId;
             return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
             {
-                var whereClause = "WHERE mr.\"MeterId\" = ANY(@meterIds)";
+                var ids = string.Join(",", meterIds);
+                var whereClause = $"WHERE mr.\"MeterId\" IN ({ids})";
+
                 if (startDate.HasValue || endDate.HasValue)
                 {
                     whereClause += " AND ";
@@ -223,23 +219,22 @@ namespace PoWorks_Rework.Controllers
                     {whereClause}";
 
                 using var command = new NpgsqlCommand(query, connection, transaction);
-                command.Parameters.AddWithValue("@meterIds", meterIds.ToArray());
                 AddDateParameters(command, startDate, endDate);
 
                 using var reader = await command.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    stats.ReadingCount = reader.GetInt32("ReadingCount");
-                    stats.MinValue = reader.GetDecimal("MinValue");
-                    stats.MaxValue = reader.GetDecimal("MaxValue");
-                    stats.AvgValue = reader.GetDecimal("AvgValue");
-                    stats.FirstReading = reader.GetDateTime("FirstReading");
-                    stats.LastReading = reader.GetDateTime("LastReading");
-                    stats.MeterCount = reader.GetInt32("MeterCount");
+                    stats.ReadingCount = reader.GetInt32(reader.GetOrdinal("ReadingCount"));
+                    stats.MinValue = reader.GetDecimal(reader.GetOrdinal("MinValue"));
+                    stats.MaxValue = reader.GetDecimal(reader.GetOrdinal("MaxValue"));
+                    stats.AvgValue = reader.GetDecimal(reader.GetOrdinal("AvgValue"));
+                    stats.FirstReading = reader.GetDateTime(reader.GetOrdinal("FirstReading"));
+                    stats.LastReading = reader.GetDateTime(reader.GetOrdinal("LastReading"));
+                    stats.MeterCount = reader.GetInt32(reader.GetOrdinal("MeterCount"));
 
-                    if (!reader.IsDBNull("MeterNames"))
+                    if (!reader.IsDBNull(reader.GetOrdinal("MeterNames")))
                     {
-                        var meterNamesArray = reader.GetValue("MeterNames") as string[];
+                        var meterNamesArray = reader.GetValue(reader.GetOrdinal("MeterNames")) as string[];
                         stats.MeterNames = meterNamesArray?.Where(name => !string.IsNullOrEmpty(name)).ToList() ?? new List<string>();
                     }
                 }
@@ -483,7 +478,12 @@ namespace PoWorks_Rework.Controllers
         private string BuildWhereClause(List<int> meterIds, DateTime? startDate, DateTime? endDate)
         {
             var conditions = new List<string>();
-            if (meterIds.Any()) conditions.Add("mr.\"MeterId\" = ANY(@meterIds)");
+
+            if (meterIds.Any())
+            {
+                var ids = string.Join(",", meterIds);
+                conditions.Add($"mr.\"MeterId\" IN ({ids})");
+            }
 
             if (startDate.HasValue && endDate.HasValue)
                 conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
@@ -495,19 +495,20 @@ namespace PoWorks_Rework.Controllers
             return conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
         }
 
-        private void AddMeterIdsParameters(NpgsqlCommand command, List<int> meterIds)
-        {
-            if (meterIds.Any()) command.Parameters.AddWithValue("@meterIds", meterIds.ToArray());
-        }
 
         private void AddDateParameters(NpgsqlCommand command, DateTime? startDate, DateTime? endDate)
         {
-            if (startDate.HasValue) command.Parameters.AddWithValue("@startDate", startDate.Value.Date);
+            if (startDate.HasValue) command.Parameters.AddWithValue("@startDate", startDate.Value);
             if (endDate.HasValue)
             {
-                DateTime endOfDay = endDate.Value.Date.AddDays(1).AddTicks(-1);
-                command.Parameters.AddWithValue("@endDate", endOfDay);
-                command.Parameters.AddWithValue("@EndDate", endOfDay); 
+                DateTime endVal = endDate.Value;
+                if (endVal.TimeOfDay == TimeSpan.Zero)
+                {
+                    endVal = endVal.Date.AddDays(1).AddTicks(-1);
+                }
+
+                command.Parameters.AddWithValue("@endDate", endVal);
+                command.Parameters.AddWithValue("@EndDate", endVal);
             }
         }
 

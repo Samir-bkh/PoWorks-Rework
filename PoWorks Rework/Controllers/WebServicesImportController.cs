@@ -91,7 +91,7 @@ namespace PoWorks_Rework.Controllers
             try
             {
                 Console.WriteLine("\n=====================================================");
-                Console.WriteLine("🚀 WEB SERVICE VARIABLES IMPORT WITH TRENDS");
+                Console.WriteLine("WEB SERVICE VARIABLES IMPORT WITH TRENDS");
                 Console.WriteLine("=====================================================");
 
                 if (request?.Variables == null || request.Variables.Count == 0)
@@ -100,11 +100,13 @@ namespace PoWorks_Rework.Controllers
                 if (!_databaseService.IsInitialized)
                     return Json(new { success = false, error = "Database connection not initialized" });
 
+                int companyId = _companyContext.CurrentCompanyId;
+
                 PCVueWebServiceSettings trendsSettings = null;
                 bool processTrends = request.ImportTrendsData &&
-                                   !string.IsNullOrEmpty(request.ConnectionId) &&
-                                   request.TrendsStartDate.HasValue &&
-                                   request.TrendsEndDate.HasValue;
+                                     !string.IsNullOrEmpty(request.ConnectionId) &&
+                                     request.TrendsStartDate.HasValue &&
+                                     request.TrendsEndDate.HasValue;
 
                 if (processTrends)
                 {
@@ -117,6 +119,7 @@ namespace PoWorks_Rework.Controllers
                 var errorVariables = new List<string>();
                 var detailedErrors = new Dictionary<string, string>();
                 var meterIdsMap = new Dictionary<string, int>();
+
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
@@ -128,8 +131,9 @@ namespace PoWorks_Rework.Controllers
                         {
                             try
                             {
-                                var checkCommand = new NpgsqlCommand(@"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @meterName", connection, transaction);
+                                var checkCommand = new NpgsqlCommand(@"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @meterName AND ""CompanyId"" = @companyId", connection, transaction);
                                 checkCommand.Parameters.AddWithValue("@meterName", variable.VariableName);
+                                checkCommand.Parameters.AddWithValue("@companyId", companyId);
                                 var existingMeterId = await checkCommand.ExecuteScalarAsync();
 
                                 if (existingMeterId != null)
@@ -142,8 +146,8 @@ namespace PoWorks_Rework.Controllers
                                 else
                                 {
                                     var insertCommand = new NpgsqlCommand(@"
-                                INSERT INTO ""Meters"" (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"")
-                                VALUES (@name, @label, @unit, @parentId, @lastReading, @type, @active, @tenantId)
+                                INSERT INTO ""Meters"" (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
+                                VALUES (@name, @label, @unit, @parentId, @lastReading, @type, @active, @tenantId, @companyId)
                                 RETURNING ""MeterId""", connection, transaction);
 
                                     insertCommand.Parameters.AddWithValue("@name", variable.VariableName);
@@ -154,6 +158,7 @@ namespace PoWorks_Rework.Controllers
                                     insertCommand.Parameters.AddWithValue("@type", string.IsNullOrEmpty(variable.Type) ? "main" : variable.Type.ToLower());
                                     insertCommand.Parameters.AddWithValue("@active", variable.Active);
                                     insertCommand.Parameters.AddWithValue("@tenantId", DBNull.Value);
+                                    insertCommand.Parameters.AddWithValue("@companyId", companyId);
 
                                     var newMeterId = await insertCommand.ExecuteScalarAsync();
                                     meterIdsMap[variable.VariableName] = Convert.ToInt32(newMeterId);
@@ -162,6 +167,7 @@ namespace PoWorks_Rework.Controllers
                             }
                             catch (Exception ex)
                             {
+                                Console.WriteLine($"SQL ERROR for {variable.VariableName}: {ex.Message}");
                                 errorCount++;
                                 errorVariables.Add(variable.VariableName);
                                 detailedErrors[variable.VariableName] = ex.Message;
@@ -171,12 +177,12 @@ namespace PoWorks_Rework.Controllers
                     }
                     catch (Exception) { await transaction.RollbackAsync(); throw; }
                 }
+
                 if (processTrends && meterIdsMap.Any())
                 {
-                    Console.WriteLine($"\n⚡ Lancement du téléchargement BATCH pour {meterIdsMap.Count} compteurs...");
-
                     var variableNamesList = meterIdsMap.Keys.ToList();
                     var trendsResults = await _trendsService.ProcessVariablesTrendsAsync(variableNamesList, request.TrendsStartDate.Value, request.TrendsEndDate.Value, trendsSettings);
+
                     using (var conn = new NpgsqlConnection(_databaseService.GetConnectionString()))
                     {
                         await conn.OpenAsync();
@@ -197,29 +203,28 @@ namespace PoWorks_Rework.Controllers
                                         if (point.TimestampParsed.HasValue)
                                         {
                                             var insertCmd = new NpgsqlCommand(@"
-INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
-VALUES (@meterId, @timestamp, @value, @quality, @companyId)
-ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
+                                        INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                                        VALUES (@meterId, @timestamp, @value, @quality, @companyId)
+                                        ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
 
                                             insertCmd.Parameters.AddWithValue("@meterId", currentMeterId);
                                             insertCmd.Parameters.AddWithValue("@timestamp", point.TimestampParsed.Value);
                                             insertCmd.Parameters.AddWithValue("@value", point.Value);
                                             int qualityValue = point.IsGoodQuality ? 192 : 0;
                                             insertCmd.Parameters.AddWithValue("@quality", qualityValue);
-                                            insertCmd.Parameters.AddWithValue("@companyId", 1); 
+                                            insertCmd.Parameters.AddWithValue("@companyId", companyId);
 
                                             await insertCmd.ExecuteNonQueryAsync();
                                             pointsInserted++;
                                         }
                                     }
                                     await tx.CommitAsync();
-                                    Console.WriteLine($"💾 SAUVEGARDE RÉUSSIE : {pointsInserted} points insérés pour {res.VariableName} !");
+                                    Console.WriteLine($"SUCCESS: {pointsInserted} points inserted for {res.VariableName}");
                                 }
                                 catch (Exception ex)
                                 {
                                     await tx.RollbackAsync();
-                                    Console.WriteLine($"❌ Erreur d'insertion pour {res.VariableName}: {ex.Message}");
-                                    _logger.LogError(ex, "Erreur lors de la sauvegarde des trends en BDD");
+                                    Console.WriteLine($"ERROR inserting trends for {res.VariableName}: {ex.Message}");
                                 }
                             }
                             else
@@ -239,13 +244,11 @@ ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
                     trendsSuccessCount,
                     trendsFailedCount,
                     errorVariables,
-                    detailedErrors,
-                    message = $"Import terminé. Succès: {importedCount}. Échecs: {errorCount}."
+                    detailedErrors
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erreur fatale");
                 return Json(new { success = false, error = ex.Message });
             }
         }

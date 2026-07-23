@@ -1,10 +1,8 @@
 ﻿/**
  * Meter Readings JavaScript Module
- * Handles all dynamic functionality for the meter readings page
  */
 
 const MeterReadings = {
-    // Configuration
     config: {
         currentViewType: 'raw',
         selectedMeterId: null,
@@ -15,45 +13,26 @@ const MeterReadings = {
         isLoading: false
     },
 
-    // API endpoints
     endpoints: {
         getReadings: '/MeterReadings/GetReadings',
         getMeterStats: '/MeterReadings/GetMeterStats',
         exportReadings: '/MeterReadings/Export'
     },
 
-    /**
-     * Initialize the module
-     */
     init: function (options = {}) {
-        console.log('Initializing MeterReadings module');
-
-        // Merge configuration
         Object.assign(this.config, options);
-
-        // Set up event listeners
         this.setupEventListeners();
-
-        // Initialize UI state
         this.updateUIState();
-
-        console.log('MeterReadings module initialized with config:', this.config);
     },
 
-    /**
-     * Set up all event listeners
-     */
     setupEventListeners: function () {
-        // Tab switching
         document.querySelectorAll('[data-view-type]').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 e.preventDefault();
-                const viewType = e.target.getAttribute('data-view-type');
-                this.switchViewType(viewType);
+                this.switchViewType(e.target.getAttribute('data-view-type'));
             });
         });
 
-        // Filter controls
         const meterSelect = document.getElementById('meterSelect');
         const startDate = document.getElementById('startDate');
         const endDate = document.getElementById('endDate');
@@ -61,93 +40,39 @@ const MeterReadings = {
 
         if (meterSelect) {
             meterSelect.addEventListener('change', () => {
-                this.config.selectedMeterId = meterSelect.value || null;
+                const selected = Array.from(meterSelect.selectedOptions).map(opt => opt.value);
+                this.config.selectedMeterId = selected.length > 0 ? selected.join(',') : null;
+                this.config.currentPage = 1;
                 this.updateMeterStats();
+                this.loadReadings(); 
             });
         }
 
-        if (startDate) {
-            startDate.addEventListener('change', () => {
-                this.config.startDate = startDate.value;
-            });
-        }
-
-        if (endDate) {
-            endDate.addEventListener('change', () => {
-                this.config.endDate = endDate.value;
-            });
-        }
-
+        if (startDate) startDate.addEventListener('change', () => this.config.startDate = startDate.value);
+        if (endDate) endDate.addEventListener('change', () => this.config.endDate = endDate.value);
         if (pageSize) {
             pageSize.addEventListener('change', () => {
                 this.config.pageSize = parseInt(pageSize.value);
-                this.config.currentPage = 1; // Reset to first page
+                this.config.currentPage = 1;
                 this.loadReadings();
             });
         }
 
-        // Button event listeners
-        const applyFiltersBtn = document.getElementById('applyFiltersBtn');
-        const clearFiltersBtn = document.getElementById('clearFiltersBtn');
-        const refreshBtn = document.getElementById('refreshBtn');
-        const exportBtn = document.getElementById('exportBtn');
-
-        if (applyFiltersBtn) {
-    applyFiltersBtn.addEventListener('click', (e) => {
-        e.preventDefault(); 
-        this.applyFilters();
-    });
-}
-
-        if (clearFiltersBtn) {
-            clearFiltersBtn.addEventListener('click', () => this.clearFilters());
-        }
-
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.refreshData());
-        }
-
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => this.showExportDialog());
-        }
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                switch (e.key) {
-                    case 'r':
-                        e.preventDefault();
-                        this.refreshData();
-                        break;
-                    case 'e':
-                        e.preventDefault();
-                        this.showExportDialog();
-                        break;
-                }
-            }
+        document.getElementById('applyFiltersBtn')?.addEventListener('click', (e) => {
+            e.preventDefault(); 
+            this.applyFilters();
         });
+
+        document.getElementById('clearFiltersBtn')?.addEventListener('click', () => this.clearFilters());
+        document.getElementById('refreshBtn')?.addEventListener('click', () => this.refreshData());
+        document.getElementById('exportBtn')?.addEventListener('click', () => this.showExportDialog());
     },
 
-    /**
-     * Switch between view types (raw, daily, monthly, yearly)
-     */
     switchViewType: function (viewType) {
-        if (this.config.isLoading) {
-            console.log('Already loading, ignoring view type switch');
-            return;
-        }
-
-        if (this.config.currentViewType === viewType) {
-            console.log('Already on view type:', viewType);
-            return;
-        }
-
-        console.log(`Switching view type from ${this.config.currentViewType} to ${viewType}`);
-
+        if (this.config.isLoading || this.config.currentViewType === viewType) return;
         this.config.currentViewType = viewType;
-        this.config.currentPage = 1; // Reset to first page when switching views
+        this.config.currentPage = 1;
 
-        // 🧠 NOUVEAU : AUTO-AJUSTEMENT DES DATES !
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
         
@@ -155,106 +80,60 @@ const MeterReadings = {
             const today = new Date();
             let newStart = new Date();
 
-            // On ajuste la date de début selon l'onglet cliqué
-            if (viewType === 'raw' || viewType === 'daily') {
-                newStart.setDate(today.getDate() - 30); // 30 derniers jours
-            } else if (viewType === 'monthly') {
-                newStart.setFullYear(today.getFullYear() - 1); // 1 dernière année
-            } else if (viewType === 'yearly') {
-                newStart.setFullYear(today.getFullYear() - 5); // 5 dernières années
-            }
+            if (viewType === 'raw' || viewType === 'daily') newStart.setDate(today.getDate() - 30);
+            else if (viewType === 'monthly') newStart.setFullYear(today.getFullYear() - 1);
+            else if (viewType === 'yearly') newStart.setFullYear(today.getFullYear() - 5);
 
-            // On met à jour les cases HTML (en format YYYY-MM-DD)
             startDateInput.value = newStart.toISOString().split('T')[0];
             endDateInput.value = today.toISOString().split('T')[0];
             
-            // On met à jour la configuration interne
             this.config.startDate = startDateInput.value;
             this.config.endDate = endDateInput.value;
-            
-            console.log(`Dates auto-ajustées : ${this.config.startDate} au ${this.config.endDate}`);
         }
 
-        // Update active tab
         this.updateActiveTab(viewType);
-
-        // Load new data
         this.loadReadings();
     },
 
-    /**
-     * Update active tab UI
-     */
     updateActiveTab: function (viewType) {
-        // Remove active class from all tabs
         document.querySelectorAll('[data-view-type]').forEach(tab => {
             tab.classList.remove('active');
             tab.setAttribute('aria-selected', 'false');
         });
 
-        // Add active class to current tab
         const activeTab = document.querySelector(`[data-view-type="${viewType}"]`);
         if (activeTab) {
             activeTab.classList.add('active');
             activeTab.setAttribute('aria-selected', 'true');
         }
 
-        // Update page title
         const titleElement = document.querySelector('.card-header h4');
         if (titleElement) {
-            const viewTypeNames = {
-                'raw': 'Raw Readings',
-                'daily': 'Daily Aggregated',
-                'monthly': 'Monthly Aggregated',
-                'yearly': 'Yearly Aggregated'
-            };
+            const viewTypeNames = { 'raw': 'Raw Readings', 'daily': 'Daily Aggregated', 'monthly': 'Monthly Aggregated', 'yearly': 'Yearly Aggregated' };
             titleElement.textContent = `Meter Readings - ${viewTypeNames[viewType]}`;
         }
     },
 
-    /**
-     * Load readings data via AJAX
-     */
     loadReadings: function () {
-        if (this.config.isLoading) {
-            console.log('Already loading readings');
-            return;
-        }
+        if (this.config.isLoading) return;
 
         this.config.isLoading = true;
         this.showLoading(true);
 
-        // Build query parameters
         const params = new URLSearchParams({
             viewType: this.config.currentViewType,
             page: this.config.currentPage,
             pageSize: this.config.pageSize
         });
 
-        if (this.config.selectedMeterId) {
-            params.append('meterId', this.config.selectedMeterId);
-        }
-
-        if (this.config.startDate) {
-            params.append('startDate', this.config.startDate);
-        }
-
-        if (this.config.endDate) {
-            params.append('endDate', this.config.endDate);
-        }
-
-        console.log('Loading readings with params:', params.toString());
+    
+        if (this.config.selectedMeterId) params.append('meterIds', this.config.selectedMeterId);
+        if (this.config.startDate) params.append('startDate', this.config.startDate);
+        if (this.config.endDate) params.append('endDate', this.config.endDate);
 
         fetch(`${this.endpoints.getReadings}?${params}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                console.log('Readings loaded successfully:', data);
-
                 if (data.success) {
                     this.updateReadingsTable(data.data, data.pagination);
                     this.updatePaginationInfo(data.pagination);
@@ -262,44 +141,23 @@ const MeterReadings = {
                     throw new Error(data.error || 'Failed to load readings');
                 }
             })
-            .catch(error => {
-                console.error('Error loading readings:', error);
-                this.showError('Failed to load readings: ' + error.message);
-            })
+            .catch(error => this.showError('Failed to load readings: ' + error.message))
             .finally(() => {
                 this.config.isLoading = false;
                 this.showLoading(false);
             });
     },
 
-    /**
-     * Update the readings table with new data
-     */
     updateReadingsTable: function (readings, pagination) {
-        // Find the active tab content
         const activeTabPane = document.querySelector('.tab-pane.active #readingsContent');
-        if (!activeTabPane) {
-            console.error('Active tab pane not found');
-            return;
+        if (activeTabPane) {
+            activeTabPane.innerHTML = this.generateTableHTML(readings, pagination);
+            this.updatePaginationInfo(pagination);
         }
-
-        // Create table HTML
-        const tableHtml = this.generateTableHTML(readings, pagination);
-
-        // Update the content
-        activeTabPane.innerHTML = tableHtml;
-
-        // Update pagination info
-        this.updatePaginationInfo(pagination);
     },
 
-    /**
-     * Generate table HTML for readings
-     */
     generateTableHTML: function (readings, pagination) {
-        if (!readings || readings.length === 0) {
-            return this.generateEmptyStateHTML();
-        }
+        if (!readings || readings.length === 0) return this.generateEmptyStateHTML();
 
         const isRaw = this.config.currentViewType === 'raw';
         const isYearly = this.config.currentViewType === 'yearly';
@@ -308,10 +166,7 @@ const MeterReadings = {
         <div class="card">
             <div class="card-header bg-light">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">
-                        ${this.getViewTypeDisplayName()} 
-                        ${this.config.selectedMeterId ? `- ${this.getSelectedMeterName()}` : ''}
-                    </h6>
+                    <h6 class="mb-0">${this.getViewTypeDisplayName()}</h6>
                     <span class="text-muted">
                         Showing ${pagination.currentPage * pagination.pageSize - pagination.pageSize + 1}-${Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)} of ${pagination.totalCount} readings
                     </span>
@@ -329,137 +184,74 @@ const MeterReadings = {
         if (isRaw) {
             html += '<th class="text-center">Quality</th>';
         } else {
-            html += `
-                                <th class="text-end">Min</th>
-                                <th class="text-end">Max</th>
-                                <th class="text-end">Count</th>`;
-            if (!isYearly) {
-                html += '<th class="text-end">Sum</th>';
-            }
+            html += `<th class="text-end">Min</th><th class="text-end">Max</th><th class="text-end">Count</th>`;
+            if (!isYearly) html += '<th class="text-end">Sum</th>';
         }
 
-        html += `
-                                <th class="text-center">Actions</th>
+        html += `               <th class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>`;
 
-        // Generate rows
-        readings.forEach(reading => {
-            html += this.generateTableRow(reading, isRaw, isYearly);
-        });
+        readings.forEach(reading => { html += this.generateTableRow(reading, isRaw, isYearly); });
 
-        html += `
-                        </tbody>
+        html += `           </tbody>
                     </table>
                 </div>
             </div>`;
 
-        // Add pagination if needed
-        if (pagination.totalPages > 1) {
-            html += this.generatePaginationHTML(pagination);
-        }
-
+        if (pagination.totalPages > 1) html += this.generatePaginationHTML(pagination);
         html += `</div>`;
-
         return html;
     },
 
-    /**
-     * Generate table row HTML
-     */
     generateTableRow: function (reading, isRaw, isYearly) {
         let html = `
         <tr data-reading-id="${reading.readingId}" data-meter-id="${reading.meterId}">
-            <td>
-                <div class="d-flex align-items-center">
-                    <span class="fw-medium">${reading.meterName}</span>
-                </div>
-            </td>
-            <td>
-                <span class="font-monospace">${this.formatTimestamp(reading.timestamp)}</span>
-            </td>
-            <td class="text-end">
-                <span class="fw-bold">${this.formatValue(reading.value)}</span>
-            </td>`;
+            <td><span class="fw-medium">${reading.meterName}</span></td>
+            <td><span class="font-monospace">${this.formatTimestamp(reading.timestamp)}</span></td>
+            <td class="text-end"><span class="fw-bold text-success">${this.formatValue(reading.value)}</span></td>`;
 
         if (isRaw) {
-            html += `
-            <td class="text-center">
-                ${this.formatQuality(reading.quality)}
-            </td>`;
+            html += `<td class="text-center">${this.formatQuality(reading.quality)}</td>`;
         } else {
             html += `
-            <td class="text-end">
-                <span class="text-muted">${reading.minValue ? this.formatValue(reading.minValue) : '-'}</span>
-            </td>
-            <td class="text-end">
-                <span class="text-muted">${reading.maxValue ? this.formatValue(reading.maxValue) : '-'}</span>
-            </td>
-            <td class="text-end">
-                ${reading.readingCount ? `<span class="badge bg-info">${reading.readingCount}</span>` : '<span class="text-muted">-</span>'}
-            </td>`;
-
+            <td class="text-end"><span class="text-muted">${reading.minValue ? this.formatValue(reading.minValue) : '-'}</span></td>
+            <td class="text-end"><span class="text-muted">${reading.maxValue ? this.formatValue(reading.maxValue) : '-'}</span></td>
+            <td class="text-end">${reading.readingCount ? `<span class="badge bg-info">${reading.readingCount}</span>` : '<span class="text-muted">-</span>'}</td>`;
             if (!isYearly) {
-                html += `
-            <td class="text-end">
-                <span class="text-muted">${reading.sumValue ? this.formatValue(reading.sumValue) : '-'}</span>
-            </td>`;
+                html += `<td class="text-end"><span class="text-muted">${reading.sumValue ? this.formatValue(reading.sumValue) : '-'}</span></td>`;
             }
         }
 
         html += `
             <td class="text-center">
                 <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-primary btn-sm" 
-                            title="View Details" onclick="MeterReadings.viewReadingDetails(${reading.readingId})">
+                    <button type="button" class="btn btn-outline-primary btn-sm" title="View Details" onclick="MeterReadings.viewReadingDetails(${reading.readingId})">
                         <i class="bi bi-eye"></i>
                     </button>`;
 
         if (!isRaw) {
-            html += `
-                    <button type="button" class="btn btn-outline-info btn-sm" 
-                            title="View Raw Data" onclick="MeterReadings.viewRawReadings(${reading.meterId}, '${reading.timestamp}')">
-                        <i class="bi bi-list-ul"></i>
-                    </button>`;
+            html += `<button type="button" class="btn btn-outline-info btn-sm" title="View Raw Data" onclick="MeterReadings.viewRawReadings(${reading.meterId}, '${reading.timestamp}')"><i class="bi bi-list-ul"></i></button>`;
         }
 
-        html += `
-                </div>
-            </td>
-        </tr>`;
-
+        html += `</div></td></tr>`;
         return html;
     },
 
-    /**
-     * Generate empty state HTML
-     */
     generateEmptyStateHTML: function () {
         return `
         <div class="card">
             <div class="card-body">
                 <div class="text-center p-5">
-                    <div class="mb-3">
-                        <i class="bi bi-graph-up-arrow display-1 text-muted"></i>
-                    </div>
+                    <div class="mb-3"><i class="bi bi-graph-up-arrow display-1 text-muted"></i></div>
                     <h5 class="text-muted">No readings found</h5>
-                    <p class="text-muted">
-                        ${this.config.selectedMeterId ?
-                'No readings available for the selected meter and date range.' :
-                'Try selecting a specific meter or adjusting the date range.'}
-                    </p>
-                    <button type="button" class="btn btn-primary" onclick="MeterReadings.clearFilters()">
-                        <i class="bi bi-funnel"></i> Clear Filters
-                    </button>
+                    <button type="button" class="btn btn-primary mt-3" onclick="MeterReadings.clearFilters()"><i class="bi bi-funnel"></i> Clear Filters</button>
                 </div>
             </div>
         </div>`;
     },
 
-    /**
-     * Generate pagination HTML
-     */
     generatePaginationHTML: function (pagination) {
         const current = pagination.currentPage;
         const total = pagination.totalPages;
@@ -473,280 +265,122 @@ const MeterReadings = {
                     <nav aria-label="Readings pagination">
                         <ul class="pagination mb-0">
                             <li class="page-item ${current === 1 ? 'disabled' : ''}">
-                                <button class="page-link" onclick="MeterReadings.goToPage(1)" 
-                                        ${current === 1 ? 'disabled' : ''} aria-label="First">
-                                    <span aria-hidden="true">&laquo;</span>
-                                </button>
+                                <button class="page-link" onclick="MeterReadings.goToPage(1)">&laquo;</button>
                             </li>
                             <li class="page-item ${current === 1 ? 'disabled' : ''}">
-                                <button class="page-link" onclick="MeterReadings.goToPage(${current - 1})" 
-                                        ${current === 1 ? 'disabled' : ''} aria-label="Previous">
-                                    <span aria-hidden="true">&lsaquo;</span>
-                                </button>
+                                <button class="page-link" onclick="MeterReadings.goToPage(${current - 1})">&lsaquo;</button>
                             </li>`;
 
         for (let i = startPage; i <= endPage; i++) {
-            html += `
-                            <li class="page-item ${i === current ? 'active' : ''}">
-                                <button class="page-link" onclick="MeterReadings.goToPage(${i})">${i}</button>
-                            </li>`;
+            html += `<li class="page-item ${i === current ? 'active' : ''}"><button class="page-link" onclick="MeterReadings.goToPage(${i})">${i}</button></li>`;
         }
 
-        html += `
-                            <li class="page-item ${current === total ? 'disabled' : ''}">
-                                <button class="page-link" onclick="MeterReadings.goToPage(${current + 1})" 
-                                        ${current === total ? 'disabled' : ''} aria-label="Next">
-                                    <span aria-hidden="true">&rsaquo;</span>
-                                </button>
+        html += `           <li class="page-item ${current === total ? 'disabled' : ''}">
+                                <button class="page-link" onclick="MeterReadings.goToPage(${current + 1})">&rsaquo;</button>
                             </li>
                             <li class="page-item ${current === total ? 'disabled' : ''}">
-                                <button class="page-link" onclick="MeterReadings.goToPage(${total})" 
-                                        ${current === total ? 'disabled' : ''} aria-label="Last">
-                                    <span aria-hidden="true">&raquo;</span>
-                                </button>
+                                <button class="page-link" onclick="MeterReadings.goToPage(${total})">&raquo;</button>
                             </li>
                         </ul>
                     </nav>
                 </div>
                 <div class="d-flex align-items-center">
                     <span class="me-3 text-muted">Page ${current} of ${total}</span>
-                    <div class="input-group" style="width: 120px;">
-                        <input type="number" class="form-control form-control-sm" 
-                               id="quickJumpPage" placeholder="Page" min="1" max="${total}">
-                        <button class="btn btn-outline-secondary btn-sm" type="button" 
-                                onclick="MeterReadings.quickJumpToPage()">Go</button>
-                    </div>
                 </div>
             </div>
         </div>`;
-
         return html;
     },
 
-    /**
-     * Go to specific page
-     */
     goToPage: function (page) {
         this.config.currentPage = page;
         this.loadReadings();
     },
 
-    /**
-     * Quick jump to page from input
-     */
-    quickJumpToPage: function () {
-        const input = document.getElementById('quickJumpPage');
-        if (input) {
-            const page = parseInt(input.value);
-            if (page && page >= 1) {
-                this.goToPage(page);
-                input.value = '';
-            }
-        }
-    },
-
-    /**
-     * Apply current filters
-     */
     applyFilters: function () {
-        this.config.currentPage = 1; // Reset to first page
+        this.config.currentPage = 1;
         this.loadReadings();
         this.updateMeterStats();
     },
 
-    /**
-     * Clear all filters
-     */
     clearFilters: function () {
-        // Reset form controls
-        const meterSelect = document.getElementById('meterSelect');
+        if (window.meterMultiSelect) window.meterMultiSelect.clearSelection();
         const startDate = document.getElementById('startDate');
         const endDate = document.getElementById('endDate');
-        const pageSize = document.getElementById('pageSize');
 
-        if (meterSelect) meterSelect.value = '';
         if (startDate) startDate.value = '';
         if (endDate) endDate.value = '';
-        if (pageSize) pageSize.value = '50';
 
-        // Reset config
         this.config.selectedMeterId = null;
         this.config.startDate = null;
         this.config.endDate = null;
-        this.config.pageSize = 50;
         this.config.currentPage = 1;
 
-        // Hide stats panel
         const statsPanel = document.getElementById('statsPanel');
-        if (statsPanel) {
-            statsPanel.style.display = 'none';
-        }
+        if (statsPanel) statsPanel.style.display = 'none';
 
-        // Reload data
         this.loadReadings();
     },
 
-    /**
-     * Refresh current data
-     */
     refreshData: function () {
-        console.log('Refreshing data');
         this.loadReadings();
         this.updateMeterStats();
     },
 
-    /**
-     * Update meter statistics
-     */
     updateMeterStats: function () {
         if (!this.config.selectedMeterId) {
             const statsPanel = document.getElementById('statsPanel');
-            if (statsPanel) {
-                statsPanel.style.display = 'none';
-            }
+            if (statsPanel) statsPanel.style.display = 'none';
             return;
         }
 
-        const params = new URLSearchParams({
-            meterId: this.config.selectedMeterId
-        });
-
-        if (this.config.startDate) {
-            params.append('startDate', this.config.startDate);
-        }
-
-        if (this.config.endDate) {
-            params.append('endDate', this.config.endDate);
-        }
+        const params = new URLSearchParams({ meterIds: this.config.selectedMeterId });
+        if (this.config.startDate) params.append('startDate', this.config.startDate);
+        if (this.config.endDate) params.append('endDate', this.config.endDate);
 
         fetch(`${this.endpoints.getMeterStats}?${params}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                if (data.success && data.data) {
                     this.updateStatsPanel(data.data);
-                } else {
-                    console.error('Failed to load meter stats:', data.error);
                 }
-            })
-            .catch(error => {
-                console.error('Error loading meter stats:', error);
             });
     },
 
-    /**
-     * Update statistics panel
-     */
     updateStatsPanel: function (stats) {
         const statsPanel = document.getElementById('statsPanel');
         if (!statsPanel) return;
 
-        // Update individual stat elements
-        const statElements = {
-            'statReadingCount': stats.readingCount,
-            'statMinValue': this.formatValue(stats.minValue),
-            'statAvgValue': this.formatValue(stats.avgValue),
-            'statMaxValue': this.formatValue(stats.maxValue),
-            'statFirstReading': this.formatDateTime(stats.firstReading),
-            'statLastReading': this.formatDateTime(stats.lastReading)
-        };
+        document.getElementById('statReadingCount').textContent = stats.readingCount;
+        document.getElementById('statMinValue').textContent = this.formatValue(stats.minValue);
+        document.getElementById('statAvgValue').textContent = this.formatValue(stats.avgValue);
+        document.getElementById('statMaxValue').textContent = this.formatValue(stats.maxValue);
+        document.getElementById('statFirstReading').textContent = this.formatDateTime(stats.firstReading);
+        document.getElementById('statLastReading').textContent = this.formatDateTime(stats.lastReading);
 
-        Object.entries(statElements).forEach(([id, value]) => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.textContent = value;
-            }
-        });
-
-        // Show the panel
         statsPanel.style.display = 'block';
     },
 
-    /**
-     * Show/hide loading indicator
-     */
     showLoading: function (show) {
         const indicator = document.getElementById('loadingIndicator');
-        if (indicator) {
-            indicator.style.display = show ? 'inline-block' : 'none';
-        }
-
-        // Disable/enable interactive elements
-        document.querySelectorAll('button, select, input').forEach(element => {
-            element.disabled = show;
-        });
+        if (indicator) indicator.style.display = show ? 'inline-block' : 'none';
     },
 
-    /**
-     * Show error message
-     */
     showError: function (message) {
-        // Remove any existing alerts
         document.querySelectorAll('.alert-danger').forEach(alert => alert.remove());
-
-        // Create new alert
         const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-danger alert-dismissible fade show';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-
-        // Insert at top of card body
-        const cardBody = document.querySelector('.card-body');
-        if (cardBody) {
-            cardBody.insertBefore(alertDiv, cardBody.firstChild);
-        }
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-3';
+        alertDiv.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        document.querySelector('.card-body').prepend(alertDiv);
     },
 
-    /**
-     * Update UI state
-     */
     updateUIState: function () {
-        // Update form controls
-        const meterSelect = document.getElementById('meterSelect');
-        const startDate = document.getElementById('startDate');
-        const endDate = document.getElementById('endDate');
-        const pageSize = document.getElementById('pageSize');
-
-        if (meterSelect && this.config.selectedMeterId) {
-            meterSelect.value = this.config.selectedMeterId;
-        }
-
-        if (startDate && this.config.startDate) {
-            startDate.value = this.config.startDate;
-        }
-
-        if (endDate && this.config.endDate) {
-            endDate.value = this.config.endDate;
-        }
-
-        if (pageSize) {
-            pageSize.value = this.config.pageSize;
-        }
-
-        // Update active tab
         this.updateActiveTab(this.config.currentViewType);
     },
 
-    /**
-     * Utility functions
-     */
     getViewTypeDisplayName: function () {
-        const names = {
-            'raw': 'Raw Readings',
-            'daily': 'Daily Aggregated',
-            'monthly': 'Monthly Aggregated',
-            'yearly': 'Yearly Aggregated'
-        };
+        const names = { 'raw': 'Raw Readings', 'daily': 'Daily Aggregated', 'monthly': 'Monthly Aggregated', 'yearly': 'Yearly Aggregated' };
         return names[this.config.currentViewType] || 'Unknown View';
-    },
-
-    getSelectedMeterName: function () {
-        const meterSelect = document.getElementById('meterSelect');
-        if (meterSelect && meterSelect.selectedOptions[0]) {
-            return meterSelect.selectedOptions[0].text;
-        }
-        return 'Unknown Meter';
     },
 
     formatValue: function (value) {
@@ -757,18 +391,10 @@ const MeterReadings = {
     formatTimestamp: function (timestamp) {
         if (!timestamp) return '-';
         const date = new Date(timestamp);
-        const viewType = this.config.currentViewType;
-
-        switch (viewType) {
-            case 'daily':
-                return date.toISOString().split('T')[0]; // YYYY-MM-DD
-            case 'monthly':
-                return date.toISOString().substr(0, 7); // YYYY-MM
-            case 'yearly':
-                return date.getFullYear().toString(); // YYYY
-            default:
-                return date.toLocaleString(); // Full datetime
-        }
+        return this.config.currentViewType === 'daily' ? date.toISOString().split('T')[0] : 
+               this.config.currentViewType === 'monthly' ? date.toISOString().substr(0, 7) : 
+               this.config.currentViewType === 'yearly' ? date.getFullYear().toString() : 
+               date.toLocaleString();
     },
 
     formatDateTime: function (dateTime) {
@@ -777,48 +403,42 @@ const MeterReadings = {
     },
 
     formatQuality: function (quality) {
-        // Simply display the quality number as-is
-        if (quality === null || quality === undefined) {
-            return '<span class="badge bg-secondary">N/A</span>';
-        }
-        return `<span class="badge bg-info">${quality}</span>`;
+        return (quality === null || quality === undefined) ? '<span class="badge bg-secondary">N/A</span>' : `<span class="badge bg-info">${quality}</span>`;
     },
 
     updatePaginationInfo: function (pagination) {
         this.config.currentPage = pagination.currentPage;
-        // Update URL parameters if needed
-        if (history.replaceState) {
-            const url = new URL(window.location);
-            url.searchParams.set('page', pagination.currentPage);
-            url.searchParams.set('viewType', this.config.currentViewType);
-            history.replaceState(null, '', url);
-        }
     },
 
-    /**
-     * Modal functions
-     */
     viewReadingDetails: function (readingId) {
-        console.log('Viewing details for reading:', readingId);
-        // Implementation for reading details modal
-        alert('Reading details functionality will be implemented');
-    },
-
-    viewRawReadings: function (meterId, date) {
-        console.log('Viewing raw readings for meter:', meterId, 'date:', date);
-        // Switch to raw view with filters
-        this.config.selectedMeterId = meterId;
-        this.config.startDate = date;
-        this.config.endDate = date;
-        this.switchViewType('raw');
-    },
-
-    showExportDialog: function () {
-        console.log('Showing export dialog');
-        // Implementation for export functionality
-        alert('Export functionality will be implemented');
+        const modal = new bootstrap.Modal(document.getElementById('readingDetailsModal'));
+        const content = document.getElementById('readingDetailsContent');
+        const row = document.querySelector(`tr[data-reading-id="${readingId}"]`);
+        
+        if(row) {
+            const meterName = row.cells[0].innerText.trim();
+            const timestamp = row.cells[1].innerText.trim();
+            const value = row.cells[2].innerText.trim();
+            
+            content.innerHTML = `
+                <div class="alert alert-light border border-primary">
+                    <h4 class="alert-heading text-primary"><i class="bi bi-speedometer2"></i> ${meterName}</h4>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1 text-muted">Timestamp</p>
+                            <p class="fs-5">${timestamp}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1 text-muted">Recorded Value</p>
+                            <p class="fs-3 fw-bold text-success">${value}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            modal.show();
+        }
     }
 };
 
-// Make it globally available
 window.MeterReadings = MeterReadings;

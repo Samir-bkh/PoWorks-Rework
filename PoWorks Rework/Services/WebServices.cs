@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
@@ -8,11 +9,15 @@ namespace PoWorks_Rework.Services
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<PCVueWebService> _logger;
+        private readonly SemaphoreSlim _tokenLock = new SemaphoreSlim(1, 1);
 
         public HttpClient HttpClient => _httpClient;
         private string? _accessToken;
         private string? _refreshToken;
         private DateTime _tokenExpiry;
+
+        // NOUVEAU : Mémoire du dernier rafraîchissement
+        private DateTime _lastTokenRefreshTime = DateTime.MinValue;
 
         public PCVueWebService(HttpClient httpClient, ILogger<PCVueWebService> logger)
         {
@@ -22,30 +27,51 @@ namespace PoWorks_Rework.Services
 
         public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings, bool forceRefresh = false)
         {
-            if (forceRefresh)
-            {
-                _logger.LogInformation("🔄 Force refresh requested. Clearing old tokens.");
-                ClearTokens();
-            }
-
-            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
+            // Vérification rapide sans bloquer les autres threads
+            if (!forceRefresh && !string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
             {
                 return _accessToken;
             }
 
-            if (!string.IsNullOrEmpty(_refreshToken))
+            await _tokenLock.WaitAsync();
+            try
             {
-                _logger.LogDebug("Attempting token refresh");
-                var refreshedToken = await RefreshTokenAsync(settings);
-                if (!string.IsNullOrEmpty(refreshedToken))
+                // BOUCLIER ANTI-SPAM (Thundering Herd)
+                if (forceRefresh)
                 {
-                    return refreshedToken;
-                }
-            }
+                    // Si le jeton a été rafraîchi il y a moins de 5 secondes, on annule le forceRefresh
+                    if ((DateTime.UtcNow - _lastTokenRefreshTime).TotalSeconds < 5)
+                    {
+                        _logger.LogInformation("Token was just refreshed by another thread. Bypassing force refresh.");
+                        return _accessToken;
+                    }
 
-            _logger.LogInformation("Getting new access token...");
-            var tokenResponse = await RequestNewTokenAsync(settings);
-            return tokenResponse.Success ? tokenResponse.AccessToken : null;
+                    _logger.LogInformation("Force refresh requested. Clearing old tokens.");
+                    ClearTokens();
+                }
+                else if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
+                {
+                    return _accessToken; // Double-vérification au cas où un autre thread a fait le travail
+                }
+
+                if (!string.IsNullOrEmpty(_refreshToken))
+                {
+                    _logger.LogDebug("Attempting token refresh.");
+                    var refreshedToken = await RefreshTokenAsync(settings);
+                    if (!string.IsNullOrEmpty(refreshedToken))
+                    {
+                        return refreshedToken;
+                    }
+                }
+
+                _logger.LogInformation("Getting new access token...");
+                var tokenResponse = await RequestNewTokenAsync(settings);
+                return tokenResponse.Success ? tokenResponse.AccessToken : null;
+            }
+            finally
+            {
+                _tokenLock.Release();
+            }
         }
 
         public async Task<OAuthTokenResponse> GetAccessTokenAsync(PCVueWebServiceSettings settings)
@@ -57,7 +83,7 @@ namespace PoWorks_Rework.Services
         {
             try
             {
-                _logger.LogInformation("Requesting new OAuth token for PCVue Web Services");
+                _logger.LogInformation("Requesting new OAuth token for PCVue Web Services.");
 
                 var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/token";
 
@@ -96,35 +122,31 @@ namespace PoWorks_Rework.Services
 
                             int actualLifespan = Math.Min(tokenResponse.ExpiresIn - 60, 240);
                             _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
+                            _lastTokenRefreshTime = DateTime.UtcNow; // ENREGISTREMENT DU SUCCÈS
 
-                            _logger.LogInformation("✅ OAuth token acquired successfully. Cached for {CacheSeconds} seconds.", actualLifespan);
+                            _logger.LogInformation("OAuth token acquired successfully. Cached for {CacheSeconds} seconds.", actualLifespan);
 
                             tokenResponse.Success = true;
                             return tokenResponse;
                         }
-                        else
-                        {
-                            var errorContent = await response.Content.ReadAsStringAsync();
-                            _logger.LogError("OAuth token request failed: {StatusCode}. Message retourné par PcVue : {ErrorDetails}",
-                                response.StatusCode, errorContent);
 
-                            return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
-                        }
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogError("OAuth token request failed: {StatusCode}. PCVue error details: {ErrorDetails}", response.StatusCode, errorContent);
+
+                        return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
                     }
                     catch (JsonException ex)
                     {
                         return new OAuthTokenResponse { Success = false, ErrorMessage = $"Error parsing token response: {ex.Message}" };
                     }
                 }
-                else
-                {
-                    _logger.LogError("OAuth token request failed: {StatusCode}", response.StatusCode);
-                    return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
-                }
+
+                _logger.LogError("OAuth token request failed: {StatusCode}", response.StatusCode);
+                return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during OAuth token request");
+                _logger.LogError(ex, "Unexpected error during OAuth token request.");
                 return new OAuthTokenResponse { Success = false, ErrorMessage = $"Unexpected error: {ex.Message}" };
             }
         }
@@ -133,7 +155,7 @@ namespace PoWorks_Rework.Services
         {
             try
             {
-                _logger.LogInformation("Refreshing OAuth token");
+                _logger.LogInformation("Refreshing OAuth token.");
                 var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/Token";
 
                 var formParams = new Dictionary<string, string>
@@ -164,6 +186,7 @@ namespace PoWorks_Rework.Services
                         var expiresIn = tokenData.TryGetProperty("expires_in", out var expiresElement) ? expiresElement.GetInt32() : 3600;
                         int actualLifespan = Math.Min(expiresIn - 60, 240);
                         _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
+                        _lastTokenRefreshTime = DateTime.UtcNow; // ENREGISTREMENT DU SUCCÈS
 
                         return _accessToken;
                     }
@@ -207,7 +230,7 @@ namespace PoWorks_Rework.Services
             _accessToken = null;
             _refreshToken = null;
             _tokenExpiry = DateTime.MinValue;
-            _logger.LogDebug("All tokens cleared");
+            _logger.LogDebug("All tokens cleared.");
         }
 
         public void ClearToken()

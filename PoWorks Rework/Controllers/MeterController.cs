@@ -444,9 +444,10 @@ namespace PoWorks_Rework.Controllers
                 var searchCriteria = new MeterSearchCriteria();
                 var meters = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
                 var totalCount = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
+
                 var viewModel = new MeterReadingsViewModel
                 {
-                    Readings = new List<MeterReading>(), 
+                    Readings = new List<MeterReading>(),
                     AvailableMeters = meters.Select(m => new MeterOption
                     {
                         MeterId = m.Id,
@@ -512,5 +513,79 @@ ORDER BY td.""CompanyName""";
             return options;
         }
 
+        [HttpPost]
+        public async Task<IActionResult> BulkDeleteMeters([FromBody] List<int> meterIds)
+        {
+            if (meterIds == null || !meterIds.Any())
+                return Json(new { success = false, message = "No meters selected" });
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
+                await connection.OpenAsync();
+                using var tx = await connection.BeginTransactionAsync();
+
+               
+                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" = ANY(@MeterIds)";
+                using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, tx);
+                cmdReadings.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                await cmdReadings.ExecuteNonQueryAsync();
+
+      
+                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds)";
+                using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, tx);
+                cmdMeters.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                int rows = await cmdMeters.ExecuteNonQueryAsync();
+
+                await tx.CommitAsync();
+                return Json(new { success = true, message = $"{rows} ghost meters successfully deleted." });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> CleanGhostMeters()
+        {
+            if (!_databaseService.IsInitialized) return RedirectToAction("Management");
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
+                await connection.OpenAsync();
+                using var transaction = await connection.BeginTransactionAsync();
+
+         
+                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%')";
+                using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, transaction);
+                await cmdReadings.ExecuteNonQueryAsync();
+
+          
+                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%'";
+                using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, transaction);
+                int deletedCount = await cmdMeters.ExecuteNonQueryAsync();
+
+                await transaction.CommitAsync();
+                TempData["SuccessMessage"] = $"Nettoyage réussi : {deletedCount} compteurs fantômes ('Backnet') ont été supprimés de la base de données.";
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = $"Erreur lors du nettoyage : {ex.Message}";
+            }
+
+            return RedirectToAction("Management");
+        }
     }
+
+    public class BulkTenantAssignRequest
+    {
+        public List<int> MeterIds { get; set; } = new();
+        public int? TenantId { get; set; }
+    }
+
+
+
+
 }

@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text;
+using System.Threading;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
@@ -24,19 +25,18 @@ namespace PoWorks_Rework.Services
                 var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
                 if (string.IsNullOrEmpty(token))
                 {
-                    return new TrendRequestResult { Success = false, ErrorMessage = "Failed to obtain valid access token" };
+                    return new TrendRequestResult { Success = false, ErrorMessage = "Failed to obtain valid access token", VariableName = variableName };
                 }
 
                 var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends";
                 var payload = new { VariableName = variableName, elementMaxNumber = 100000, properties = new[] { "VariableName", "Description", "StandardLabel" } };
                 var jsonContent = JsonSerializer.Serialize(payload);
-                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-                using var httpClient = new HttpClient(handler);
-                httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+                var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                var response = await httpClient.PostAsync(endpoint, content);
+                var response = await _pcvueWebService.HttpClient.SendAsync(request);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
@@ -46,14 +46,13 @@ namespace PoWorks_Rework.Services
                     token = await _pcvueWebService.GetValidAccessTokenAsync(settings, true);
 
                     if (string.IsNullOrEmpty(token))
-                        return new TrendRequestResult { Success = false, ErrorMessage = "Failed to refresh token" };
+                        return new TrendRequestResult { Success = false, ErrorMessage = "Failed to refresh token", VariableName = variableName };
 
-                    httpClient.DefaultRequestHeaders.Clear();
-                    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+                    var retryRequest = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                    retryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    retryRequest.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                    httpClient.DefaultRequestHeaders.Clear();
-                    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
-                    response = await httpClient.PostAsync(endpoint, content);
+                    response = await _pcvueWebService.HttpClient.SendAsync(retryRequest);
                     responseContent = await response.Content.ReadAsStringAsync();
                 }
 
@@ -82,19 +81,35 @@ namespace PoWorks_Rework.Services
                 var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
                 var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends/{requestId.Trim('"')}?Start={Uri.EscapeDataString(startDate.ToString("yyyy-MM-dd HH:mm:ss"))}&End={Uri.EscapeDataString(endDate.ToString("yyyy-MM-dd HH:mm:ss"))}";
 
-                var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-                using var httpClient = new HttpClient(handler);
-                httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+                var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-                var response = await httpClient.GetAsync(endpoint);
+                var response = await _pcvueWebService.HttpClient.SendAsync(request);
                 var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    _logger.LogWarning("Received 401 Unauthorized. Retrying with FORCE REFRESH...");
+
+                    token = await _pcvueWebService.GetValidAccessTokenAsync(settings, true);
+
+                    if (string.IsNullOrEmpty(token))
+                        return new TrendDataResult { Success = false, ErrorMessage = "Failed to refresh token", RequestId = requestId };
+
+                    var retryRequest = new HttpRequestMessage(HttpMethod.Get, endpoint);
+                    retryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+                    response = await _pcvueWebService.HttpClient.SendAsync(retryRequest);
+                    responseContent = await response.Content.ReadAsStringAsync();
+                }
 
                 if (response.IsSuccessStatusCode)
                 {
                     var trendData = JsonSerializer.Deserialize<TrendApiResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     return new TrendDataResult { Success = true, RequestId = requestId, Values = trendData?.Values ?? new List<TrendDataPoint>() };
                 }
-                return new TrendDataResult { Success = false, ErrorMessage = "API Error", RequestId = requestId };
+
+                return new TrendDataResult { Success = false, ErrorMessage = $"API Error: {response.StatusCode}", RequestId = requestId };
             }
             catch (Exception ex)
             {
@@ -104,22 +119,51 @@ namespace PoWorks_Rework.Services
 
         public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(List<string> variableNames, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings)
         {
-            var results = new List<VariableTrendResult>();
-            foreach (var variableName in variableNames)
+            var throttler = new SemaphoreSlim(15);
+
+            var tasks = variableNames.Select(async variableName =>
             {
-                var requestResult = await CreateTrendRequestAsync(variableName, settings);
-                if (requestResult.Success)
+                await throttler.WaitAsync();
+                try
                 {
-                    var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);
-                    results.Add(new VariableTrendResult { VariableName = variableName, Success = dataResult.Success, TrendData = dataResult.Values });
+                    var requestResult = await CreateTrendRequestAsync(variableName, settings);
+
+                    if (requestResult.Success)
+                    {
+                        var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);
+                        return new VariableTrendResult
+                        {
+                            VariableName = variableName,
+                            Success = dataResult.Success,
+                            TrendData = dataResult.Values
+                        };
+                    }
+
+                    return new VariableTrendResult
+                    {
+                        VariableName = variableName,
+                        Success = false,
+                        ErrorMessage = requestResult.ErrorMessage
+                    };
                 }
-                else
+                catch (Exception ex)
                 {
-                    results.Add(new VariableTrendResult { VariableName = variableName, Success = false, ErrorMessage = requestResult.ErrorMessage });
+                    _logger.LogError(ex, "Unexpected error processing variable: {VariableName}", variableName);
+                    return new VariableTrendResult
+                    {
+                        VariableName = variableName,
+                        Success = false,
+                        ErrorMessage = ex.Message
+                    };
                 }
-                await Task.Delay(200);
-            }
-            return results;
+                finally
+                {
+                    throttler.Release();
+                }
+            });
+
+            var results = await Task.WhenAll(tasks);
+            return results.ToList();
         }
     }
 }

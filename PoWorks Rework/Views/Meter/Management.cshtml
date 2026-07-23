@@ -90,9 +90,16 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                   <div class="col-md-6 d-flex align-items-center">
                         <button type="submit" class="btn btn-primary me-2">Search</button>
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newMeterModal">New Meter</button>
+                        <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#newMeterModal">New Meter</button>
+                        
+                        <!-- LE BOUTON MAGIQUE -->
+                        <form asp-action="CleanGhostMeters" method="post" class="m-0" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer tous les compteurs contenant \'Backnet\' avec un K ?');">
+                            <button type="submit" class="btn btn-warning fw-bold text-dark">
+                                <i class="bi bi-magic"></i> Clean 'Backnet'
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -207,7 +214,7 @@
                             </div>
                             <div class="col-md-4">
                                 @{
-                                    // Pre-determine the selected value to avoid inline conditionals
+                          
                                     var parentOptions = new List<SelectListItem>
                             {
                             new SelectListItem { Value = "", Text = "None" }
@@ -270,7 +277,7 @@
                             </div>
                             <div class="col-md-4">
                                 @{
-                                    // Pre-determine the selected type value
+                                
                                     var typeOptions = new List<SelectListItem>
                             {
                             new SelectListItem { Value = "Main", Text = "Main", Selected = Model.SelectedMeter.Type == "Main" },
@@ -551,7 +558,7 @@
 @section Scripts {
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Set the correct selected tenant
+
             const tenantId = '@Model.SelectedMeter?.TenantId';
             if (tenantId) {
                 const tenantSelect = document.getElementById('TenantId');
@@ -568,17 +575,16 @@
         function updateMeterSearchOptions() {
                    const criteria = document.getElementById('SearchField').value;
 
-                   // Hide all search inputs
+     
                    document.getElementById('textInput').style.display = 'none';
                    document.getElementById('typeSelect').style.display = 'none';
                    document.getElementById('tenantSelect').style.display = 'none';
 
-                   // Clear the name attribute from all inputs
+    
                    document.getElementById('textInput').name = '';
                    document.getElementById('typeSelect').name = '';
                    document.getElementById('tenantSelect').name = '';
 
-                   // Show the appropriate search input and set the correct name
                    if (criteria === 'Name') {
                        document.getElementById('textInput').style.display = 'block';
                        document.getElementById('textInput').name = 'SearchCriteria.SearchTerm';
@@ -589,10 +595,10 @@
                        document.getElementById('tenantSelect').style.display = 'block';
                        document.getElementById('tenantSelect').name = 'SearchCriteria.SearchTerm';
                    }
-                   // REMOVED: Parent case handling
+                   
                }
 
-               // Initialize the form on page load
+            
                document.addEventListener('DOMContentLoaded', function() {
                    updateMeterSearchOptions();
                });
