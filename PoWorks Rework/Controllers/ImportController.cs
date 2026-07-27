@@ -948,7 +948,7 @@ namespace PoWorks_Rework.Controllers
 
                     using (var connection = _databaseService.GetConnection())
                     {
-                        // 🟢 FIX : Isolation CompanyId pour les compteurs parents !
+                     
                         var command = new Npgsql.NpgsqlCommand(@"
                     SELECT ""MeterId"", ""Name"" 
                     FROM ""Meters"" 
@@ -1059,6 +1059,111 @@ namespace PoWorks_Rework.Controllers
                                 .Select(r => $"{r.MeterName}: {r.GetTrendsDataError}")
                                 .ToList()
             };
+        }
+        [HttpGet]
+        public async Task<IActionResult> ExportMeters(string format = "CSV", bool activeOnly = false, bool includeReadings = false)
+        {
+            try
+            {
+                int currentCompanyId = _companyContext.CurrentCompanyId;
+
+                var exportData = new List<Dictionary<string, object>>();
+
+                using (var connection = _databaseService.CreateNewConnection())
+                {
+                    await connection.OpenAsync();
+
+                    string sql = @"SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""Type"", m.""Active""";
+
+                    if (includeReadings)
+                    {
+                        sql += @", COALESCE((SELECT mr.""Value"" FROM ""MeterReadings"" mr WHERE mr.""MeterId"" = m.""MeterId"" ORDER BY mr.""Timestamp"" DESC LIMIT 1), 0) as ""LastReading""";
+                    }
+
+                    sql += @" FROM ""Meters"" m WHERE m.""CompanyId"" = @CompanyId";
+
+                    if (activeOnly)
+                    {
+                        sql += @" AND m.""Active"" = true";
+                    }
+
+                    sql += @" ORDER BY m.""Name""";
+
+                    using var cmd = new Npgsql.NpgsqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
+
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var row = new Dictionary<string, object>
+                        {
+                            ["MeterId"] = reader.GetInt32(0),
+                            ["Name"] = reader.GetString(1),
+                            ["Unit"] = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                            ["Type"] = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                            ["Active"] = reader.GetBoolean(4)
+                        };
+
+                        if (includeReadings)
+                        {
+                            row["LastReading"] = reader.GetDouble(5);
+                        }
+
+                        exportData.Add(row);
+                    }
+                }
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+                string fileName = $"MetersExport_{timestamp}";
+
+                if (format.ToUpper() == "JSON")
+                {
+                    var json = System.Text.Json.JsonSerializer.Serialize(exportData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"{fileName}.json");
+                }
+                else 
+                {
+                    var sb = new System.Text.StringBuilder();
+                    string separator = ",";
+
+                    var headers = new List<string> { "MeterId", "Name", "Unit", "Type", "Active" };
+                    if (includeReadings) headers.Add("LastReading");
+                    sb.AppendLine(string.Join(separator, headers));
+
+   
+                    foreach (var item in exportData)
+                    {
+                        var values = new List<string>
+                {
+                    item["MeterId"].ToString(),
+                    item["Name"].ToString(),
+                    item["Unit"].ToString(),
+                    item["Type"].ToString(),
+                    item["Active"].ToString()
+                };
+
+                        if (includeReadings)
+                        {
+                            values.Add(Convert.ToDouble(item["LastReading"]).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        }
+
+                        sb.AppendLine(string.Join(separator, values));
+                    }
+
+                    var preamble = System.Text.Encoding.UTF8.GetPreamble();
+                    var data = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+                    var fileBytes = new byte[preamble.Length + data.Length];
+                    Buffer.BlockCopy(preamble, 0, fileBytes, 0, preamble.Length);
+                    Buffer.BlockCopy(data, 0, fileBytes, preamble.Length, data.Length);
+
+                    return File(fileBytes, "text/csv", $"{fileName}.csv");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting meters");
+                return BadRequest("An error occurred during export.");
+            }
         }
 
         #endregion

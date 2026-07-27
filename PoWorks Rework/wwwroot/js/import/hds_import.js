@@ -643,9 +643,9 @@ function handleHDSImport() {
             importBtn.disabled = false;
 
             if (data.success) {
-                let message = `✅ Successfully imported ${data.importedCount || 0} HDS meters!`;
+                let message = ` Successfully imported ${data.importedCount || 0} HDS meters!`;
                 if (data.readingsEnabled) {
-                    message += `\n📊 Readings: ${data.readingsImported || 0} imported`;
+                    message += `\n Readings: ${data.readingsImported || 0} imported`;
                 }
                 alert(message);
 
@@ -653,7 +653,7 @@ function handleHDSImport() {
                     window.location.reload();
                 }
             } else {
-                alert(`❌ Import failed: ${data.error || 'Unknown error'}`);
+                alert(` Import failed: ${data.error || 'Unknown error'}`);
             }
         })
         .catch(error => {
@@ -855,12 +855,12 @@ function sendHDSPrintRequest(hdsRequest) {
         })
         .then(data => {
             if (data.success) {
-                alert(`✅ Successfully printed ${data.count} HDS meters.`);
+                alert(` Successfully printed ${data.count} HDS meters.`);
             } else {
                 throw new Error(data.error || 'Unknown error occurred');
             }
         })
         .catch(error => {
-            alert(`❌ HDS Print Failed: ${error.message}`);
+            alert(` HDS Print Failed: ${error.message}`);
         });
 }

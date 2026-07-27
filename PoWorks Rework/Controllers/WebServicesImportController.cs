@@ -341,12 +341,12 @@ namespace PoWorks_Rework.Controllers
                 var token = await webService.GetValidAccessTokenAsync(connection);
                 if (string.IsNullOrEmpty(token))
                 {
-                    Console.WriteLine("❌ ERROR: Failed to get authentication token");
+                    Console.WriteLine(" ERROR: Failed to get authentication token");
                     Console.WriteLine("=====================================================\n");
                     return Json(new { success = false, message = "Failed to authenticate" });
                 }
 
-                Console.WriteLine("✅ Authentication successful");
+                Console.WriteLine("Authentication successful");
                 var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
                 var queryParams = new List<string>
                 {
@@ -374,7 +374,7 @@ namespace PoWorks_Rework.Controllers
 
                 if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("✅ API call successful");
+                    Console.WriteLine("API call successful");
 
                     try
                     {
@@ -388,7 +388,7 @@ namespace PoWorks_Rework.Controllers
                             connectionName,
                             request.IncludeSystemVariables);
 
-                        Console.WriteLine($"✅ Parsing completed successfully");
+                        Console.WriteLine($"Parsing completed successfully");
                         Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                         Console.WriteLine("=====================================================\n");
                         return Json(new
@@ -406,14 +406,14 @@ namespace PoWorks_Rework.Controllers
                     }
                     catch (Exception parseEx)
                     {
-                        Console.WriteLine($"❌ ERROR parsing response: {parseEx.Message}");
+                        Console.WriteLine($"ERROR parsing response: {parseEx.Message}");
                         Console.WriteLine("=====================================================\n");
                         return Json(new { success = false, message = $"Error parsing variables: {parseEx.Message}" });
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"❌ ERROR: API call failed");
+                    Console.WriteLine($"ERROR: API call failed");
                     Console.WriteLine($"Response: {responseContent}");
                     Console.WriteLine("=====================================================\n");
                     return Json(new { success = false, message = $"API call failed: {response.StatusCode}" });
@@ -421,7 +421,7 @@ namespace PoWorks_Rework.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error during browse: {ex.Message}");
+                Console.WriteLine($"Error during browse: {ex.Message}");
                 Console.WriteLine("=====================================================\n");
                 _logger.LogError(ex, "Error browsing PCVue variables");
                 return Json(new { success = false, error = ex.Message });

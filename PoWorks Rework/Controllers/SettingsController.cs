@@ -3,8 +3,8 @@ using PoWorks_Rework.Models;
 using System.Text.Json;
 using Npgsql;
 using PoWorks_Rework.Services;
-using Microsoft.Data.SqlClient; 
-using System.Text; 
+using Microsoft.Data.SqlClient;
+using System.Text;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -14,17 +14,20 @@ namespace PoWorks_Rework.Controllers
         private readonly IWebHostEnvironment _webHostEnvironment;
         private readonly DatabaseService _databaseService;
         private readonly SqlServerService _sqlServerService;
+        private readonly EncryptionService _encryptionService;
 
         public SettingsController(
             IConfiguration configuration,
             IWebHostEnvironment webHostEnvironment,
             DatabaseService databaseService,
-            SqlServerService sqlServerService)
+            SqlServerService sqlServerService,
+            EncryptionService encryptionService)
         {
             _configuration = configuration;
             _webHostEnvironment = webHostEnvironment;
             _databaseService = databaseService;
             _sqlServerService = sqlServerService;
+            _encryptionService = encryptionService;
         }
 
         public IActionResult General()
@@ -37,9 +40,10 @@ namespace PoWorks_Rework.Controllers
                     Port = _configuration["DatabaseSettings:Port"] ?? "5432",
                     Database = _configuration["DatabaseSettings:Database"] ?? "",
                     Username = _configuration["DatabaseSettings:Username"] ?? "postgres",
-                    Password = _configuration["DatabaseSettings:Password"] ?? "",
+                    Password = _encryptionService.Decrypt(_configuration["DatabaseSettings:Password"] ?? ""),
                     SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
                 };
+
             var sqlConnections = LoadSqlServerConnections();
             var webServiceConnections = LoadWebServiceConnections();
 
@@ -47,11 +51,12 @@ namespace PoWorks_Rework.Controllers
             {
                 PostgreSql = pgSettings,
                 SqlServerConnections = sqlConnections,
-                WebServiceConnections = webServiceConnections 
+                WebServiceConnections = webServiceConnections
             };
 
             return View(viewModel);
         }
+
         [HttpPost]
         public async Task<IActionResult> GetWebServiceToken([FromBody] WebServiceConnectionTestRequest request)
         {
@@ -71,6 +76,7 @@ namespace PoWorks_Rework.Controllers
 
                 if (string.IsNullOrWhiteSpace(request.ClientSecret))
                     return Json(new { success = false, errorMessage = "Client Secret is required" });
+
                 var settings = new PCVueWebServiceSettings
                 {
                     ConnectionId = request.ConnectionId,
@@ -84,9 +90,9 @@ namespace PoWorks_Rework.Controllers
                     TimeoutSeconds = request.TimeoutSeconds,
                     ProjectName = request.ProjectName
                 };
+
                 var handler = new HttpClientHandler();
                 handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-
                 using var httpClient = new HttpClient(handler);
                 httpClient.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
 
@@ -133,6 +139,7 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, errorMessage = ex.Message });
             }
         }
+
         [HttpPost]
         public async Task<IActionResult> RefreshWebServiceToken([FromBody] WebServiceConnectionTestRequest request)
         {
@@ -151,6 +158,7 @@ namespace PoWorks_Rework.Controllers
                     TimeoutSeconds = request.TimeoutSeconds,
                     ProjectName = request.ProjectName
                 };
+
                 var handler = new HttpClientHandler();
                 handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
 
@@ -173,7 +181,7 @@ namespace PoWorks_Rework.Controllers
                     {
                         success = true,
                         message = "Token retrieved successfully! Check server terminal for token details.",
-                        expiresIn = 3600 
+                        expiresIn = 3600
                     });
                 }
                 else
@@ -220,7 +228,7 @@ namespace PoWorks_Rework.Controllers
                         return Json(new { success = true, message = "Connected successfully to existing database." });
                     }
                 }
-                catch (Npgsql.PostgresException ex) when (ex.SqlState == "3D000") 
+                catch (Npgsql.PostgresException ex) when (ex.SqlState == "3D000")
                 {
                     var connectionStringBuilder = new NpgsqlConnectionStringBuilder(settings.ToConnectionString())
                     {
@@ -334,6 +342,7 @@ namespace PoWorks_Rework.Controllers
                 {
                     return Json(new { success = false, errorMessage = "Username is required" });
                 }
+
                 var settings = new SqlServerSettings
                 {
                     ConnectionId = request.ConnectionId,
@@ -345,6 +354,7 @@ namespace PoWorks_Rework.Controllers
                     Password = request.Password,
                     ProjectName = request.ProjectName
                 };
+
                 using (var connection = new SqlConnection(settings.ToConnectionString()))
                 {
                     connection.Open();
@@ -395,12 +405,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        #region SQL Server Connection Methods
-
         private List<SqlServerSettings> LoadSqlServerConnections()
         {
             var connections = new List<SqlServerSettings>();
             var connectionsSection = _configuration.GetSection("SqlServerConnections");
+
             if (connectionsSection.Exists() && connectionsSection.GetChildren().Any())
             {
                 foreach (var connectionSection in connectionsSection.GetChildren())
@@ -413,7 +422,7 @@ namespace PoWorks_Rework.Controllers
                         Port = connectionSection["Port"] ?? "1433",
                         Database = connectionSection["Database"] ?? "",
                         Username = connectionSection["Username"] ?? "",
-                        Password = connectionSection["Password"] ?? "",
+                        Password = _encryptionService.Decrypt(connectionSection["Password"] ?? ""),
                         ProjectName = connectionSection["ProjectName"] ?? "",
                         IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
                     };
@@ -430,7 +439,7 @@ namespace PoWorks_Rework.Controllers
                     Port = _configuration["SqlServerSettings:Port"] ?? "1433",
                     Database = _configuration["SqlServerSettings:Database"] ?? "",
                     Username = _configuration["SqlServerSettings:Username"] ?? "",
-                    Password = _configuration["SqlServerSettings:Password"] ?? "",
+                    Password = _encryptionService.Decrypt(_configuration["SqlServerSettings:Password"] ?? ""),
                     ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? "",
                     IsDefault = true
                 };
@@ -440,6 +449,7 @@ namespace PoWorks_Rework.Controllers
                     connections.Add(legacyConnection);
                 }
             }
+
             if (!connections.Any())
             {
                 connections.Add(new SqlServerSettings
@@ -537,10 +547,12 @@ namespace PoWorks_Rework.Controllers
             {
                 updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
             }
+
             if (updatedSettings.ContainsKey("SqlServerSettings"))
             {
                 updatedSettings.Remove("SqlServerSettings");
             }
+
             var connectionsList = connections.Select(c => new Dictionary<string, object>
             {
                 { "ConnectionId", c.ConnectionId },
@@ -549,7 +561,7 @@ namespace PoWorks_Rework.Controllers
                 { "Port", c.Port },
                 { "Database", c.Database },
                 { "Username", c.Username },
-                { "Password", c.Password },
+                { "Password", _encryptionService.Encrypt(c.Password) },
                 { "ProjectName", c.ProjectName },
                 { "IsDefault", c.IsDefault }
             }).ToList();
@@ -561,9 +573,6 @@ namespace PoWorks_Rework.Controllers
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);
         }
 
-        #endregion
-
-        #region Web Services Methods
         private List<PCVueWebServiceSettings> LoadWebServiceConnections()
         {
             var connections = new List<PCVueWebServiceSettings>();
@@ -579,8 +588,10 @@ namespace PoWorks_Rework.Controllers
                         ConnectionName = connectionSection["ConnectionName"] ?? "",
                         BaseUrl = connectionSection["BaseUrl"] ?? "",
                         ClientId = connectionSection["ClientId"] ?? "",
-                        ClientSecret = connectionSection["ClientSecret"] ?? "",
-                        ApiKey = connectionSection["ApiKey"] ?? "",
+                        ClientSecret = _encryptionService.Decrypt(connectionSection["ClientSecret"] ?? ""),
+                        ApiKey = _encryptionService.Decrypt(connectionSection["ApiKey"] ?? ""),
+                        Username = connectionSection["Username"] ?? "",
+                        Password = _encryptionService.Decrypt(connectionSection["Password"] ?? ""),
                         AuthType = Enum.Parse<AuthenticationType>(connectionSection["AuthType"] ?? "0"),
                         TimeoutSeconds = int.Parse(connectionSection["TimeoutSeconds"] ?? "30"),
                         ProjectName = connectionSection["ProjectName"] ?? "",
@@ -589,6 +600,7 @@ namespace PoWorks_Rework.Controllers
                     connections.Add(connection);
                 }
             }
+
             if (!connections.Any())
             {
                 connections.Add(new PCVueWebServiceSettings
@@ -603,6 +615,7 @@ namespace PoWorks_Rework.Controllers
 
             return connections;
         }
+
         [HttpPost]
         public async Task<IActionResult> TestWebServiceConnection([FromBody] WebServiceConnectionTestRequest request)
         {
@@ -612,6 +625,7 @@ namespace PoWorks_Rework.Controllers
                 {
                     return Json(new { success = false, errorMessage = "Base URL is required" });
                 }
+
                 var settings = new PCVueWebServiceSettings
                 {
                     ConnectionId = request.ConnectionId,
@@ -620,8 +634,8 @@ namespace PoWorks_Rework.Controllers
                     ClientId = request.ClientId,
                     ClientSecret = request.ClientSecret,
                     ApiKey = request.ApiKey,
-                    Username = request.Username,  
-                    Password = request.Password,  
+                    Username = request.Username,
+                    Password = request.Password,
                     AuthType = (AuthenticationType)request.AuthType,
                     TimeoutSeconds = request.TimeoutSeconds,
                     ProjectName = request.ProjectName
@@ -629,6 +643,7 @@ namespace PoWorks_Rework.Controllers
 
                 using var httpClient = new HttpClient();
                 httpClient.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+
                 switch (settings.AuthType)
                 {
                     case AuthenticationType.OAuth:
@@ -644,7 +659,7 @@ namespace PoWorks_Rework.Controllers
                             httpClient.DefaultRequestHeaders.Add("X-API-Key", settings.ApiKey);
                         }
                         break;
-                    case AuthenticationType.Basic:  
+                    case AuthenticationType.Basic:
                         if (!string.IsNullOrEmpty(settings.Username) && !string.IsNullOrEmpty(settings.Password))
                         {
                             var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{settings.Username}:{settings.Password}"));
@@ -652,6 +667,7 @@ namespace PoWorks_Rework.Controllers
                         }
                         break;
                 }
+
                 var testUrl = settings.BaseUrl.TrimEnd('/') + "/system/status";
                 var response = await httpClient.GetAsync(testUrl);
 
@@ -677,6 +693,7 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, errorMessage = ex.Message });
             }
         }
+
         [HttpPost]
         public IActionResult SaveWebServiceConnections([FromBody] SaveWebServiceConnectionsRequest request)
         {
@@ -694,9 +711,8 @@ namespace PoWorks_Rework.Controllers
                         ClientId = connData.ContainsKey("ClientId") ? connData["ClientId"] : "",
                         ClientSecret = connData.ContainsKey("ClientSecret") ? connData["ClientSecret"] : "",
                         ApiKey = connData.ContainsKey("ApiKey") ? connData["ApiKey"] : "",
-                        Username = connData.ContainsKey("Username") ? connData["Username"] : "",  
-                        Password = connData.ContainsKey("Password") ? connData["Password"] : "",  
-
+                        Username = connData.ContainsKey("Username") ? connData["Username"] : "",
+                        Password = connData.ContainsKey("Password") ? connData["Password"] : "",
                         AuthType = connData.ContainsKey("AuthType") ? Enum.Parse<AuthenticationType>(connData["AuthType"]) : AuthenticationType.OAuth,
                         TimeoutSeconds = connData.ContainsKey("TimeoutSeconds") ? int.Parse(connData["TimeoutSeconds"]) : 30,
                         ProjectName = connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "",
@@ -713,6 +729,7 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, error = ex.Message });
             }
         }
+
         [HttpPost]
         public IActionResult DeleteWebServiceConnection([FromBody] DeleteConnectionRequest request)
         {
@@ -733,7 +750,7 @@ namespace PoWorks_Rework.Controllers
                 {
                     connections.First().IsDefault = true;
                 }
-                UpdateWebServiceConnections(connections);
+                UpdateWebServiceSettings(connections);
 
                 return Json(new
                 {
@@ -753,78 +770,7 @@ namespace PoWorks_Rework.Controllers
             var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
             var json = System.IO.File.ReadAllText(appSettingsPath);
             var jsonSettings = JsonDocument.Parse(json);
-            var updatedSettings = new Dictionary<string, object>();
-            foreach (var element in jsonSettings.RootElement.EnumerateObject())
-            {
-                updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
-            }
-            var webServiceSettings = connections.Select(conn => new Dictionary<string, object>
-    {
-        { "ConnectionId", conn.ConnectionId },
-        { "ConnectionName", conn.ConnectionName },
-        { "BaseUrl", conn.BaseUrl },
-        { "ClientId", conn.ClientId },
-        { "ClientSecret", conn.ClientSecret },
-        { "ApiKey", conn.ApiKey },
-        { "Username", conn.Username },  
-        { "Password", conn.Password },  
-        { "AuthType", (int)conn.AuthType },
-        { "TimeoutSeconds", conn.TimeoutSeconds },
-        { "ProjectName", conn.ProjectName },
-        { "IsDefault", conn.IsDefault }
-    }).ToList();
-            updatedSettings["WebServiceConnections"] = webServiceSettings;
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
-            System.IO.File.WriteAllText(appSettingsPath, updatedJson);
-        }
 
-        private List<PCVueWebServiceSettings> GetWebServiceConnections()
-        {
-            var connections = new List<PCVueWebServiceSettings>();
-            var webServiceSection = _configuration.GetSection("WebServiceConnections");
-
-            if (webServiceSection.Exists())
-            {
-                foreach (var connectionSection in webServiceSection.GetChildren())
-                {
-                    var connection = new PCVueWebServiceSettings
-                    {
-                        ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
-                        ConnectionName = connectionSection["ConnectionName"] ?? "",
-                        BaseUrl = connectionSection["BaseUrl"] ?? "",
-                        ClientId = connectionSection["ClientId"] ?? "",
-                        ClientSecret = connectionSection["ClientSecret"] ?? "",
-                        ApiKey = connectionSection["ApiKey"] ?? "",
-                        Username = connectionSection["Username"] ?? "",  
-                        Password = connectionSection["Password"] ?? "",  
-                        AuthType = Enum.Parse<AuthenticationType>(connectionSection["AuthType"] ?? "0"),
-                        TimeoutSeconds = int.Parse(connectionSection["TimeoutSeconds"] ?? "30"),
-                        ProjectName = connectionSection["ProjectName"] ?? "",
-                        IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
-                    };
-                    connections.Add(connection);
-                }
-            }
-            if (!connections.Any())
-            {
-                connections.Add(new PCVueWebServiceSettings
-                {
-                    ConnectionId = Guid.NewGuid().ToString(),
-                    ConnectionName = "Default Web Service Connection",
-                    BaseUrl = "",
-                    TimeoutSeconds = 30,
-                    IsDefault = true
-                });
-            }
-
-            return connections;
-        }
-        private void UpdateWebServiceConnections(List<PCVueWebServiceSettings> connections)
-        {
-            var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
-            var json = System.IO.File.ReadAllText(appSettingsPath);
-            var jsonSettings = JsonDocument.Parse(json);
             var updatedSettings = new Dictionary<string, object>();
             foreach (var element in jsonSettings.RootElement.EnumerateObject())
             {
@@ -833,31 +779,29 @@ namespace PoWorks_Rework.Controllers
                     updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
                 }
             }
-            var connectionsList = connections.Select(c => new Dictionary<string, object>
-    {
-        { "ConnectionId", c.ConnectionId },
-        { "ConnectionName", c.ConnectionName },
-        { "BaseUrl", c.BaseUrl },
-        { "ClientId", c.ClientId },
-        { "ClientSecret", c.ClientSecret },
-        { "ApiKey", c.ApiKey },
-        { "Username", c.Username },        
-        { "Password", c.Password },        
-        { "AuthType", (int)c.AuthType },
-        { "TimeoutSeconds", c.TimeoutSeconds },
-        { "ProjectName", c.ProjectName },
-        { "IsDefault", c.IsDefault }
-    }).ToList();
 
-            updatedSettings["WebServiceConnections"] = connectionsList;
+            var webServiceSettings = connections.Select(conn => new Dictionary<string, object>
+            {
+                { "ConnectionId", conn.ConnectionId },
+                { "ConnectionName", conn.ConnectionName },
+                { "BaseUrl", conn.BaseUrl },
+                { "ClientId", conn.ClientId },
+                { "ClientSecret", _encryptionService.Encrypt(conn.ClientSecret) },
+                { "ApiKey", _encryptionService.Encrypt(conn.ApiKey) },
+                { "Username", conn.Username },
+                { "Password", _encryptionService.Encrypt(conn.Password) },
+                { "AuthType", (int)conn.AuthType },
+                { "TimeoutSeconds", conn.TimeoutSeconds },
+                { "ProjectName", conn.ProjectName },
+                { "IsDefault", conn.IsDefault }
+            }).ToList();
+
+            updatedSettings["WebServiceConnections"] = webServiceSettings;
+
             var options = new JsonSerializerOptions { WriteIndented = true };
             var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);
         }
-
-        #endregion
-
-        #region Helper Methods
 
         private bool TablesExist(NpgsqlConnection connection)
         {
@@ -877,59 +821,66 @@ namespace PoWorks_Rework.Controllers
                 cmd.ExecuteNonQuery();
             }
         }
+
         private void UpdateAppSettings(DatabaseSettings settings)
         {
             var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
             var json = System.IO.File.ReadAllText(appSettingsPath);
             var jsonSettings = JsonDocument.Parse(json);
+
             var updatedSettings = new Dictionary<string, object>();
             foreach (var element in jsonSettings.RootElement.EnumerateObject())
             {
                 updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
             }
+
             var dbSettings = new Dictionary<string, string>
             {
                 { "Host", settings.Host },
                 { "Port", settings.Port },
                 { "Database", settings.Database },
                 { "Username", settings.Username },
-                { "Password", settings.Password },
+                { "Password", _encryptionService.Encrypt(settings.Password) },
                 { "SSLMode", settings.SSLMode }
             };
+
             updatedSettings["DatabaseSettings"] = dbSettings;
+
             var options = new JsonSerializerOptions { WriteIndented = true };
             var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);
         }
+
         private void UpdateSqlServerSettings(SqlServerSettings settings)
         {
             var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
             var json = System.IO.File.ReadAllText(appSettingsPath);
             var jsonSettings = JsonDocument.Parse(json);
+
             var updatedSettings = new Dictionary<string, object>();
             foreach (var element in jsonSettings.RootElement.EnumerateObject())
             {
                 updatedSettings[element.Name] = JsonSerializer.Deserialize<object>(element.Value.GetRawText());
             }
+
             var sqlSettings = new Dictionary<string, string>
             {
                 { "Host", settings.Host },
                 { "Port", settings.Port },
                 { "Database", settings.Database },
                 { "Username", settings.Username },
-                { "Password", settings.Password },
+                { "Password", _encryptionService.Encrypt(settings.Password) },
                 { "ProjectName", settings.ProjectName }
             };
+
             updatedSettings["SqlServerSettings"] = sqlSettings;
+
             var options = new JsonSerializerOptions { WriteIndented = true };
             var updatedJson = JsonSerializer.Serialize(updatedSettings, options);
             System.IO.File.WriteAllText(appSettingsPath, updatedJson);
         }
-
-        #endregion
     }
 
-    #region Request Models
     public class SqlServerConnectionTestRequest
     {
         public string ConnectionId { get; set; } = "";
@@ -941,6 +892,7 @@ namespace PoWorks_Rework.Controllers
         public string Password { get; set; } = "";
         public string ProjectName { get; set; } = "";
     }
+
     public class WebServiceConnectionTestRequest
     {
         public string ConnectionId { get; set; } = "";
@@ -949,8 +901,8 @@ namespace PoWorks_Rework.Controllers
         public string ClientId { get; set; } = "";
         public string ClientSecret { get; set; } = "";
         public string ApiKey { get; set; } = "";
-        public string Username { get; set; } = "";  
-        public string Password { get; set; } = "";  
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
         public int AuthType { get; set; } = 0;
         public int TimeoutSeconds { get; set; } = 30;
         public string ProjectName { get; set; } = "";
@@ -960,6 +912,7 @@ namespace PoWorks_Rework.Controllers
     {
         public List<Dictionary<string, string>> Connections { get; set; } = new List<Dictionary<string, string>>();
     }
+
     public class SaveWebServiceConnectionsRequest
     {
         public List<Dictionary<string, string>> Connections { get; set; } = new List<Dictionary<string, string>>();
@@ -969,6 +922,4 @@ namespace PoWorks_Rework.Controllers
     {
         public string ConnectionId { get; set; } = "";
     }
-
-    #endregion
 }

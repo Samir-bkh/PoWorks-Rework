@@ -64,41 +64,38 @@ function setupUnifiedEventDelegation() {
         }
     });
 
-    // NOUVEAU : Écouteur pour la barre de recherche (Filtre)
     document.body.addEventListener('input', function (event) {
         if (event.target.id === 'meterFilterInput') {
             filterTableRows(event.target.value.toLowerCase());
         }
     });
 
-    console.log('✅ Unified event delegation setup complete');
+    console.log(' Unified event delegation setup complete');
 }
 
-// =====================================================
-// NOUVEAU : FONCTION DE FILTRAGE EN TEMPS RÉEL
-// =====================================================
+
+
 function filterTableRows(filterText) {
     const rows = document.querySelectorAll('#metersTableBody tr');
     let visibleCount = 0;
     let totalCount = 0;
 
     rows.forEach(row => {
-        // On ignore la ligne bleue d'information
+
         if (row.classList.contains('table-info')) return;
         totalCount++;
 
-        // On cherche le texte dans toute la ligne (Nom, Unité, etc.)
+
         const rowText = row.textContent.toLowerCase();
 
         if (rowText.includes(filterText)) {
-            row.style.display = ''; // Affiche la ligne
+            row.style.display = ''; 
             visibleCount++;
         } else {
-            row.style.display = 'none'; // Cache la ligne
+            row.style.display = 'none'; 
         }
     });
 
-    // Mise à jour du petit texte de statut sous la barre
     const statusEl = document.getElementById('meterFilterStatus');
     if (statusEl) {
         if (filterText === '') {
@@ -215,7 +212,6 @@ function handleSelectAll() {
 
     checkboxes.forEach(checkbox => {
         const row = checkbox.closest('tr');
-        // On ne coche QUE si la ligne est visible (non filtrée) et n'est pas la ligne d'info
         if (row && row.style.display !== 'none' && !row.classList.contains('table-info')) {
             checkbox.checked = true;
         }
@@ -236,7 +232,6 @@ function handleDeselectAll() {
 
     checkboxes.forEach(checkbox => {
         const row = checkbox.closest('tr');
-        // On ne décoche QUE si la ligne est visible
         if (row && row.style.display !== 'none' && !row.classList.contains('table-info')) {
             checkbox.checked = false;
         }
@@ -263,7 +258,6 @@ function updateMeterCounter() {
 
     const statusElement = document.getElementById('meterFilterStatus');
     if (statusElement && !document.getElementById('meterFilterInput').value) {
-        // On ne met à jour ce texte que s'il n'y a pas de recherche active
         const totalItems = checkboxes.length;
         const selectedItems = checkedBoxes.length;
 

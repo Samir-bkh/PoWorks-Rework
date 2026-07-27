@@ -7,14 +7,16 @@ namespace PoWorks_Rework.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<SqlServerService> _logger;
+        private readonly EncryptionService _encryptionService; 
         private SqlServerSettings _currentSettings;
         private bool _isInitialized = false;
         private SqlServerConnectionCollection _connectionCollection;
 
-        public SqlServerService(IConfiguration configuration, ILogger<SqlServerService> logger)
+        public SqlServerService(IConfiguration configuration, ILogger<SqlServerService> logger, EncryptionService encryptionService) 
         {
             _configuration = configuration;
             _logger = logger;
+            _encryptionService = encryptionService; 
             _connectionCollection = new SqlServerConnectionCollection();
             LoadSettingsFromConfig();
         }
@@ -140,6 +142,10 @@ namespace PoWorks_Rework.Services
                 {
                     foreach (var connectionSection in connectionsSection.GetChildren())
                     {
+                        string encryptedPassword = connectionSection["Password"] ?? "";
+                   
+                        string decryptedPassword = _encryptionService.Decrypt(encryptedPassword);
+
                         var connection = new SqlServerSettings
                         {
                             ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
@@ -148,7 +154,7 @@ namespace PoWorks_Rework.Services
                             Port = string.IsNullOrEmpty(connectionSection["Port"]) ? "1433" : connectionSection["Port"],
                             Database = connectionSection["Database"] ?? "",
                             Username = connectionSection["Username"] ?? "",
-                            Password = connectionSection["Password"] ?? "",
+                            Password = decryptedPassword, 
                             ProjectName = connectionSection["ProjectName"] ?? "",
                             IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
                         };
@@ -157,6 +163,9 @@ namespace PoWorks_Rework.Services
                 }
                 else
                 {
+                    string encryptedPassword = _configuration["SqlServerSettings:Password"] ?? "";
+                    string decryptedPassword = _encryptionService.Decrypt(encryptedPassword);
+
                     var legacyConnection = new SqlServerSettings
                     {
                         ConnectionId = "legacy",
@@ -165,7 +174,7 @@ namespace PoWorks_Rework.Services
                         Port = _configuration["SqlServerSettings:Port"] ?? "1433",
                         Database = _configuration["SqlServerSettings:Database"] ?? "",
                         Username = _configuration["SqlServerSettings:Username"] ?? "",
-                        Password = _configuration["SqlServerSettings:Password"] ?? "",
+                        Password = decryptedPassword, 
                         ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? "",
                         IsDefault = true
                     };
@@ -175,6 +184,7 @@ namespace PoWorks_Rework.Services
                         connections.Add(legacyConnection);
                     }
                 }
+
                 _connectionCollection = new SqlServerConnectionCollection();
                 foreach (var connection in connections)
                 {

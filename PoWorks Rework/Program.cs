@@ -10,7 +10,19 @@ using PoWorks_Rework.Data;
 Console.WriteLine("1. PROGRAM START");
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+var tempEncryptionService = new PoWorks_Rework.Services.EncryptionService(builder.Configuration);
+
+var host = builder.Configuration["DatabaseSettings:Host"];
+var port = builder.Configuration["DatabaseSettings:Port"];
+var database = builder.Configuration["DatabaseSettings:Database"];
+var username = builder.Configuration["DatabaseSettings:Username"];
+var encryptedPassword = builder.Configuration["DatabaseSettings:Password"];
+
+var plainPassword = tempEncryptionService.Decrypt(encryptedPassword);
+
+var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={plainPassword};Command Timeout=120;";
+
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -46,10 +58,8 @@ builder.Services.AddScoped<BillingService>();
 builder.Services.AddSingleton<PCVueWebService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<PCVueWebService>>();
-    var handler = new HttpClientHandler
-    {
-        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-    };
+    var handler = new HttpClientHandler();
+    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
     var httpClient = new HttpClient(handler)
     {
         Timeout = TimeSpan.FromMinutes(2)
@@ -68,15 +78,38 @@ builder.Services.AddHostedService<AutoImportWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICompanyContext, CompanyContext>();
 builder.Services.AddSingleton<EncryptionService>();
+builder.Services.AddScoped<SetupCheckService>();
 
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireUserName("admin"));
 });
 
+builder.Services.AddScoped<CredentialMigrationService>();
+
 Console.WriteLine("3. BUILDING THE APP");
 var app = builder.Build();
 Console.WriteLine("4. BUILDING FINISHED !");
+
+
+var mainDbService = app.Services.GetRequiredService<DatabaseService>();
+var mainEncService = app.Services.GetRequiredService<EncryptionService>();
+
+mainDbService.Initialize(new PoWorks_Rework.Models.DatabaseSettings
+{
+    Host = app.Configuration["DatabaseSettings:Host"] ?? "localhost",
+    Port = app.Configuration["DatabaseSettings:Port"] ?? "5433",
+    Database = app.Configuration["DatabaseSettings:Database"] ?? "",
+    Username = app.Configuration["DatabaseSettings:Username"] ?? "postgres",
+    Password = mainEncService.Decrypt(app.Configuration["DatabaseSettings:Password"] ?? ""),
+    SSLMode = app.Configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
+});
+
+using (var scope = app.Services.CreateScope())
+{
+    var migrationService = scope.ServiceProvider.GetRequiredService<CredentialMigrationService>();
+    await migrationService.MigrateAllCredentialsAsync();
+}
 
 try
 {
@@ -100,6 +133,29 @@ try
 
     Console.WriteLine("4e. UseRouting");
     app.UseRouting();
+
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path;
+
+    
+        if (path.StartsWithSegments("/setup") || path.StartsWithSegments("/css") || path.StartsWithSegments("/js") || path.StartsWithSegments("/lib"))
+        {
+            await next();
+            return;
+        }
+
+        var setupCheckService = context.RequestServices.GetRequiredService<SetupCheckService>();
+        bool isInstalled = await setupCheckService.IsApplicationInstalledAsync();
+
+        if (!isInstalled)
+        {
+            context.Response.Redirect("/setup");
+            return;
+        }
+
+        await next();
+    });
 
     Console.WriteLine("4f. UseAuthentication & UseAuthorization");
     app.UseAuthentication();

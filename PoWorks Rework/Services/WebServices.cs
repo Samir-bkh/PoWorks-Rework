@@ -16,18 +16,25 @@ namespace PoWorks_Rework.Services
         private string? _refreshToken;
         private DateTime _tokenExpiry;
 
-
         private DateTime _lastTokenRefreshTime = DateTime.MinValue;
 
         public PCVueWebService(HttpClient httpClient, ILogger<PCVueWebService> logger)
         {
-            _httpClient = httpClient;
             _logger = logger;
+
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+
+            _httpClient = new HttpClient(handler)
+            {
+                Timeout = httpClient.Timeout
+            };
         }
 
         public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings, bool forceRefresh = false)
         {
-   
             if (!forceRefresh && !string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
             {
                 return _accessToken;
@@ -36,27 +43,22 @@ namespace PoWorks_Rework.Services
             await _tokenLock.WaitAsync();
             try
             {
-              
                 if (forceRefresh)
                 {
-                 
                     if ((DateTime.UtcNow - _lastTokenRefreshTime).TotalSeconds < 5)
                     {
-                        _logger.LogInformation("Token was just refreshed by another thread. Bypassing force refresh.");
                         return _accessToken;
                     }
 
-                    _logger.LogInformation("Force refresh requested. Clearing old tokens.");
                     ClearTokens();
                 }
                 else if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
                 {
-                    return _accessToken; 
+                    return _accessToken;
                 }
 
                 if (!string.IsNullOrEmpty(_refreshToken))
                 {
-                    _logger.LogDebug("Attempting token refresh.");
                     var refreshedToken = await RefreshTokenAsync(settings);
                     if (!string.IsNullOrEmpty(refreshedToken))
                     {
@@ -64,7 +66,6 @@ namespace PoWorks_Rework.Services
                     }
                 }
 
-                _logger.LogInformation("Getting new access token...");
                 var tokenResponse = await RequestNewTokenAsync(settings);
                 return tokenResponse.Success ? tokenResponse.AccessToken : null;
             }
@@ -83,8 +84,6 @@ namespace PoWorks_Rework.Services
         {
             try
             {
-                _logger.LogInformation("Requesting new OAuth token for PCVue Web Services.");
-
                 var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/token";
 
                 var formParams = new Dictionary<string, string>
@@ -122,16 +121,11 @@ namespace PoWorks_Rework.Services
 
                             int actualLifespan = Math.Min(tokenResponse.ExpiresIn - 60, 240);
                             _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
-                            _lastTokenRefreshTime = DateTime.UtcNow; 
-
-                            _logger.LogInformation("OAuth token acquired successfully. Cached for {CacheSeconds} seconds.", actualLifespan);
+                            _lastTokenRefreshTime = DateTime.UtcNow;
 
                             tokenResponse.Success = true;
                             return tokenResponse;
                         }
-
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        _logger.LogError("OAuth token request failed: {StatusCode}. PCVue error details: {ErrorDetails}", response.StatusCode, errorContent);
 
                         return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
                     }
@@ -141,12 +135,12 @@ namespace PoWorks_Rework.Services
                     }
                 }
 
-                _logger.LogError("OAuth token request failed: {StatusCode}", response.StatusCode);
-                return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
+                var errorContent = await response.Content.ReadAsStringAsync();
+                return new OAuthTokenResponse { Success = false, ErrorMessage = $"PCVue a refusé l'accès : {errorContent}" };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during OAuth token request.");
+               
                 return new OAuthTokenResponse { Success = false, ErrorMessage = $"Unexpected error: {ex.Message}" };
             }
         }
@@ -155,7 +149,6 @@ namespace PoWorks_Rework.Services
         {
             try
             {
-                _logger.LogInformation("Refreshing OAuth token.");
                 var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/Token";
 
                 var formParams = new Dictionary<string, string>
@@ -186,7 +179,7 @@ namespace PoWorks_Rework.Services
                         var expiresIn = tokenData.TryGetProperty("expires_in", out var expiresElement) ? expiresElement.GetInt32() : 3600;
                         int actualLifespan = Math.Min(expiresIn - 60, 240);
                         _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
-                        _lastTokenRefreshTime = DateTime.UtcNow; 
+                        _lastTokenRefreshTime = DateTime.UtcNow;
 
                         return _accessToken;
                     }
@@ -230,7 +223,6 @@ namespace PoWorks_Rework.Services
             _accessToken = null;
             _refreshToken = null;
             _tokenExpiry = DateTime.MinValue;
-            _logger.LogDebug("All tokens cleared.");
         }
 
         public void ClearToken()
@@ -288,7 +280,6 @@ namespace PoWorks_Rework.Services
         public string? ErrorMessage { get; set; }
         public string? TokenInfo { get; set; }
     }
-    
 
     public class ValidationResult
     {

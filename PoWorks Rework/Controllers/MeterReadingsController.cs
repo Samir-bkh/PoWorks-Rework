@@ -286,22 +286,62 @@ namespace PoWorks_Rework.Controllers
                 conditions.Add($"mr.\"MeterId\" IN ({ids})");
             }
 
-            if (startDate.HasValue && endDate.HasValue)
-                conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
-            else if (startDate.HasValue)
-                conditions.Add("mr.\"Timestamp\" >= @startDate");
-            else if (endDate.HasValue)
-                conditions.Add("mr.\"Timestamp\" <= @endDate");
+            string selectColumns = "";
+            string orderBy = "";
+
+            if (tableName == "MeterReadingsDaily")
+            {
+                selectColumns = @"mr.""DailyReadingId"" as ""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
+                                  mr.""ReadingDate""::timestamp as ""Timestamp"", mr.""AvgValue"" as ""Value"", 192 as ""Quality"",
+                                  mr.""MinValue"", mr.""MaxValue"", mr.""SumValue"", mr.""ReadingCount""";
+
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("mr.\"ReadingDate\" BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("mr.\"ReadingDate\" >= @startDate");
+                else if (endDate.HasValue) conditions.Add("mr.\"ReadingDate\" <= @endDate");
+                orderBy = "ORDER BY mr.\"ReadingDate\" DESC, mr.\"MeterId\"";
+            }
+            else if (tableName == "MeterReadingsMonthly")
+            {
+                selectColumns = @"mr.""MonthlyReadingId"" as ""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
+                                  make_date(mr.""Year"", mr.""Month"", 1)::timestamp as ""Timestamp"", mr.""AvgValue"" as ""Value"", 192 as ""Quality"",
+                                  mr.""MinValue"", mr.""MaxValue"", mr.""SumValue"", mr.""ReadingCount"", mr.""Year"", mr.""Month""";
+
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("make_date(mr.\"Year\", mr.\"Month\", 1) BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("make_date(mr.\"Year\", mr.\"Month\", 1) >= @startDate");
+                else if (endDate.HasValue) conditions.Add("make_date(mr.\"Year\", mr.\"Month\", 1) <= @endDate");
+                orderBy = "ORDER BY mr.\"Year\" DESC, mr.\"Month\" DESC, mr.\"MeterId\"";
+            }
+            else if (tableName == "MeterReadingsYearly")
+            {
+                selectColumns = @"mr.""YearlyReadingId"" as ""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", 
+                                  make_date(mr.""Year"", 1, 1)::timestamp as ""Timestamp"", mr.""AvgValue"" as ""Value"", 192 as ""Quality"",
+                                  mr.""MinValue"", mr.""MaxValue"", mr.""SumValue"", mr.""ReadingCount"", mr.""Year""";
+
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("make_date(mr.\"Year\", 1, 1) BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("make_date(mr.\"Year\", 1, 1) >= @startDate");
+                else if (endDate.HasValue) conditions.Add("make_date(mr.\"Year\", 1, 1) <= @endDate");
+                orderBy = "ORDER BY mr.\"Year\" DESC, mr.\"MeterId\"";
+            }
+            else
+            {
+                selectColumns = @"mr.""ReadingId"", mr.""MeterId"", m.""Name"" as ""MeterName"", mr.""Timestamp"", mr.""Value"", COALESCE(mr.""Quality"", 192) as ""Quality"",
+                                  NULL::numeric as ""MinValue"", NULL::numeric as ""MaxValue"", NULL::numeric as ""SumValue"", NULL::integer as ""ReadingCount""";
+
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("mr.\"Timestamp\" >= @startDate");
+                else if (endDate.HasValue) conditions.Add("mr.\"Timestamp\" <= @endDate");
+                orderBy = "ORDER BY mr.\"Timestamp\" DESC, mr.\"MeterId\"";
+            }
 
             var whereClause = "WHERE " + string.Join(" AND ", conditions);
 
             return $@"
-                SELECT mr.""ReadingId"", mr.""MeterId"", m.""Name"" as MeterName, mr.""Timestamp"", mr.""Value"", mr.""Quality""
-                FROM ""{tableName}"" mr
-                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                {whereClause}
-                ORDER BY mr.""Timestamp"" DESC, mr.""MeterId""
-                LIMIT @pageSize OFFSET @offset";
+        SELECT {selectColumns}
+        FROM ""{tableName}"" mr
+        JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+        {whereClause}
+        {orderBy}
+        LIMIT @pageSize OFFSET @offset";
         }
 
         private string BuildCountQuery(string tableName, List<int> meterIds, DateTime? startDate, DateTime? endDate)
@@ -314,20 +354,39 @@ namespace PoWorks_Rework.Controllers
                 conditions.Add($"mr.\"MeterId\" IN ({ids})");
             }
 
-            if (startDate.HasValue && endDate.HasValue)
-                conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
-            else if (startDate.HasValue)
-                conditions.Add("mr.\"Timestamp\" >= @startDate");
-            else if (endDate.HasValue)
-                conditions.Add("mr.\"Timestamp\" <= @endDate");
+          
+            if (tableName == "MeterReadingsDaily")
+            {
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("mr.\"ReadingDate\" BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("mr.\"ReadingDate\" >= @startDate");
+                else if (endDate.HasValue) conditions.Add("mr.\"ReadingDate\" <= @endDate");
+            }
+            else if (tableName == "MeterReadingsMonthly")
+            {
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("make_date(mr.\"Year\", mr.\"Month\", 1) BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("make_date(mr.\"Year\", mr.\"Month\", 1) >= @startDate");
+                else if (endDate.HasValue) conditions.Add("make_date(mr.\"Year\", mr.\"Month\", 1) <= @endDate");
+            }
+            else if (tableName == "MeterReadingsYearly")
+            {
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("make_date(mr.\"Year\", 1, 1) BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("make_date(mr.\"Year\", 1, 1) >= @startDate");
+                else if (endDate.HasValue) conditions.Add("make_date(mr.\"Year\", 1, 1) <= @endDate");
+            }
+            else
+            {
+                if (startDate.HasValue && endDate.HasValue) conditions.Add("mr.\"Timestamp\" BETWEEN @startDate AND @endDate");
+                else if (startDate.HasValue) conditions.Add("mr.\"Timestamp\" >= @startDate");
+                else if (endDate.HasValue) conditions.Add("mr.\"Timestamp\" <= @endDate");
+            }
 
             var whereClause = "WHERE " + string.Join(" AND ", conditions);
 
             return $@"
-                SELECT COUNT(*) 
-                FROM ""{tableName}"" mr
-                JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                {whereClause}";
+        SELECT COUNT(*)
+        FROM ""{tableName}"" mr
+        JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
+        {whereClause}";
         }
 
         private void AddDateParameters(NpgsqlCommand command, DateTime? startDate, DateTime? endDate)

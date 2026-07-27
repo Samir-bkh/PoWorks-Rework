@@ -84,8 +84,9 @@ const MeterReadings = {
             else if (viewType === 'monthly') newStart.setFullYear(today.getFullYear() - 1);
             else if (viewType === 'yearly') newStart.setFullYear(today.getFullYear() - 5);
 
-            startDateInput.value = newStart.toISOString().split('T')[0];
-            endDateInput.value = today.toISOString().split('T')[0];
+     
+            startDateInput.value = newStart.toISOString().split('T')[0] + 'T00:00';
+            endDateInput.value = today.toISOString().split('T')[0] + 'T23:59';
             
             this.config.startDate = startDateInput.value;
             this.config.endDate = endDateInput.value;

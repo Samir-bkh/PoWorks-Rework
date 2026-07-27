@@ -24,7 +24,10 @@ namespace PoWorks_Rework.Services
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                try { await RunImportCycleAsync(stoppingToken); }
+                try
+                {
+                    await RunImportCycleAsync(stoppingToken);
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message}", ex.Message);
@@ -38,16 +41,23 @@ namespace PoWorks_Rework.Services
             using var scope = _serviceProvider.CreateScope();
             var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
             var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
+            var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
 
             var companyIds = await GetAllCompanyIdsAsync(dbService);
 
             foreach (var companyId in companyIds)
             {
-                _logger.LogInformation("IMPORTING COMPANY: {Id}", companyId);
                 var apiSettings = await GetApiSettingsAsync(dbService, companyId);
 
                 if (apiSettings == null)
                 {
+                    continue;
+                }
+
+                var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
+                if (string.IsNullOrEmpty(testToken))
+                {
+                    _logger.LogWarning("Failed to acquire token for Company {Id}. Skipping this cycle.", companyId);
                     continue;
                 }
 
@@ -150,7 +160,7 @@ namespace PoWorks_Rework.Services
                         FROM ""TempMeterReadings""
                         ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, transaction);
 
-                    insertCmd.CommandTimeout = 300; 
+                    insertCmd.CommandTimeout = 300;
                     await insertCmd.ExecuteNonQueryAsync();
                 });
             }

@@ -1,0 +1,26 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PoWorks - Initialisation</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center vh-100">
+    <div class="card shadow p-4 w-50">
+        <h2 class="mb-4 text-center">Création du compte Administrateur</h2>
+        <form asp-action="CompleteSetup" method="post">
+            <div class="mb-3">
+                <label class="form-label">Nom d'utilisateur Admin</label>
+                <input type="text" name="adminUsername" class="form-control" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Mot de passe</label>
+                <input type="password" name="adminPassword" class="form-control" required />
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Terminer l'installation</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -327,13 +327,13 @@ function handleVarexpPrint() {
         })
         .then(data => {
             if (data.success) {
-                alert(`✅ Successfully printed ${data.count} VAREXP meters.`);
+                alert(` Successfully printed ${data.count} VAREXP meters.`);
             } else {
-                alert('❌ VAREXP Print failed: ' + (data.error || 'Unknown error'));
+                alert(' VAREXP Print failed: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(error => {
-            alert(`❌ VAREXP Print failed: ${error.message}`);
+            alert(` VAREXP Print failed: ${error.message}`);
         });
 }
 
@@ -444,13 +444,13 @@ function showVarexpImportResults(data) {
     let message = '';
 
     if (data.success) {
-        message = `✅ VAREXP Import Successful!\n\n` +
+        message = ` VAREXP Import Successful!\n\n` +
             `• Imported: ${data.importedCount}\n` +
             `• Updated: ${data.updatedCount}\n` +
             `• Skipped: ${data.skippedCount}\n` +
             `• Total processed: ${data.totalProcessed}`;
     } else {
-        message = `❌ VAREXP Import Failed:\n` +
+        message = ` VAREXP Import Failed:\n` +
             `${data.error || 'Unknown error'}\n` +
             `• Imported: ${data.importedCount || 0}\n` +
             `• Updated: ${data.updatedCount || 0}\n` +

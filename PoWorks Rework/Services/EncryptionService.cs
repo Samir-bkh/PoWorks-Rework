@@ -1,29 +1,51 @@
+using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Configuration;
 
 namespace PoWorks_Rework.Services
 {
     public class EncryptionService
     {
-        private readonly string _key = "PoWorks_SecretKey_PcVue_2026_!**";
+        private readonly byte[] _newKey;
+        private readonly string _legacyKeyText;
 
-        public string Encrypt(string clearText)
+        public EncryptionService(IConfiguration configuration)
         {
-            if (string.IsNullOrEmpty(clearText)) return clearText;
+            string configKey = configuration["EncryptionKey"] ?? "PoWorks_SuperSecret_MasterKey_2026!";
+            _legacyKeyText = "PoWorks_SecretKey_PcVue_2026_!**";
 
-            byte[] clearBytes = Encoding.UTF8.GetBytes(clearText);
-            using Aes aes = Aes.Create();
-            aes.Key = Encoding.UTF8.GetBytes(_key);
-            aes.GenerateIV(); 
+            using (var sha256 = SHA256.Create())
+            {
+                _newKey = sha256.ComputeHash(Encoding.UTF8.GetBytes(configKey));
+            }
+        }
 
-            using MemoryStream ms = new MemoryStream();
-            ms.Write(aes.IV, 0, aes.IV.Length);
+        public string Encrypt(string plainText)
+        {
+            if (string.IsNullOrEmpty(plainText)) return plainText;
 
-            using CryptoStream cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write);
-            cs.Write(clearBytes, 0, clearBytes.Length);
-            cs.FlushFinalBlock();
+            using (Aes aesAlg = Aes.Create())
+            {
+                aesAlg.Key = _newKey;
+                aesAlg.GenerateIV();
 
-            return Convert.ToBase64String(ms.ToArray());
+                ICryptoTransform encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV);
+
+                using (MemoryStream msEncrypt = new MemoryStream())
+                {
+                    msEncrypt.Write(aesAlg.IV, 0, aesAlg.IV.Length);
+
+                    using (CryptoStream csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
+                    using (StreamWriter swEncrypt = new StreamWriter(csEncrypt))
+                    {
+                        swEncrypt.Write(plainText);
+                    }
+
+                    return Convert.ToBase64String(msEncrypt.ToArray());
+                }
+            }
         }
 
         public string Decrypt(string cipherText)
@@ -32,23 +54,79 @@ namespace PoWorks_Rework.Services
 
             try
             {
-                byte[] cipherBytes = Convert.FromBase64String(cipherText);
-                using Aes aes = Aes.Create();
-                aes.Key = Encoding.UTF8.GetBytes(_key);
-                byte[] iv = new byte[aes.BlockSize / 8];
-                Array.Copy(cipherBytes, 0, iv, 0, iv.Length);
-                aes.IV = iv;
-
-                using MemoryStream ms = new MemoryStream();
-                using CryptoStream cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Write);
-                cs.Write(cipherBytes, iv.Length, cipherBytes.Length - iv.Length);
-                cs.FlushFinalBlock();
-
-                return Encoding.UTF8.GetString(ms.ToArray());
+                return DecryptWithKey(cipherText, _newKey);
             }
             catch
             {
-                return cipherText;
+                try
+                {
+                    return DecryptLegacy(cipherText, _legacyKeyText);
+                }
+                catch
+                {
+                    return cipherText;
+                }
+            }
+        }
+
+        public bool WasEncryptedWithLegacyKey(string cipherText)
+        {
+            if (string.IsNullOrEmpty(cipherText)) return false;
+            try
+            {
+                DecryptWithKey(cipherText, _newKey);
+                return false;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private string DecryptWithKey(string cipherText, byte[] key)
+        {
+            byte[] fullCipher = Convert.FromBase64String(cipherText);
+
+            using (Aes aesAlg = Aes.Create())
+            {
+                byte[] iv = new byte[16];
+                Array.Copy(fullCipher, 0, iv, 0, iv.Length);
+
+                aesAlg.Key = key;
+                aesAlg.IV = iv;
+
+                ICryptoTransform decryptor = aesAlg.CreateDecryptor(aesAlg.Key, aesAlg.IV);
+
+                using (MemoryStream msDecrypt = new MemoryStream(fullCipher, iv.Length, fullCipher.Length - iv.Length))
+                using (CryptoStream csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
+                using (StreamReader srDecrypt = new StreamReader(csDecrypt))
+                {
+                    return srDecrypt.ReadToEnd();
+                }
+            }
+        }
+
+        private string DecryptLegacy(string cipherText, string legacyKeyText)
+        {
+            byte[] fullCipher = Convert.FromBase64String(cipherText);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(legacyKeyText.PadRight(32).Substring(0, 32));
+
+            using (Aes aesAlg = Aes.Create())
+            {
+                byte[] iv = new byte[16];
+                Array.Copy(fullCipher, 0, iv, 0, iv.Length);
+
+                aesAlg.Key = keyBytes;
+                aesAlg.IV = iv;
+
+                ICryptoTransform decryptor = aesAlg.CreateDecryptor(aesAlg.Key, aesAlg.IV);
+
+                using (MemoryStream msDecrypt = new MemoryStream(fullCipher, iv.Length, fullCipher.Length - iv.Length))
+                using (CryptoStream csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
+                using (StreamReader srDecrypt = new StreamReader(csDecrypt))
+                {
+                    return srDecrypt.ReadToEnd();
+                }
             }
         }
     }
