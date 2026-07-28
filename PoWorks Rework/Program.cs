@@ -23,7 +23,6 @@ var plainPassword = tempEncryptionService.Decrypt(encryptedPassword);
 
 var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={plainPassword};Command Timeout=120;";
 
-
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
@@ -40,6 +39,8 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LogoutPath = "/Auth/Logout";
     options.AccessDeniedPath = "/Auth/AccessDenied";
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
+    options.Cookie.SecurePolicy = CookieSecurePolicy.None;
+    options.Cookie.SameSite = SameSiteMode.Lax;
 });
 
 QuestPDF.Settings.License = LicenseType.Community;
@@ -82,15 +83,43 @@ builder.Services.AddScoped<SetupCheckService>();
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminOnly", policy => policy.RequireUserName("admin"));
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireAuthenticatedUser()); 
 });
 
 builder.Services.AddScoped<CredentialMigrationService>();
 
 Console.WriteLine("3. BUILDING THE APP");
-var app = builder.Build();
-Console.WriteLine("4. BUILDING FINISHED !");
 
+var app = builder.Build();
+using (var scope = app.Services.CreateScope())
+{
+    var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Microsoft.AspNetCore.Identity.IdentityUser>>();
+
+    var adminUser = userManager.FindByNameAsync("Admin").GetAwaiter().GetResult();
+    if (adminUser == null)
+    {
+        var defaultAdmin = new Microsoft.AspNetCore.Identity.IdentityUser
+        {
+            UserName = "Admin",
+            NormalizedUserName = "ADMIN",
+            Email = "admin@poworks.local",
+            NormalizedEmail = "ADMIN@POWORKS.LOCAL",
+            EmailConfirmed = true
+        };
+
+       
+        var createResult = userManager.CreateAsync(defaultAdmin, "Admin2026!").GetAwaiter().GetResult();
+
+        if (createResult.Succeeded)
+        {
+            userManager.AddClaimAsync(defaultAdmin, new System.Security.Claims.Claim("CompanyId", "1")).GetAwaiter().GetResult();
+            userManager.AddClaimAsync(defaultAdmin, new System.Security.Claims.Claim("CompanyName", "Default Company")).GetAwaiter().GetResult();
+        }
+    }
+}
+
+Console.WriteLine("4. BUILDING FINISHED !");
 
 var mainDbService = app.Services.GetRequiredService<DatabaseService>();
 var mainEncService = app.Services.GetRequiredService<EncryptionService>();
@@ -126,36 +155,13 @@ try
     }
 
     Console.WriteLine("4c. UseHttpsRedirection");
-    app.UseHttpsRedirection();
+    //app.UseHttpsRedirection();
 
     Console.WriteLine("4d. UseStaticFiles");
     app.UseStaticFiles();
 
     Console.WriteLine("4e. UseRouting");
     app.UseRouting();
-
-    app.Use(async (context, next) =>
-    {
-        var path = context.Request.Path;
-
-    
-        if (path.StartsWithSegments("/setup") || path.StartsWithSegments("/css") || path.StartsWithSegments("/js") || path.StartsWithSegments("/lib"))
-        {
-            await next();
-            return;
-        }
-
-        var setupCheckService = context.RequestServices.GetRequiredService<SetupCheckService>();
-        bool isInstalled = await setupCheckService.IsApplicationInstalledAsync();
-
-        if (!isInstalled)
-        {
-            context.Response.Redirect("/setup");
-            return;
-        }
-
-        await next();
-    });
 
     Console.WriteLine("4f. UseAuthentication & UseAuthorization");
     app.UseAuthentication();
@@ -178,18 +184,6 @@ try
         defaults: new { controller = "WebServicesImport" });
 
     Console.WriteLine("5. READY TO START THE WEB SITE — http://localhost:5101");
-
-    using (var scope = app.Services.CreateScope())
-    {
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
-        var adminUser = userManager.FindByNameAsync("admin").Result;
-
-        if (adminUser == null)
-        {
-            var defaultAdmin = new IdentityUser { UserName = "admin" };
-            userManager.CreateAsync(defaultAdmin, "Admin2026!").Wait();
-        }
-    }
 
     app.Run();
 }

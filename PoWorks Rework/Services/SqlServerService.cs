@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using PoWorks_Rework.Models;
+using Npgsql; 
 
 namespace PoWorks_Rework.Services
 {
@@ -7,18 +8,20 @@ namespace PoWorks_Rework.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<SqlServerService> _logger;
-        private readonly EncryptionService _encryptionService; 
+        private readonly EncryptionService _encryptionService;
         private SqlServerSettings _currentSettings;
         private bool _isInitialized = false;
         private SqlServerConnectionCollection _connectionCollection;
 
-        public SqlServerService(IConfiguration configuration, ILogger<SqlServerService> logger, EncryptionService encryptionService) 
+        public SqlServerService(IConfiguration configuration, ILogger<SqlServerService> logger, EncryptionService encryptionService)
         {
             _configuration = configuration;
             _logger = logger;
-            _encryptionService = encryptionService; 
+            _encryptionService = encryptionService;
             _connectionCollection = new SqlServerConnectionCollection();
-            LoadSettingsFromConfig();
+
+       
+            LoadSettingsFromDatabase();
         }
 
         public SqlServerSettings CurrentSettings => _currentSettings;
@@ -122,6 +125,7 @@ namespace PoWorks_Rework.Services
                 _logger.LogError(ex, "Error getting available tables from SQL Server connection '{ConnectionId}'", connectionId ?? "default");
                 throw;
             }
+
             if (tables.Count == 0)
             {
                 tables.Add("HDS_RAW_DATA");
@@ -132,56 +136,57 @@ namespace PoWorks_Rework.Services
 
             return tables;
         }
-        private void LoadSettingsFromConfig()
+
+        public void LoadSettingsFromDatabase()
         {
             try
             {
                 var connections = new List<SqlServerSettings>();
-                var connectionsSection = _configuration.GetSection("SqlServerConnections");
-                if (connectionsSection.Exists() && connectionsSection.GetChildren().Any())
-                {
-                    foreach (var connectionSection in connectionsSection.GetChildren())
-                    {
-                        string encryptedPassword = connectionSection["Password"] ?? "";
-                   
-                        string decryptedPassword = _encryptionService.Decrypt(encryptedPassword);
 
-                        var connection = new SqlServerSettings
-                        {
-                            ConnectionId = connectionSection["ConnectionId"] ?? Guid.NewGuid().ToString(),
-                            ConnectionName = connectionSection["ConnectionName"] ?? "",
-                            Host = connectionSection["Host"] ?? "localhost",
-                            Port = string.IsNullOrEmpty(connectionSection["Port"]) ? "1433" : connectionSection["Port"],
-                            Database = connectionSection["Database"] ?? "",
-                            Username = connectionSection["Username"] ?? "",
-                            Password = decryptedPassword, 
-                            ProjectName = connectionSection["ProjectName"] ?? "",
-                            IsDefault = bool.Parse(connectionSection["IsDefault"] ?? "false")
-                        };
-                        connections.Add(connection);
-                    }
+                var host = _configuration["DatabaseSettings:Host"];
+                var db = _configuration["DatabaseSettings:Database"];
+
+                if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(db))
+                {
+                    _isInitialized = false;
+                    return;
                 }
-                else
+
+                var port = _configuration["DatabaseSettings:Port"] ?? "5432";
+                var user = _configuration["DatabaseSettings:Username"] ?? "postgres";
+                var pass = _encryptionService.Decrypt(_configuration["DatabaseSettings:Password"] ?? "");
+
+                var pgConnectionString = $"Host={host};Port={port};Database={db};Username={user};Password={pass};";
+
+                using (var conn = new NpgsqlConnection(pgConnectionString))
                 {
-                    string encryptedPassword = _configuration["SqlServerSettings:Password"] ?? "";
-                    string decryptedPassword = _encryptionService.Decrypt(encryptedPassword);
+                    conn.Open();
 
-                    var legacyConnection = new SqlServerSettings
+                    using (var checkCmd = new NpgsqlCommand("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'SqlServerConnections')", conn))
                     {
-                        ConnectionId = "legacy",
-                        ConnectionName = "Legacy Connection",
-                        Host = _configuration["SqlServerSettings:Host"] ?? "localhost",
-                        Port = _configuration["SqlServerSettings:Port"] ?? "1433",
-                        Database = _configuration["SqlServerSettings:Database"] ?? "",
-                        Username = _configuration["SqlServerSettings:Username"] ?? "",
-                        Password = decryptedPassword, 
-                        ProjectName = _configuration["SqlServerSettings:ProjectName"] ?? "",
-                        IsDefault = true
-                    };
-
-                    if (!string.IsNullOrEmpty(legacyConnection.Database))
-                    {
-                        connections.Add(legacyConnection);
+                        bool exists = (bool)checkCmd.ExecuteScalar();
+                        if (exists)
+                        {
+                            using (var cmd = new NpgsqlCommand("SELECT * FROM \"SqlServerConnections\" ORDER BY \"Id\"", conn))
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    connections.Add(new SqlServerSettings
+                                    {
+                                        ConnectionId = reader["ConnectionId"].ToString(),
+                                        ConnectionName = reader["ConnectionName"].ToString(),
+                                        Host = reader["Host"].ToString(),
+                                        Port = reader["Port"].ToString(),
+                                        Database = reader["Database"].ToString(),
+                                        Username = reader["Username"].ToString(),
+                                        Password = _encryptionService.Decrypt(reader["Password"].ToString()),
+                                        ProjectName = reader["ProjectName"].ToString(),
+                                        IsDefault = Convert.ToBoolean(reader["IsDefault"])
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -191,11 +196,11 @@ namespace PoWorks_Rework.Services
                     _connectionCollection.AddConnection(connection);
                 }
 
-                _isInitialized = connections.Any(c => !string.IsNullOrEmpty(c.Database));
+                _isInitialized = connections.Any();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading SQL Server settings from configuration");
+                _logger.LogWarning(ex, "PostgreSQL database might not be initialized yet. SQL Server connections skipped.");
                 _connectionCollection = new SqlServerConnectionCollection();
                 _isInitialized = false;
             }
@@ -237,6 +242,7 @@ namespace PoWorks_Rework.Services
                 _logger.LogError(ex, "Error getting available tables from SQL Server");
                 throw;
             }
+
             if (tables.Count == 0)
             {
                 tables.Add("HDS_RAW_DATA");
@@ -247,6 +253,7 @@ namespace PoWorks_Rework.Services
 
             return tables;
         }
+
         public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName, int? limit = null, string connectionId = null)
         {
             if (!IsInitialized)
@@ -289,7 +296,7 @@ namespace PoWorks_Rework.Services
 
                     using (var command = new SqlCommand(sql, connection))
                     {
-                        command.CommandTimeout = 60; 
+                        command.CommandTimeout = 60;
 
                         using (var reader = await command.ExecuteReaderAsync())
                         {
@@ -301,7 +308,7 @@ namespace PoWorks_Rework.Services
                                     meters.Add(new HDSMeterItem
                                     {
                                         HdsMeterName = meterName.Trim(),
-                                        Type = "Main", 
+                                        Type = "Main",
                                         Active = true,
                                         IsSelected = true
                                     });
@@ -345,6 +352,7 @@ namespace PoWorks_Rework.Services
 
             return meters;
         }
+
         private bool IsValidTableName(string tableName)
         {
             if (string.IsNullOrWhiteSpace(tableName))
@@ -371,6 +379,7 @@ namespace PoWorks_Rework.Services
 
             _isInitialized = connections.Any();
         }
+
         public async Task<bool> ValidateTableExists(string tableName, string connectionId = null)
         {
             if (!IsInitialized)

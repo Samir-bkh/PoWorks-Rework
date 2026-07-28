@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -16,6 +17,7 @@ namespace PoWorks_Rework.Controllers
             _signInManager = signInManager;
         }
 
+        [AllowAnonymous]
         [HttpGet]
         public IActionResult Login(string returnUrl = null)
         {
@@ -23,36 +25,60 @@ namespace PoWorks_Rework.Controllers
             return View();
         }
 
+        [AllowAnonymous]
         [HttpPost]
         public async Task<IActionResult> Login(string username, string password, bool rememberMe, string returnUrl = null)
         {
-            ViewData["ReturnUrl"] = returnUrl;
+            Console.WriteLine($"\n--- TENTATIVE DE CONNEXION ---");
+            Console.WriteLine($"User saisi : '{username}'");
+            Console.WriteLine($"Password saisi : '{password}'");
 
-            if (ModelState.IsValid)
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
-                var result = await _signInManager.PasswordSignInAsync(username, password, rememberMe, lockoutOnFailure: false);
-
-                if (result.Succeeded)
-                {
- 
-                    var user = await _userManager.FindByNameAsync(username);
-                    if (user != null)
-                    {
-                        var claims = await _userManager.GetClaimsAsync(user);
-     
-                        await _signInManager.SignInWithClaimsAsync(user, rememberMe, claims);
-                    }
-
-                    if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
-                    {
-                        return Redirect(returnUrl);
-                    }
-                    return RedirectToAction("Index", "Home");
-                }
-
-                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
+                Console.WriteLine("ERREUR : User ou Password vide !");
+                return View();
             }
 
+      
+            var userCheck = await _userManager.FindByNameAsync(username);
+            if (userCheck == null)
+            {
+                Console.WriteLine($"ERREUR : L'utilisateur '{username}' N'EXISTE PAS dans la base de données !");
+            }
+            else
+            {
+                Console.WriteLine($"SUCCÈS : Utilisateur trouvé en base (ID: {userCheck.Id})");
+            }
+
+ 
+            var result = await _signInManager.PasswordSignInAsync(username, password, rememberMe, lockoutOnFailure: false);
+
+            if (result.Succeeded)
+            {
+                var user = await _userManager.FindByNameAsync(username);
+                if (user != null)
+                {
+                    var claims = await _userManager.GetClaimsAsync(user);
+                    await _signInManager.SignInWithClaimsAsync(user, rememberMe, claims);
+                }
+                Console.WriteLine("CONNEXION RÉUSSIE ! Redirection vers Home...");
+                return RedirectToAction("Index", "Home");
+            }
+
+            if (result.IsLockedOut)
+            {
+                Console.WriteLine("ERREUR : Le compte est BLOQUÉ (Lockout) !");
+            }
+            else if (result.IsNotAllowed)
+            {
+                Console.WriteLine("ERREUR : Connexion NON AUTORISÉE (ex: Email non confirmé) !");
+            }
+            else
+            {
+                Console.WriteLine("ERREUR : Mot de passe INCORRECT ou échec de PasswordSignInAsync !");
+            }
+
+            ModelState.AddModelError(string.Empty, "Invalid login attempt.");
             return View();
         }
 
