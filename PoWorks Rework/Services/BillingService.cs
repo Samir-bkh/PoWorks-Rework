@@ -156,17 +156,18 @@ namespace PoWorks_Rework.Services
             try
             {
                 string insertBillQuery = @"
-                    INSERT INTO ""Bills"" (
-                        ""TenantID"", ""PeriodStart"", ""PeriodEnd"", 
-                        ""TotalKWh"", ""SubTotal"", ""TaxAmount"", ""GrandTotal"", ""Status""
-                    ) 
-                    VALUES (
-                        @tenantId, @start, @end, 
-                        @totalKwh, @subTotal, @tax, @grandTotal, 'Draft'
-                    ) RETURNING ""BillId"";";
+    INSERT INTO ""Bills"" (
+        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"", 
+        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"", ""GrandTotal"", ""Status""
+    ) 
+    VALUES (
+        @tenantId, @billNumber, @start, @end, 
+        @totalKwh, @subTotal, @tax, @grandTotal, @grandTotal, 'Draft'
+    ) RETURNING ""BillId"";";
 
                 using var cmdBill = new NpgsqlCommand(insertBillQuery, connection, transaction);
                 cmdBill.Parameters.AddWithValue("tenantId", bill.TenantID);
+                cmdBill.Parameters.AddWithValue("billNumber", $"BILL-{bill.TenantID}-{DateTime.Now:yyyyMMddHHmmss}");
                 cmdBill.Parameters.AddWithValue("start", bill.PeriodStart);
                 cmdBill.Parameters.AddWithValue("end", bill.PeriodEnd);
                 cmdBill.Parameters.AddWithValue("totalKwh", bill.TotalKWh);
@@ -175,14 +176,14 @@ namespace PoWorks_Rework.Services
                 cmdBill.Parameters.AddWithValue("grandTotal", bill.AmountInclTax);
                 int newBillId = Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
                 string insertLineQuery = @"
-                    INSERT INTO ""BillLineItems"" (
-                        ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"", 
-                        ""Unit"", ""UnitPrice"", ""LineTotal""
-                    ) 
-                    VALUES (
-                        @billId, @meterId, @meterName, @consumption, 
-                        @unit, @unitPrice, @lineTotal
-                    );";
+    INSERT INTO ""BillLineItems"" (
+        ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"", 
+        ""Unit"", ""UnitPrice"", ""LineTotalHT""
+    ) 
+    VALUES (
+        @billId, @meterId, @meterName, @consumption, 
+        @unit, @unitPrice, @lineTotal
+    );";
 
                 foreach (var item in bill.LineItems)
                 {

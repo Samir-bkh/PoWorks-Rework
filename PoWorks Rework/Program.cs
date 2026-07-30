@@ -115,24 +115,16 @@ using (var scope = app.Services.CreateScope())
         dbConnection.Open();
         using (var command = dbConnection.CreateCommand())
         {
-           
-            command.CommandText = "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = 'Companies');";
-            var tableExists = (bool)(command.ExecuteScalar() ?? false);
+            var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+            var sqlFilePath = Path.Combine(env.WebRootPath, "sql", "initial_schema.sql");
 
-            if (!tableExists)
+            if (File.Exists(sqlFilePath))
             {
-               
-                var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
-                var sqlFilePath = Path.Combine(env.WebRootPath, "sql", "initial_schema.sql");
+                var sqlScript = File.ReadAllText(sqlFilePath);
+                command.CommandText = sqlScript;
+                command.ExecuteNonQuery();
 
-                if (File.Exists(sqlFilePath))
-                {
-                    var sqlScript = File.ReadAllText(sqlFilePath);
-                    command.CommandText = sqlScript;
-                    command.ExecuteNonQuery(); 
-
-                    Console.WriteLine("Script initial_schema.sql exécuté avec succès !");
-                }
+                Console.WriteLine("Script initial_schema.sql exécuté avec succès !");
             }
         }
         dbConnection.Close();

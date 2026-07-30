@@ -126,13 +126,13 @@ namespace PoWorks_Rework.Controllers
                 using var connection = new NpgsqlConnection(connString);
                 connection.Open();
 
-        
+
                 string billQuery = @"
-                    SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
-                           b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
-                    FROM ""Bills"" b
-                    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
-                    WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
+    SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
+           b.""TotalKWh"", b.""MontantHT"", b.""MontantTVA"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
+    FROM ""Bills"" b
+    JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
+    WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
 
                 using var cmdBill = new NpgsqlCommand(billQuery, connection);
                 cmdBill.Parameters.AddWithValue("id", id);
@@ -161,9 +161,9 @@ namespace PoWorks_Rework.Controllers
                 reader.Close();
 
                 string lineQuery = @"
-                    SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
-                    FROM ""BillLineItems""
-                    WHERE ""BillId"" = @id";
+    SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotalHT""
+    FROM ""BillLineItems""
+    WHERE ""BillId"" = @id";
 
                 using var cmdLine = new NpgsqlCommand(lineQuery, connection);
                 cmdLine.Parameters.AddWithValue("id", id);
@@ -472,7 +472,7 @@ namespace PoWorks_Rework.Controllers
 
                 string billQuery = @"
                     SELECT b.""BillId"", t.""DisplayName"", b.""PeriodStart"", b.""PeriodEnd"", 
-                           b.""TotalKWh"", b.""SubTotal"", b.""TaxAmount"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
+                           b.""TotalKWh"", b.""MontantHT"", b.""MontantTVA"", b.""GrandTotal"", b.""Status"", b.""GeneratedAt""
                     FROM ""Bills"" b
                     JOIN ""Tenants"" t ON b.""TenantID"" = t.""TenantID""
                     WHERE b.""BillId"" = @id AND t.""CompanyId"" = @companyId";
@@ -505,7 +505,7 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 string lineQuery = @"
-                    SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotal""
+                    SELECT ""MeterName"", ""Consumption"", ""Unit"", ""UnitPrice"", ""LineTotalHT""
                     FROM ""BillLineItems""
                     WHERE ""BillId"" = @id";
 

@@ -701,10 +701,14 @@ function collectSelectedWebServiceVariables() {
  * Stores Web Service connection info globally.
  */
 function storeWebServiceConnectionInfo(connectionInfo) {
+    if (!connectionInfo || !connectionInfo.connectionId) {
+        console.warn('Ignored empty/invalid connectionInfo, keeping previous value:', window.webServiceConnectionInfo);
+        return;
+    }
+
     window.webServiceConnectionInfo = connectionInfo;
     console.log('Stored connection info:', connectionInfo);
 
-    // Also store in sessionStorage as backup
     try {
         sessionStorage.setItem('webServiceConnectionInfo', JSON.stringify(connectionInfo));
     } catch (e) {
