@@ -145,22 +145,17 @@ namespace PoWorks_Rework.Controllers
                     using var transaction = await connection.BeginTransactionAsync();
                     try
                     {
+                      
                         string sql = @"
-    UPDATE ""Meters""
-    SET ""Name"" = @Name,
-        ""Label"" = @Label,
-        ""Unit"" = @Unit,
-        ""ParentId"" = @ParentId,
-        ""LastReading"" = @LastReading,
-        ""Type"" = @Type,
-        ""Active"" = @Active,
-        ""TenantID"" = @TenantId
-    WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId"; 
+    INSERT INTO ""Meters"" (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
+    VALUES (@Name, @Label, @Unit, @ParentId, @LastReading, @Type, @Active, @TenantId, @CompanyId)
+    RETURNING ""MeterId"";";
 
                         using var cmd = new NpgsqlCommand(sql, connection, transaction);
                         cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
 
                         cmd.Parameters.AddWithValue("@Name", meter.Name);
+                        cmd.Parameters.AddWithValue("@Label", meter.Label ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
                         int? parentId = null;
                         if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
@@ -230,15 +225,17 @@ namespace PoWorks_Rework.Controllers
                 {
                     await connection.OpenAsync();
                     string sql = @"
-                SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
-                       m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
-                FROM ""Meters"" m
-                LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
-                LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                ORDER BY m.""Name""
-                LIMIT 10";
+SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
+       m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
+FROM ""Meters"" m
+LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
+LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+WHERE m.""CompanyId"" = @CompanyId
+ORDER BY m.""Name""
+LIMIT 10";
 
                     using var cmd = new NpgsqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                     using var reader = await cmd.ExecuteReaderAsync();
 
                     while (await reader.ReadAsync())
@@ -261,7 +258,8 @@ namespace PoWorks_Rework.Controllers
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
-                    using var cmd = new NpgsqlCommand("SELECT COUNT(*) FROM \"Meters\"", connection);
+                    using var cmd = new NpgsqlCommand("SELECT COUNT(*) FROM \"Meters\" WHERE \"CompanyId\" = @CompanyId", connection);
+                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                     viewModel.TotalItems = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                     viewModel.TotalPages = (viewModel.TotalItems + 9) / 10;
                 }
@@ -526,26 +524,29 @@ ORDER BY td.""CompanyName""";
                 await connection.OpenAsync();
                 using var tx = await connection.BeginTransactionAsync();
 
-               
-                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" = ANY(@MeterIds)";
+                // 1. Supprimer les relevés associés (en s'assurant qu'ils appartiennent à la bonne entreprise)
+                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId)";
                 using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, tx);
                 cmdReadings.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                 await cmdReadings.ExecuteNonQueryAsync();
 
-      
-                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds)";
+                // 2. Supprimer les compteurs (sécurisé avec CompanyId)
+                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
                 using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, tx);
                 cmdMeters.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                cmdMeters.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                 int rows = await cmdMeters.ExecuteNonQueryAsync();
 
                 await tx.CommitAsync();
-                return Json(new { success = true, message = $"{rows} ghost meters successfully deleted." });
+                return Json(new { success = true, message = $"{rows} meters successfully deleted." });
             }
             catch (Exception ex)
             {
                 return Json(new { success = false, message = ex.Message });
             }
         }
+
         [HttpPost]
         public async Task<IActionResult> CleanGhostMeters()
         {
@@ -557,14 +558,16 @@ ORDER BY td.""CompanyName""";
                 await connection.OpenAsync();
                 using var transaction = await connection.BeginTransactionAsync();
 
-                
-                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%')";
+                // 1. Supprimer les relevés des compteurs fantômes (sécurisé avec CompanyId)
+                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%' AND ""CompanyId"" = @CompanyId)";
                 using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, transaction);
+                cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                 await cmdReadings.ExecuteNonQueryAsync();
 
-             
-                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%'";
+                // 2. Supprimer les compteurs fantômes (sécurisé avec CompanyId)
+                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%' AND ""CompanyId"" = @CompanyId";
                 using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, transaction);
+                cmdMeters.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                 int deletedCount = await cmdMeters.ExecuteNonQueryAsync();
 
                 await transaction.CommitAsync();
