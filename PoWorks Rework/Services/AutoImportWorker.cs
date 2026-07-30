@@ -30,7 +30,7 @@ namespace PoWorks_Rework.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message}", ex.Message);
+                    _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message} | StackTrace: {Stack}", ex.Message, ex.StackTrace);
                 }
                 await Task.Delay(TimeSpan.FromMinutes(_cycleDelayMinutes), stoppingToken);
             }
@@ -38,131 +38,120 @@ namespace PoWorks_Rework.Services
 
         private async Task RunImportCycleAsync(CancellationToken stoppingToken)
         {
-            using var scope = _serviceProvider.CreateScope();
-            var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-            var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
-            var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
 
-            var companyIds = await GetAllCompanyIdsAsync(dbService);
-
-            foreach (var companyId in companyIds)
+            if (!await ImportLock.Gate.WaitAsync(0, stoppingToken))
             {
-                var apiSettings = await GetApiSettingsAsync(dbService, companyId);
+                _logger.LogInformation("Manual import or another process is running, skipping this auto-import cycle.");
+                return;
+            }
 
-                if (apiSettings == null)
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+                var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
+                var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
+
+                var companyIds = await GetAllCompanyIdsAsync(dbService);
+
+                foreach (var companyId in companyIds)
                 {
-                    continue;
-                }
+                    var apiSettings = await GetApiSettingsAsync(dbService, companyId);
+                    if (apiSettings == null) continue;
 
-                var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
-                if (string.IsNullOrEmpty(testToken))
-                {
-                    _logger.LogWarning("Failed to acquire token for Company {Id}. Skipping this cycle.", companyId);
-                    continue;
-                }
-
-                await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
-                {
-                    var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
-
-                    if (!metersToImport.Any())
+                    var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
+                    if (string.IsNullOrEmpty(testToken))
                     {
-                        return;
+                        _logger.LogWarning("Failed to acquire token for Company {Id}. Skipping this cycle.", companyId);
+                        continue;
                     }
 
-                    var lastTimestamps = await GetLastTimestampsAsync(connection, transaction);
-                    DateTime endTime = DateTime.Now;
-
-                    var meterGroups = metersToImport
-                        .GroupBy(m => lastTimestamps.ContainsKey(m.MeterId) ? lastTimestamps[m.MeterId] : endTime.AddDays(-7))
-                        .ToList();
-
-                    var allTrendResults = new List<VariableTrendResult>();
-
-                    foreach (var group in meterGroups)
+                    await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                     {
-                        var groupStartTime = group.Key;
+                        var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
 
-                        if (groupStartTime >= endTime)
+                        if (!metersToImport.Any()) return;
+
+                        var lastTimestamps = await GetLastTimestampsAsync(connection, transaction);
+                        DateTime endTime = DateTime.Now;
+
+                        
+                        var meterGroups = metersToImport
+                            .GroupBy(m => lastTimestamps.ContainsKey(m.MeterId) ? lastTimestamps[m.MeterId] : endTime.AddHours(-1))
+                            .ToList();
+
+                        var allTrendResults = new List<VariableTrendResult>();
+
+                        foreach (var group in meterGroups)
                         {
-                            continue;
+                            var groupStartTime = group.Key;
+                            if (groupStartTime >= endTime) continue;
+
+                            var variableNames = group.Select(m => m.OriginalVariableName).ToList();
+
+                            var groupResults = await trendsService.ProcessVariablesTrendsAsync(
+                                variableNames,
+                                groupStartTime.ToUniversalTime(),
+                                endTime.ToUniversalTime(),
+                                apiSettings);
+
+                            allTrendResults.AddRange(groupResults);
                         }
 
-                        var variableNames = group.Select(m => m.OriginalVariableName).ToList();
+                        if (!allTrendResults.Any(r => r.Success && r.TrendData != null && r.TrendData.Any())) return;
 
-                        var groupResults = await trendsService.ProcessVariablesTrendsAsync(
-                            variableNames,
-                            groupStartTime.ToUniversalTime(),
-                            endTime.ToUniversalTime(),
-                            apiSettings);
+                        using var tempTableCmd = new NpgsqlCommand(@"
+                            CREATE TEMP TABLE ""TempMeterReadings"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
+                            ALTER TABLE ""TempMeterReadings"" DROP COLUMN ""ReadingId"";
+                        ", connection, transaction);
 
-                        allTrendResults.AddRange(groupResults);
-                    }
+                        await tempTableCmd.ExecuteNonQueryAsync();
 
-                    if (!allTrendResults.Any(r => r.Success && r.TrendData != null && r.TrendData.Any()))
-                    {
-                        return;
-                    }
-
-                    using var tempTableCmd = new NpgsqlCommand(@"
-                        CREATE TEMP TABLE ""TempMeterReadings"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
-                        ALTER TABLE ""TempMeterReadings"" DROP COLUMN ""ReadingId"";
-                    ", connection, transaction);
-
-                    await tempTableCmd.ExecuteNonQueryAsync();
-
-                    using (var writer = await connection.BeginBinaryImportAsync(@"COPY ""TempMeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") FROM STDIN (FORMAT BINARY)", stoppingToken))
-                    {
-                        foreach (var result in allTrendResults)
+                        using (var writer = await connection.BeginBinaryImportAsync(@"COPY ""TempMeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") FROM STDIN (FORMAT BINARY)", stoppingToken))
                         {
-                            if (!result.Success || result.TrendData == null)
+                            foreach (var result in allTrendResults)
                             {
-                                continue;
-                            }
+                                if (!result.Success || result.TrendData == null) continue;
 
-                            var meter = metersToImport.FirstOrDefault(m => m.OriginalVariableName == result.VariableName);
+                                var meter = metersToImport.FirstOrDefault(m => m.OriginalVariableName == result.VariableName);
+                                if (meter == null) continue;
 
-                            if (meter == null)
-                            {
-                                continue;
-                            }
+                                var meterStartTime = lastTimestamps.ContainsKey(meter.MeterId) ? lastTimestamps[meter.MeterId] : endTime.AddHours(-1);
 
-                            var meterStartTime = lastTimestamps.ContainsKey(meter.MeterId) ? lastTimestamps[meter.MeterId] : endTime.AddDays(-7);
-
-                            foreach (var point in result.TrendData)
-                            {
-                                if (point.Quality?.ToLower() != "good" || !point.TimestampParsed.HasValue)
+                                foreach (var point in result.TrendData)
                                 {
-                                    continue;
+                                    if (point.Quality?.ToLower() != "good" || !point.TimestampParsed.HasValue) continue;
+
+                                    DateTime localTime = point.TimestampParsed.Value.ToLocalTime();
+                                    if (localTime <= meterStartTime) continue;
+
+                                    await writer.StartRowAsync(stoppingToken);
+                                    await writer.WriteAsync(meter.MeterId, NpgsqlDbType.Integer, stoppingToken);
+                                    await writer.WriteAsync(localTime, NpgsqlDbType.Timestamp, stoppingToken);
+                                    await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric, stoppingToken);
+                                    await writer.WriteAsync(192, NpgsqlDbType.Integer, stoppingToken);
+                                    await writer.WriteAsync(companyId, NpgsqlDbType.Integer, stoppingToken);
                                 }
-
-                                DateTime localTime = point.TimestampParsed.Value.ToLocalTime();
-
-                                if (localTime <= meterStartTime)
-                                {
-                                    continue;
-                                }
-
-                                await writer.StartRowAsync(stoppingToken);
-                                await writer.WriteAsync(meter.MeterId, NpgsqlDbType.Integer, stoppingToken);
-                                await writer.WriteAsync(localTime, NpgsqlDbType.Timestamp, stoppingToken);
-                                await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric, stoppingToken);
-                                await writer.WriteAsync(192, NpgsqlDbType.Integer, stoppingToken);
-                                await writer.WriteAsync(companyId, NpgsqlDbType.Integer, stoppingToken);
                             }
+                            await writer.CompleteAsync(stoppingToken);
                         }
-                        await writer.CompleteAsync(stoppingToken);
-                    }
 
-                    var insertCmd = new NpgsqlCommand(@"
-                        INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
-                        SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId""
-                        FROM ""TempMeterReadings""
-                        ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, transaction);
+                        var insertCmd = new NpgsqlCommand(@"
+                            INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                            SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", @companyId
+                            FROM ""TempMeterReadings""
+                            ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, transaction);
 
-                    insertCmd.CommandTimeout = 300;
-                    await insertCmd.ExecuteNonQueryAsync();
-                });
+                        insertCmd.Parameters.AddWithValue("companyId", companyId);
+                        insertCmd.CommandTimeout = 300;
+                        await insertCmd.ExecuteNonQueryAsync();
+                    });
+                }
+            }
+            finally
+            {
+               
+                ImportLock.Gate.Release();
             }
         }
 
@@ -181,9 +170,7 @@ namespace PoWorks_Rework.Services
                     ids.Add(reader.GetInt32(0));
                 }
             }
-            catch
-            {
-            }
+            catch { }
             return ids;
         }
 

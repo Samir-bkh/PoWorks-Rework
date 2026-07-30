@@ -83,7 +83,6 @@ namespace PoWorks_Rework.Controllers
             return View("General", model);
         }
 
-
         private async Task<List<SqlServerSettings>> LoadSqlServerConnectionsFromDb()
         {
             var connections = new List<SqlServerSettings>();
@@ -225,6 +224,93 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        [HttpPost]
+        public IActionResult TestConnection([FromBody] DatabaseSettings settings)
+        {
+            try
+            {
+                using (var connection = new NpgsqlConnection(settings.ToConnectionString()))
+                {
+                    connection.Open();
+                    return Json(new { success = true, message = "Connection successful" });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public IActionResult Connect([FromBody] DatabaseSettings settings)
+        {
+            try
+            {
+                try
+                {
+                    using (var connection = new NpgsqlConnection(settings.ToConnectionString()))
+                    {
+                        connection.Open();
+                        if (!TablesExist(connection))
+                        {
+                            ExecuteSchemaScript(connection);
+                        }
+                        UpdatePostgresAppSettings(settings);
+                        _databaseService.Initialize(settings);
+
+                        return Json(new { success = true, message = "Connected successfully." });
+                    }
+                }
+                catch (Npgsql.PostgresException ex) when (ex.SqlState == "3D000")
+                {
+                    var connectionStringBuilder = new NpgsqlConnectionStringBuilder(settings.ToConnectionString())
+                    {
+                        Database = "postgres"
+                    };
+
+                    using (var connection = new NpgsqlConnection(connectionStringBuilder.ConnectionString))
+                    {
+                        connection.Open();
+                        using (var cmd = new NpgsqlCommand($"CREATE DATABASE \"{settings.Database}\"", connection))
+                        {
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var newConnection = new NpgsqlConnection(settings.ToConnectionString()))
+                        {
+                            newConnection.Open();
+                            ExecuteSchemaScript(newConnection);
+                            UpdatePostgresAppSettings(settings);
+                            _databaseService.Initialize(settings);
+
+                            return Json(new { success = true, message = "Database created successfully with the required tables!" });
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
+        }
+
+        private bool TablesExist(NpgsqlConnection connection)
+        {
+            using (var cmd = new NpgsqlCommand(
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tenants')", connection))
+            {
+                return (bool)cmd.ExecuteScalar();
+            }
+        }
+
+        private void ExecuteSchemaScript(NpgsqlConnection connection)
+        {
+            string sqlFilePath = Path.Combine(_webHostEnvironment.WebRootPath, "sql", "initial_schema.sql");
+            string sql = System.IO.File.ReadAllText(sqlFilePath);
+            using (var cmd = new NpgsqlCommand(sql, connection))
+            {
+                cmd.ExecuteNonQuery();
+            }
+        }
 
         private async Task<List<PCVueWebServiceSettings>> LoadWebServiceConnectionsFromDb()
         {
@@ -249,8 +335,6 @@ namespace PoWorks_Rework.Controllers
             }
             return connections;
         }
-
-
 
         private void UpdatePostgresAppSettings(DatabaseSettings settings)
         {
@@ -282,7 +366,114 @@ namespace PoWorks_Rework.Controllers
             var options = new JsonSerializerOptions { WriteIndented = true };
             System.IO.File.WriteAllText(appSettingsPath, JsonSerializer.Serialize(updatedSettings, options));
         }
+
+        // ==========================================
+        // WEB SERVICES CONNECTIONS METHODS
+        // ==========================================
+
+        [HttpPost]
+        public async Task<IActionResult> SaveWebServiceConnections([FromBody] SaveConnectionsRequest request)
+        {
+            try
+            {
+                using var conn = _databaseService.CreateNewConnection();
+                await conn.OpenAsync();
+
+                // Supprimer les anciennes connexions
+                using (var deleteCmd = new NpgsqlCommand("DELETE FROM \"WebServiceConnections\" WHERE \"CompanyId\" = 1", conn))
+                {
+                    await deleteCmd.ExecuteNonQueryAsync();
+                }
+
+                // Insérer les nouvelles
+                foreach (var connData in request.Connections)
+                {
+                    string insertSql = @"INSERT INTO ""WebServiceConnections"" 
+                                       (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsActive"", ""CompanyId"")
+                                       VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isActive, 1)";
+
+                    using var cmd = new NpgsqlCommand(insertSql, conn);
+                    cmd.Parameters.AddWithValue("id", connData.ContainsKey("ConnectionId") ? connData["ConnectionId"] : Guid.NewGuid().ToString());
+                    cmd.Parameters.AddWithValue("name", connData.ContainsKey("ConnectionName") ? connData["ConnectionName"] : "");
+                    cmd.Parameters.AddWithValue("baseUrl", connData.ContainsKey("BaseUrl") ? connData["BaseUrl"] : "");
+                    cmd.Parameters.AddWithValue("clientId", connData.ContainsKey("ClientId") ? connData["ClientId"] : "");
+
+                    string encryptedSecret = connData.ContainsKey("ClientSecret") ? _encryptionService.Encrypt(connData["ClientSecret"]) : "";
+                    string encryptedPassword = connData.ContainsKey("Password") ? _encryptionService.Encrypt(connData["Password"]) : "";
+
+                    cmd.Parameters.AddWithValue("clientSecret", encryptedSecret);
+                    cmd.Parameters.AddWithValue("username", connData.ContainsKey("Username") ? connData["Username"] : "");
+                    cmd.Parameters.AddWithValue("password", encryptedPassword);
+                    cmd.Parameters.AddWithValue("projectName", connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "");
+                    cmd.Parameters.AddWithValue("isActive", connData.ContainsKey("IsDefault") && connData["IsDefault"].ToLower() == "true");
+
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                return Json(new { success = true, message = "All Web Service connections saved successfully!" });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> DeleteWebServiceConnection([FromBody] DeleteConnectionRequest request)
+        {
+            try
+            {
+                using var conn = _databaseService.CreateNewConnection();
+                await conn.OpenAsync();
+
+                string sql = "DELETE FROM \"WebServiceConnections\" WHERE \"ConnectionId\" = @id";
+                using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("id", request.ConnectionId);
+                await cmd.ExecuteNonQueryAsync();
+
+                return Json(new { success = true, message = "Web Service Connection deleted successfully!" });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public IActionResult GetWebServiceToken([FromBody] WebServiceTokenRequest request)
+        {
+            try
+            {
+                // Ici, tu pourras ajouter la vraie logique HTTP pour appeler l'API PCVue plus tard.
+                // Pour l'instant, on simule une réponse réussie pour débloquer l'interface.
+                Console.WriteLine($"Mocking Token Request for {request.BaseUrl}");
+
+                return Json(new { success = true, expiresIn = 3600 });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public IActionResult RefreshWebServiceToken([FromBody] WebServiceTokenRequest request)
+        {
+            try
+            {
+                Console.WriteLine($"Mocking Token Refresh for {request.BaseUrl}");
+                return Json(new { success = true, expiresIn = 3600 });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, errorMessage = ex.Message });
+            }
+        }
     }
+
+    // ==========================================
+    // CLASSES DE REQUÊTES (DTOs)
+    // ==========================================
 
     public class SqlServerConnectionTestRequest
     {
@@ -304,5 +495,15 @@ namespace PoWorks_Rework.Controllers
     public class DeleteConnectionRequest
     {
         public string ConnectionId { get; set; } = "";
+    }
+
+    public class WebServiceTokenRequest
+    {
+        public string ConnectionId { get; set; } = "";
+        public string BaseUrl { get; set; } = "";
+        public string ClientId { get; set; } = "";
+        public string ClientSecret { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
     }
 }

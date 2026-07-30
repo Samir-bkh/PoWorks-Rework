@@ -96,16 +96,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Make table rows in search results clickable
+  
     const searchResultRows = document.querySelectorAll('table tbody tr');
     searchResultRows.forEach(row => {
-        const rowId = row.querySelector('td:first-child');
-        if (rowId) {
+     
+        const selectButton = row.querySelector('a.btn-primary');
+        if (selectButton) {
             row.style.cursor = 'pointer';
-            row.addEventListener('click', function () {
-                window.location.href = `/Tenant/Management/${rowId.textContent}`;
+            row.addEventListener('click', function (e) {
+          
+                if(e.target === selectButton) return; 
+                window.location.href = selectButton.getAttribute('href');
             });
         }
+    });
     });
 
     // Display any server messages

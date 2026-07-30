@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
+using NpgsqlTypes;
 using PoWorks_Rework.Models;
-using PoWorks_Rework.Services;
 using PoWorks_Rework.Repositories;
+using PoWorks_Rework.Services;
 using System.Text.Json;
-using System.Security.Authentication;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -20,6 +19,10 @@ namespace PoWorks_Rework.Controllers
         private readonly MeterRepository _meterRepository;
         private readonly PCVueWebService _pcvueWebService;
         private readonly ICompanyContext _companyContext;
+        private readonly EncryptionService _encryptionService;
+
+        // 🟢 NOUVEAU : L'usine pour créer des services en arrière-plan sans qu'ils soient détruits
+        private readonly IServiceScopeFactory _scopeFactory;
 
         public WebServicesImportController(
             ILogger<WebServicesImportController> logger,
@@ -28,7 +31,9 @@ namespace PoWorks_Rework.Controllers
             TrendsService trendsService,
             MeterRepository meterRepository,
             PCVueWebService pcvueWebService,
-            ICompanyContext companyContext) 
+            ICompanyContext companyContext,
+            EncryptionService encryptionService,
+            IServiceScopeFactory scopeFactory) // 🟢 Injection ici
         {
             _logger = logger;
             _databaseService = databaseService;
@@ -36,51 +41,24 @@ namespace PoWorks_Rework.Controllers
             _trendsService = trendsService;
             _meterRepository = meterRepository;
             _pcvueWebService = pcvueWebService;
-            _companyContext = companyContext; 
+            _companyContext = companyContext;
+            _encryptionService = encryptionService;
+            _scopeFactory = scopeFactory;
         }
 
         #endregion
 
-        #region WebServices Functions (Moved from ImportController)
+        #region WebServices Functions
 
         [HttpPost]
         public IActionResult PrintWebServiceMeters([FromBody] PrintWebServiceMetersRequest request)
         {
             try
             {
-                Console.WriteLine("\n=====================================================");
-                Console.WriteLine("WEB SERVICE VARIABLES PRINT FUNCTION");
-                Console.WriteLine("=====================================================");
-                Console.WriteLine($"Connection ID: {request?.ConnectionId ?? "Not provided"}");
-                Console.WriteLine($"Connection Name: {request?.ConnectionName ?? "Not provided"}");
-                Console.WriteLine($"Selected variables count: {request?.SelectedVariables?.Count ?? 0}");
-                Console.WriteLine($"Print timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                if (!string.IsNullOrEmpty(request?.StartDate))
-                {
-                    Console.WriteLine($"Trends Start Date: {request.StartDate}");
-                }
-                if (!string.IsNullOrEmpty(request?.EndDate))
-                {
-                    Console.WriteLine($"Trends End Date: {request.EndDate}");
-                }
-                if (!string.IsNullOrEmpty(request?.StartDate) && !string.IsNullOrEmpty(request?.EndDate))
-                {
-                    if (DateTime.TryParse(request.StartDate, out var start) && DateTime.TryParse(request.EndDate, out var end))
-                    {
-                        var duration = end - start;
-                        Console.WriteLine($"Trends Duration: {duration.TotalDays:F1} days ({duration.TotalHours:F1} hours)");
-                    }
-                }
-
-                if (request?.SelectedVariables != null && request.SelectedVariables.Count > 0)
-                {
-                }
-
                 return Json(new { success = true, count = request?.SelectedVariables?.Count ?? 0 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error in PrintWebServiceMeters: {ex.Message}");
                 return Json(new { success = false, error = ex.Message });
             }
         }
@@ -90,10 +68,6 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                Console.WriteLine("\n=====================================================");
-                Console.WriteLine("WEB SERVICE VARIABLES IMPORT WITH TRENDS");
-                Console.WriteLine("=====================================================");
-
                 if (request?.Variables == null || request.Variables.Count == 0)
                     return Json(new { success = false, error = "No variables provided for import" });
 
@@ -115,16 +89,13 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 int importedCount = 0, updatedCount = 0, skippedCount = 0, errorCount = 0;
-                int trendsSuccessCount = 0, trendsFailedCount = 0;
-                var errorVariables = new List<string>();
-                var detailedErrors = new Dictionary<string, string>();
                 var meterIdsMap = new Dictionary<string, int>();
 
+                // 1. IMPORTATION DES NOMS DES COMPTEURS (Rapide, bloque l'UI max 1 seconde)
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
                     using var transaction = await connection.BeginTransactionAsync();
-
                     try
                     {
                         foreach (var variable in request.Variables)
@@ -165,12 +136,9 @@ namespace PoWorks_Rework.Controllers
                                     importedCount++;
                                 }
                             }
-                            catch (Exception ex)
+                            catch (Exception)
                             {
-                                Console.WriteLine($"SQL ERROR for {variable.VariableName}: {ex.Message}");
                                 errorCount++;
-                                errorVariables.Add(variable.VariableName);
-                                detailedErrors[variable.VariableName] = ex.Message;
                             }
                         }
                         await transaction.CommitAsync();
@@ -178,62 +146,100 @@ namespace PoWorks_Rework.Controllers
                     catch (Exception) { await transaction.RollbackAsync(); throw; }
                 }
 
+                // 2. LANCEMENT DE L'HISTORIQUE EN ARRIÈRE-PLAN (Fire-and-Forget)
                 if (processTrends && meterIdsMap.Any())
                 {
-                    var variableNamesList = meterIdsMap.Keys.ToList();
-                    var trendsResults = await _trendsService.ProcessVariablesTrendsAsync(variableNamesList, request.TrendsStartDate.Value, request.TrendsEndDate.Value, trendsSettings);
+                    // On copie les variables pour le Thread en arrière-plan
+                    var bgVariableNamesList = meterIdsMap.Keys.ToList();
+                    var bgStartDate = request.TrendsStartDate.Value;
+                    var bgEndDate = request.TrendsEndDate.Value;
+                    var bgSettings = trendsSettings;
+                    var bgMeterIdsMap = new Dictionary<string, int>(meterIdsMap);
+                    var bgCompanyId = companyId;
 
-                    using (var conn = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                    // 🚀 Lancement de la tâche magique qui tourne toute seule
+                    _ = Task.Run(async () =>
                     {
-                        await conn.OpenAsync();
+                        // On crée un "Scope" protégé qui ne sera pas détruit par la page Web
+                        using var scope = _scopeFactory.CreateScope();
+                        var bgTrendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
+                        var bgDbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+                        var bgLogger = scope.ServiceProvider.GetRequiredService<ILogger<WebServicesImportController>>();
 
-                        foreach (var res in trendsResults)
+                        await ImportLock.Gate.WaitAsync(); // Protège la base de données
+                        try
                         {
-                            if (res.Success && res.TrendData != null && res.TrendData.Any())
+                            bgLogger.LogInformation("Background Trends Import Started for {Count} variables...", bgVariableNamesList.Count);
+
+                            // L'appel qui prend 5 minutes se fait ici, en silence !
+                            var trendsResults = await bgTrendsService.ProcessVariablesTrendsAsync(bgVariableNamesList, bgStartDate, bgEndDate, bgSettings);
+
+                            using var conn = new NpgsqlConnection(bgDbService.GetConnectionString());
+                            await conn.OpenAsync();
+                            using var tx = await conn.BeginTransactionAsync();
+
+                            try
                             {
-                                trendsSuccessCount++;
-                                int currentMeterId = meterIdsMap[res.VariableName];
-
-                                using var tx = await conn.BeginTransactionAsync();
-                                try
+                                using (var tempTableCmd = new NpgsqlCommand(@"
+                                    CREATE TEMP TABLE ""TempMeterReadingsManual"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
+                                    ALTER TABLE ""TempMeterReadingsManual"" DROP COLUMN ""ReadingId"";
+                                ", conn, tx))
                                 {
-                                    int pointsInserted = 0;
-                                    foreach (var point in res.TrendData)
+                                    await tempTableCmd.ExecuteNonQueryAsync();
+                                }
+
+                                using (var writer = await conn.BeginBinaryImportAsync(@"COPY ""TempMeterReadingsManual"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") FROM STDIN (FORMAT BINARY)"))
+                                {
+                                    foreach (var res in trendsResults)
                                     {
-                                        if (point.TimestampParsed.HasValue)
+                                        if (!res.Success || res.TrendData == null || !res.TrendData.Any()) continue;
+                                        int currentMeterId = bgMeterIdsMap[res.VariableName];
+
+                                        foreach (var point in res.TrendData)
                                         {
-                                            var insertCmd = new NpgsqlCommand(@"
-                                        INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
-                                        VALUES (@meterId, @timestamp, @value, @quality, @companyId)
-                                        ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx);
-
-                                            insertCmd.Parameters.AddWithValue("@meterId", currentMeterId);
-                                            insertCmd.Parameters.AddWithValue("@timestamp", point.TimestampParsed.Value);
-                                            insertCmd.Parameters.AddWithValue("@value", point.Value);
-                                            int qualityValue = point.IsGoodQuality ? 192 : 0;
-                                            insertCmd.Parameters.AddWithValue("@quality", qualityValue);
-                                            insertCmd.Parameters.AddWithValue("@companyId", companyId);
-
-                                            await insertCmd.ExecuteNonQueryAsync();
-                                            pointsInserted++;
+                                            if (!point.TimestampParsed.HasValue) continue;
+                                            await writer.StartRowAsync();
+                                            await writer.WriteAsync(currentMeterId, NpgsqlDbType.Integer);
+                                            await writer.WriteAsync(point.TimestampParsed.Value, NpgsqlDbType.Timestamp);
+                                            await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric);
+                                            await writer.WriteAsync(point.IsGoodQuality ? 192 : 0, NpgsqlDbType.Integer);
+                                            await writer.WriteAsync(bgCompanyId, NpgsqlDbType.Integer);
                                         }
                                     }
-                                    await tx.CommitAsync();
-                                    Console.WriteLine($"SUCCESS: {pointsInserted} points inserted for {res.VariableName}");
+                                    await writer.CompleteAsync();
                                 }
-                                catch (Exception ex)
+
+                                using (var insertCmd = new NpgsqlCommand(@"
+                                    INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                                    SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId""
+                                    FROM ""TempMeterReadingsManual""
+                                    ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx))
                                 {
-                                    await tx.RollbackAsync();
-                                    Console.WriteLine($"ERROR inserting trends for {res.VariableName}: {ex.Message}");
+                                    insertCmd.CommandTimeout = 300;
+                                    await insertCmd.ExecuteNonQueryAsync();
                                 }
+
+                                await tx.CommitAsync();
+                                bgLogger.LogInformation("SUCCESS: Background Trends bulk insert completed!");
                             }
-                            else
+                            catch (Exception ex)
                             {
-                                trendsFailedCount++;
+                                await tx.RollbackAsync();
+                                bgLogger.LogError(ex, "ERROR during background bulk insert");
                             }
                         }
-                    }
+                        catch (Exception ex)
+                        {
+                            bgLogger.LogError(ex, "Fatal error in background task");
+                        }
+                        finally
+                        {
+                            ImportLock.Gate.Release();
+                        }
+                    });
                 }
+
+                // 3. RÉPONSE INSTANTANÉE À L'INTERFACE WEB
                 return Json(new
                 {
                     success = true,
@@ -241,10 +247,7 @@ namespace PoWorks_Rework.Controllers
                     updatedCount,
                     skippedCount,
                     errorCount,
-                    trendsSuccessCount,
-                    trendsFailedCount,
-                    errorVariables,
-                    detailedErrors
+                    message = processTrends ? "Les compteurs ont été importés. L'historique (Trends) est en cours de téléchargement en arrière-plan !" : "Importation terminée sans historique."
                 });
             }
             catch (Exception ex)
@@ -258,18 +261,13 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                _logger.LogInformation("Getting Web Service connections from Database...");
                 int companyId = _companyContext.CurrentCompanyId;
-
                 var connections = await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
                     var list = new List<dynamic>();
-                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault""
-                                   FROM ""WebServiceConnections""";
-
+                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault"" FROM ""WebServiceConnections""";
                     using var cmd = new NpgsqlCommand(sql, conn, tr);
                     using var reader = await cmd.ExecuteReaderAsync();
-
                     while (await reader.ReadAsync())
                     {
                         list.Add(new
@@ -283,13 +281,10 @@ namespace PoWorks_Rework.Controllers
                     }
                     return list;
                 });
-
-                _logger.LogInformation($"Found {connections.Count} Web Service connections for Company {companyId}");
                 return Json(new { success = true, connections = connections });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting Web Service connections");
                 return Json(new { success = false, error = ex.Message });
             }
         }
@@ -299,69 +294,17 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                Console.WriteLine("\n=====================================================");
-                Console.WriteLine("PCVue VARIABLES BROWSE");
-                Console.WriteLine("=====================================================");
-                Console.WriteLine($"Connection ID: {request.ConnectionId}");
-                Console.WriteLine($"Max Variables: {request.MaxVariables}");
-                Console.WriteLine($"Branch Filter: {request.BranchFilter ?? "None"}");
-                Console.WriteLine($"Variable Type: {request.VariableType}");
-                Console.WriteLine($"Depth: {request.Depth}");
-                Console.WriteLine($"Include System Variables: {request.IncludeSystemVariables}");
-
-                if (!string.IsNullOrEmpty(request.StartDate))
-                {
-                    Console.WriteLine($"Trends Start Date: {request.StartDate}");
-                }
-                if (!string.IsNullOrEmpty(request.EndDate))
-                {
-                    Console.WriteLine($"Trends End Date: {request.EndDate}");
-                }
-                if (!string.IsNullOrEmpty(request.StartDate) && !string.IsNullOrEmpty(request.EndDate))
-                {
-                    if (DateTime.TryParse(request.StartDate, out var start) && DateTime.TryParse(request.EndDate, out var end))
-                    {
-                        var duration = end - start;
-                        Console.WriteLine($"Trends Duration: {duration.TotalDays:F1} days ({duration.TotalHours:F1} hours)");
-                    }
-                }
-
-                Console.WriteLine($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                 var connection = await GetWebServiceConnectionById(request.ConnectionId);
-                if (connection == null)
-                {
-                    Console.WriteLine("❌ ERROR: Web Service connection not found");
-                    Console.WriteLine("=====================================================\n");
-                    return Json(new { success = false, message = "Web Service connection not found" });
-                }
+                if (connection == null) return Json(new { success = false, message = "Web Service connection not found" });
 
-                Console.WriteLine($"Connection Name: {connection.ConnectionName}");
-                var webService = _pcvueWebService;
-                Console.WriteLine("\n--- AUTHENTICATION ---");
-                var token = await webService.GetValidAccessTokenAsync(connection);
-                if (string.IsNullOrEmpty(token))
-                {
-                    Console.WriteLine(" ERROR: Failed to get authentication token");
-                    Console.WriteLine("=====================================================\n");
-                    return Json(new { success = false, message = "Failed to authenticate" });
-                }
+                var token = await _pcvueWebService.GetValidAccessTokenAsync(connection);
+                if (string.IsNullOrEmpty(token)) return Json(new { success = false, message = "Failed to authenticate" });
 
-                Console.WriteLine("Authentication successful");
                 var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
-                var queryParams = new List<string>
-                {
-                    "Depth=0",
-                    "Type=Any",
-                    $"Size={request.MaxVariables}"
-                };
-
-                if (!string.IsNullOrEmpty(request.BranchFilter))
-                {
-                    queryParams.Add($"Id={Uri.EscapeDataString(request.BranchFilter)}");
-                }
+                var queryParams = new List<string> { "Depth=0", "Type=Any", $"Size={request.MaxVariables}" };
+                if (!string.IsNullOrEmpty(request.BranchFilter)) queryParams.Add($"Id={Uri.EscapeDataString(request.BranchFilter)}");
 
                 var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
-                Console.WriteLine($"Endpoint: {fullUrl}");
                 var httpRequest = new HttpRequestMessage(HttpMethod.Get, fullUrl);
                 httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
                 httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
@@ -369,61 +312,23 @@ namespace PoWorks_Rework.Controllers
                 var response = await _pcvueWebService.HttpClient.SendAsync(httpRequest);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
-                Console.WriteLine($"Response Status: {response.StatusCode}");
-                Console.WriteLine($"Response Length: {responseContent?.Length ?? 0} characters");
-
                 if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("API call successful");
+                    var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData, request.IncludeSystemVariables);
 
-                    try
+                    return Json(new
                     {
-                        var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                        var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(
-                            jsonData,
-                            request.IncludeSystemVariables);
-                        var connectionName = connection.ConnectionName ?? request.ConnectionId;
-                        _variableBrowseParsingService.PrintParsedVariablesToConsole(
-                            parseResult,
-                            connectionName,
-                            request.IncludeSystemVariables);
-
-                        Console.WriteLine($"Parsing completed successfully");
-                        Console.WriteLine($"End Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                        Console.WriteLine("=====================================================\n");
-                        return Json(new
-                        {
-                            success = true,
-                            message = $"Variables browse completed! Found {parseResult.TotalCount} variables (System variables {(request.IncludeSystemVariables ? "included" : "filtered out")}). Check terminal for detailed results.",
-                            variables = parseResult.Variables,
-                            totalVariables = parseResult.TotalCount,
-                            connectionInfo = new
-                            {
-                                connectionId = request.ConnectionId,
-                                connectionName = connection.ConnectionName
-                            }
-                        });
-                    }
-                    catch (Exception parseEx)
-                    {
-                        Console.WriteLine($"ERROR parsing response: {parseEx.Message}");
-                        Console.WriteLine("=====================================================\n");
-                        return Json(new { success = false, message = $"Error parsing variables: {parseEx.Message}" });
-                    }
+                        success = true,
+                        message = $"Variables browse completed! Found {parseResult.TotalCount} variables.",
+                        variables = parseResult.Variables,
+                        totalVariables = parseResult.TotalCount
+                    });
                 }
-                else
-                {
-                    Console.WriteLine($"ERROR: API call failed");
-                    Console.WriteLine($"Response: {responseContent}");
-                    Console.WriteLine("=====================================================\n");
-                    return Json(new { success = false, message = $"API call failed: {response.StatusCode}" });
-                }
+                return Json(new { success = false, message = $"API call failed: {response.StatusCode}" });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error during browse: {ex.Message}");
-                Console.WriteLine("=====================================================\n");
-                _logger.LogError(ex, "Error browsing PCVue variables");
                 return Json(new { success = false, error = ex.Message });
             }
         }
@@ -436,7 +341,6 @@ namespace PoWorks_Rework.Controllers
             try
             {
                 int companyId = _companyContext.CurrentCompanyId;
-
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
                     string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
@@ -457,10 +361,10 @@ namespace PoWorks_Rework.Controllers
                             ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
                             ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                            ClientSecret = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                            ClientSecret = reader.IsDBNull(4) ? "" : _encryptionService.Decrypt(reader.GetString(4)),
                             ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
                             Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
-                            Password = reader.IsDBNull(7) ? "" : reader.GetString(7),
+                            Password = reader.IsDBNull(7) ? "" : _encryptionService.Decrypt(reader.GetString(7)),
                             AuthType = (AuthenticationType)reader.GetInt32(8),
                             TimeoutSeconds = reader.GetInt32(9),
                             ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
@@ -470,34 +374,11 @@ namespace PoWorks_Rework.Controllers
                     return null;
                 });
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogError(ex, "Error reading web service settings for connection: {ConnectionId}", connectionId);
                 return null;
             }
         }
-
         #endregion
-        private async Task<bool> ProcessTrendsForVariable(WebServiceVariableItem variable, PCVueWebServiceSettings settings, string startDate, string endDate)
-        {
-            try
-            {
-                if (!DateTime.TryParse(startDate, out var start) || !DateTime.TryParse(endDate, out var end))
-                    return false;
-
-                var variableNames = new List<string> { variable.VariableName };
-                var trendsResults = await _trendsService.ProcessVariablesTrendsAsync(variableNames, start, end, settings);
-
-                var result = trendsResults.FirstOrDefault();
-                return result != null && result.Success && result.TrendData != null && result.TrendData.Any();
-            }
-            catch
-            {
-                return false;
-
-
-
-            }
-        }
-    } 
-} 
+    }
+}

@@ -432,7 +432,7 @@ namespace PoWorks_Rework.Controllers
                     ReadingId = reader.GetInt32("ReadingId"),
                     MeterId = reader.GetInt32("MeterId"),
                     MeterName = reader.IsDBNull("MeterName") ? "Unknown" : reader.GetString("MeterName"),
-                    Timestamp = reader.GetDateTime("Timestamp"),
+                    Timestamp = reader.GetDateTime(reader.GetOrdinal("Timestamp")),
                     Value = reader.GetDecimal("Value")
                 };
 

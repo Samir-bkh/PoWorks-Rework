@@ -9,8 +9,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - PoWorks</title>
+
+	<script>
+        (function () {
+            const basePath = '@Context.Request.PathBase.Value';
+            const originalFetch = window.fetch;
+
+            window.fetch = function (url, options) {
+                if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(basePath + '/')) {
+                    url = basePath + url;
+                }
+                return originalFetch.call(this, url, options);
+            };
+        })();
+    </script>
+
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <script src="~/js/hdsMeterSelection.js"></script>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/sidebar.css" asp-append-version="true" />
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" />

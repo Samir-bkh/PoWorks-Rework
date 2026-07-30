@@ -730,7 +730,10 @@ namespace PoWorks_Rework.Controllers
                         using (var sqlConnection = _sqlServerService.GetConnection())
                         {
                             await sqlConnection.OpenAsync();
-                            string sql = $"SELECT Chrono, Value, Quality FROM {request.TableName} WHERE NAME = @Name";
+
+                         
+                            string topClause = request.Limit.HasValue ? $"TOP {request.Limit.Value} " : "";
+                            string sql = $"SELECT {topClause}Chrono, Value, Quality FROM {request.TableName} WHERE NAME = @Name";
 
                             if (request.StartDate.HasValue)
                                 sql += " AND Chrono >= @StartDate";
@@ -739,9 +742,6 @@ namespace PoWorks_Rework.Controllers
                                 sql += " AND Chrono <= @EndDate";
 
                             sql += " ORDER BY Chrono";
-
-                            if (request.Limit.HasValue)
-                                sql = $"SELECT TOP {request.Limit} * FROM ({sql}) AS ordered_readings";
 
                             using var cmd = new SqlCommand(sql, sqlConnection);
                             cmd.Parameters.AddWithValue("@Name", meterName);
@@ -779,9 +779,10 @@ namespace PoWorks_Rework.Controllers
                                 {
                                     foreach (var reading in readings)
                                     {
+                                   
                                         using var insertCmd = new NpgsqlCommand(
-                                            @"INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"") 
-                                              VALUES (@MeterId, @Timestamp, @Value, @Quality) 
+                                            @"INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") 
+                                              VALUES (@MeterId, @Timestamp, @Value, @Quality, @CompanyId) 
                                               ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING",
                                             pgConnection, transaction);
 
@@ -789,6 +790,7 @@ namespace PoWorks_Rework.Controllers
                                         insertCmd.Parameters.AddWithValue("@Timestamp", reading.timestamp);
                                         insertCmd.Parameters.AddWithValue("@Value", reading.value);
                                         insertCmd.Parameters.AddWithValue("@Quality", reading.quality);
+                                        insertCmd.Parameters.AddWithValue("@CompanyId", currentCompanyId); 
 
                                         await insertCmd.ExecuteNonQueryAsync();
                                     }
@@ -801,7 +803,7 @@ namespace PoWorks_Rework.Controllers
                                 {
                                     await transaction.RollbackAsync();
                                     errorMeters.Add(meterName);
-                                    detailedErrors[meterName] = ex.Message;
+                                    detailedErrors[meterName] = "PG Insert Error: " + ex.Message;
                                 }
                             }
                         }

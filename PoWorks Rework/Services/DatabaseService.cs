@@ -6,13 +6,15 @@ namespace PoWorks_Rework.Services
     public class DatabaseService
     {
         private readonly IConfiguration _configuration;
+        private readonly EncryptionService _encryptionService; 
         private DatabaseSettings _currentSettings;
         private NpgsqlConnection _connection;
         private bool _isInitialized = false;
 
-        public DatabaseService(IConfiguration configuration)
+        public DatabaseService(IConfiguration configuration, EncryptionService encryptionService)
         {
             _configuration = configuration;
+            _encryptionService = encryptionService;
             LoadSettingsFromConfig();
         }
 
@@ -57,7 +59,7 @@ namespace PoWorks_Rework.Services
                 Port = _configuration["DatabaseSettings:Port"] ?? "5432",
                 Database = _configuration["DatabaseSettings:Database"] ?? "",
                 Username = _configuration["DatabaseSettings:Username"] ?? "postgres",
-                Password = _configuration["DatabaseSettings:Password"] ?? "",
+                Password = _encryptionService.Decrypt(_configuration["DatabaseSettings:Password"] ?? ""),
                 SSLMode = _configuration["DatabaseSettings:SSLMode"] ?? "Prefer"
             };
             if (!string.IsNullOrEmpty(_currentSettings.Database))

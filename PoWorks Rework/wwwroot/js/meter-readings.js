@@ -124,10 +124,10 @@ const MeterReadings = {
         const params = new URLSearchParams({
             viewType: this.config.currentViewType,
             page: this.config.currentPage,
-            pageSize: this.config.pageSize
+            pageSize: this.config.pageSize,
+            _t: new Date().getTime() 
         });
 
-    
         if (this.config.selectedMeterId) params.append('meterIds', this.config.selectedMeterId);
         if (this.config.startDate) params.append('startDate', this.config.startDate);
         if (this.config.endDate) params.append('endDate', this.config.endDate);
@@ -299,9 +299,56 @@ const MeterReadings = {
     },
 
     applyFilters: function () {
+  
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        const meterSelect = document.getElementById('meterSelect');
+
+        if (startDateInput) this.config.startDate = startDateInput.value;
+        if (endDateInput) this.config.endDate = endDateInput.value;
+        
+        if (meterSelect) {
+            const selected = Array.from(meterSelect.selectedOptions).map(opt => opt.value);
+            this.config.selectedMeterId = selected.length > 0 ? selected.join(',') : null;
+        }
+
         this.config.currentPage = 1;
         this.loadReadings();
         this.updateMeterStats();
+    },
+
+    loadReadings: function () {
+        if (this.config.isLoading) return;
+
+        this.config.isLoading = true;
+        this.showLoading(true);
+
+        const params = new URLSearchParams({
+            viewType: this.config.currentViewType,
+            page: this.config.currentPage,
+            pageSize: this.config.pageSize,
+            _t: new Date().getTime() 
+        });
+
+        if (this.config.selectedMeterId) params.append('meterIds', this.config.selectedMeterId);
+        if (this.config.startDate) params.append('startDate', this.config.startDate);
+        if (this.config.endDate) params.append('endDate', this.config.endDate);
+
+        fetch(`${this.endpoints.getReadings}?${params}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.updateReadingsTable(data.data, data.pagination);
+                    this.updatePaginationInfo(data.pagination);
+                } else {
+                    throw new Error(data.error || 'Failed to load readings');
+                }
+            })
+            .catch(error => this.showError('Failed to load readings: ' + error.message))
+            .finally(() => {
+                this.config.isLoading = false;
+                this.showLoading(false);
+            });
     },
 
     clearFilters: function () {

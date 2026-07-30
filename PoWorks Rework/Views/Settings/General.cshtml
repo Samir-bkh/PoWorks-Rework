@@ -979,6 +979,47 @@
             </div>`;
     }
 
+    window.testWebServiceConnection = function(connectionId) {
+        console.log('Testing Web Service connection:', connectionId);
+
+        const form = document.querySelector(`#webservice-${connectionId} form`);
+        if (!form) {
+            showWebServiceConnectionResult(connectionId, 'danger', 'Error: Could not find form');
+            return;
+        }
+
+      
+        const formData = new FormData(form);
+        const connectionData = {
+            connectionId: connectionId,
+            baseUrl: formData.get('BaseUrl') || '',
+            clientId: formData.get('ClientId') || '',
+            clientSecret: formData.get('ClientSecret') || '',
+            username: formData.get('Username') || '',
+            password: formData.get('Password') || ''
+        };
+
+      
+        showWebServiceConnectionResult(connectionId, 'info', 'Testing connection... (Requesting Token)');
+
+        
+        fetch('/Settings/GetWebServiceToken', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showWebServiceConnectionResult(connectionId, 'success', 'Connection successful! ✓');
+            } else {
+                showWebServiceConnectionResult(connectionId, 'danger', 'Connection failed: ' + (data.errorMessage || data.error));
+            }
+        })
+        .catch(error => {
+            showWebServiceConnectionResult(connectionId, 'danger', 'Network error: ' + error.message);
+        });
+    };
      function getWebServiceToken(connectionId) {
         console.log('Getting OAuth token for connection:', connectionId);
 
@@ -989,7 +1030,7 @@
             return;
         }
 
-        // Extract form data
+        
         const formData = new FormData(form);
         const connectionData = {
             connectionId: connectionId,

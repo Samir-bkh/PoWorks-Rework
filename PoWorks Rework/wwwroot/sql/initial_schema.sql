@@ -69,7 +69,8 @@ CREATE TABLE IF NOT EXISTS "Meters" (
     "LastReading" INTEGER DEFAULT 0,
     "Type" VARCHAR(10) CHECK ("Type" IN ('main', 'sub')) NOT NULL,
     "Active" BOOLEAN DEFAULT TRUE,
-    "TenantID" INTEGER REFERENCES "Tenants"("TenantID")
+    "TenantID" INTEGER REFERENCES "Tenants"("TenantID"),
+    "CompanyId" INTEGER -- Ajout pour la sécurité
 );
 -- Create index for faster meter queries
 CREATE INDEX IF NOT EXISTS idx_meters_tenantid ON "Meters"("TenantID");
@@ -82,7 +83,8 @@ CREATE TABLE IF NOT EXISTS "MeterReadings" (
   "MeterId" INTEGER REFERENCES "Meters"("MeterId"),
   "Timestamp" TIMESTAMP NOT NULL,
   "Value" NUMERIC NOT NULL,
-  "Quality" INTEGER
+  "Quality" INTEGER,
+  "CompanyId" INTEGER NOT NULL -- ✅ CORRECTION ICI
 );
 
 -- Add indices for better performance
@@ -105,6 +107,7 @@ CREATE TABLE IF NOT EXISTS "MeterReadingsDaily" (
     "AvgValue" NUMERIC,
     "SumValue" NUMERIC,
     "ReadingCount" INTEGER,
+    "CompanyId" INTEGER NOT NULL, -- ✅ CORRECTION ICI
     "LastUpdated" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -119,6 +122,7 @@ CREATE TABLE IF NOT EXISTS "MeterReadingsMonthly" (
     "AvgValue" NUMERIC,
     "SumValue" NUMERIC,
     "ReadingCount" INTEGER,
+    "CompanyId" INTEGER NOT NULL, -- ✅ CORRECTION ICI
     "LastUpdated" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_meter_month UNIQUE("MeterId", "Year", "Month")
 );
@@ -133,6 +137,7 @@ CREATE TABLE IF NOT EXISTS "MeterReadingsYearly" (
     "AvgValue" NUMERIC,
     "SumValue" NUMERIC,
     "ReadingCount" INTEGER,
+    "CompanyId" INTEGER NOT NULL, -- ✅ CORRECTION ICI
     "LastUpdated" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_meter_year UNIQUE("MeterId", "Year")
 );
@@ -151,92 +156,86 @@ CREATE INDEX IF NOT EXISTS idx_meterreadingsyearly_year ON "MeterReadingsYearly"
 CREATE OR REPLACE FUNCTION aggregate_daily_readings()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Insert or update daily aggregation
-    INSERT INTO "MeterReadingsDaily" ("MeterId", "ReadingDate", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "LastUpdated")
-    SELECT 
+    INSERT INTO "MeterReadingsDaily" ("MeterId", "ReadingDate", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "CompanyId", "LastUpdated")
+    VALUES (
         NEW."MeterId",
         DATE(NEW."Timestamp"),
-        COALESCE(MIN("Value"), NEW."Value"),
-        COALESCE(MAX("Value"), NEW."Value"),
-        AVG("Value"),
-        SUM("Value"),
-        COUNT(*),
+        NEW."Value",
+        NEW."Value",
+        NEW."Value",
+        NEW."Value",
+        1,
+        NEW."CompanyId",
         CURRENT_TIMESTAMP
-    FROM "MeterReadings"
-    WHERE "MeterId" = NEW."MeterId" AND DATE("Timestamp") = DATE(NEW."Timestamp")
-    GROUP BY "MeterId", DATE("Timestamp")
+    )
     ON CONFLICT ("MeterId", "ReadingDate") DO UPDATE SET
-        "MinValue" = EXCLUDED."MinValue",
-        "MaxValue" = EXCLUDED."MaxValue",
-        "AvgValue" = EXCLUDED."AvgValue", 
-        "SumValue" = EXCLUDED."SumValue",
-        "ReadingCount" = EXCLUDED."ReadingCount",
+        "MinValue" = LEAST("MeterReadingsDaily"."MinValue", NEW."Value"),
+        "MaxValue" = GREATEST("MeterReadingsDaily"."MaxValue", NEW."Value"),
+        "SumValue" = "MeterReadingsDaily"."SumValue" + NEW."Value",
+        "ReadingCount" = "MeterReadingsDaily"."ReadingCount" + 1,
+        "AvgValue" = ("MeterReadingsDaily"."SumValue" + NEW."Value") / ("MeterReadingsDaily"."ReadingCount" + 1),
+        "CompanyId" = EXCLUDED."CompanyId",
         "LastUpdated" = CURRENT_TIMESTAMP;
-    
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 -- Function to aggregate readings into monthly table
 CREATE OR REPLACE FUNCTION aggregate_monthly_readings()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Insert or update monthly aggregation
-    INSERT INTO "MeterReadingsMonthly" ("MeterId", "Year", "Month", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "LastUpdated")
-    SELECT 
+    INSERT INTO "MeterReadingsMonthly" ("MeterId", "Year", "Month", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "CompanyId", "LastUpdated")
+    VALUES (
         NEW."MeterId",
         EXTRACT(YEAR FROM NEW."Timestamp"),
         EXTRACT(MONTH FROM NEW."Timestamp"),
-        COALESCE(MIN("Value"), NEW."Value"),
-        COALESCE(MAX("Value"), NEW."Value"),
-        AVG("Value"),
-        SUM("Value"),
-        COUNT(*),
+        NEW."Value",
+        NEW."Value",
+        NEW."Value",
+        NEW."Value",
+        1,
+        NEW."CompanyId",
         CURRENT_TIMESTAMP
-    FROM "MeterReadings"
-    WHERE "MeterId" = NEW."MeterId" 
-        AND EXTRACT(YEAR FROM "Timestamp") = EXTRACT(YEAR FROM NEW."Timestamp")
-        AND EXTRACT(MONTH FROM "Timestamp") = EXTRACT(MONTH FROM NEW."Timestamp")
-    GROUP BY "MeterId", EXTRACT(YEAR FROM "Timestamp"), EXTRACT(MONTH FROM "Timestamp")
+    )
     ON CONFLICT ("MeterId", "Year", "Month") DO UPDATE SET
-        "MinValue" = EXCLUDED."MinValue",
-        "MaxValue" = EXCLUDED."MaxValue",
-        "AvgValue" = EXCLUDED."AvgValue", 
-        "SumValue" = EXCLUDED."SumValue",
-        "ReadingCount" = EXCLUDED."ReadingCount",
+        "MinValue" = LEAST("MeterReadingsMonthly"."MinValue", NEW."Value"),
+        "MaxValue" = GREATEST("MeterReadingsMonthly"."MaxValue", NEW."Value"),
+        "SumValue" = "MeterReadingsMonthly"."SumValue" + NEW."Value",
+        "ReadingCount" = "MeterReadingsMonthly"."ReadingCount" + 1,
+        "AvgValue" = ("MeterReadingsMonthly"."SumValue" + NEW."Value") / ("MeterReadingsMonthly"."ReadingCount" + 1),
+        "CompanyId" = EXCLUDED."CompanyId",
         "LastUpdated" = CURRENT_TIMESTAMP;
-    
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
 
 -- Function to aggregate readings into yearly table
 CREATE OR REPLACE FUNCTION aggregate_yearly_readings()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Insert or update yearly aggregation
-    INSERT INTO "MeterReadingsYearly" ("MeterId", "Year", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "LastUpdated")
-    SELECT 
+    INSERT INTO "MeterReadingsYearly" ("MeterId", "Year", "MinValue", "MaxValue", "AvgValue", "SumValue", "ReadingCount", "CompanyId", "LastUpdated")
+    VALUES (
         NEW."MeterId",
         EXTRACT(YEAR FROM NEW."Timestamp"),
-        COALESCE(MIN("Value"), NEW."Value"),
-        COALESCE(MAX("Value"), NEW."Value"),
-        AVG("Value"),
-        SUM("Value"),
-        COUNT(*),
+        NEW."Value",
+        NEW."Value",
+        NEW."Value",
+        NEW."Value",
+        1,
+        NEW."CompanyId",
         CURRENT_TIMESTAMP
-    FROM "MeterReadings"
-    WHERE "MeterId" = NEW."MeterId" 
-        AND EXTRACT(YEAR FROM "Timestamp") = EXTRACT(YEAR FROM NEW."Timestamp")
-    GROUP BY "MeterId", EXTRACT(YEAR FROM "Timestamp")
+    )
     ON CONFLICT ("MeterId", "Year") DO UPDATE SET
-        "MinValue" = EXCLUDED."MinValue",
-        "MaxValue" = EXCLUDED."MaxValue",
-        "AvgValue" = EXCLUDED."AvgValue", 
-        "SumValue" = EXCLUDED."SumValue",
-        "ReadingCount" = EXCLUDED."ReadingCount",
+        "MinValue" = LEAST("MeterReadingsYearly"."MinValue", NEW."Value"),
+        "MaxValue" = GREATEST("MeterReadingsYearly"."MaxValue", NEW."Value"),
+        "SumValue" = "MeterReadingsYearly"."SumValue" + NEW."Value",
+        "ReadingCount" = "MeterReadingsYearly"."ReadingCount" + 1,
+        "AvgValue" = ("MeterReadingsYearly"."SumValue" + NEW."Value") / ("MeterReadingsYearly"."ReadingCount" + 1),
+        "CompanyId" = EXCLUDED."CompanyId",
         "LastUpdated" = CURRENT_TIMESTAMP;
-    
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -304,3 +303,80 @@ CREATE TABLE IF NOT EXISTS "BillLineItems" (
 -- Index pour accélérer les recherches de factures
 CREATE INDEX IF NOT EXISTS idx_bills_tenantid ON "Bills"("TenantID");
 CREATE INDEX IF NOT EXISTS idx_bills_status ON "Bills"("Status");
+
+
+-- ##########################################################
+-- MIGRATIONS AUTOMATIQUES POUR LES NOUVEAUX CLIENTS
+-- (Ajout des tables et colonnes manquantes)
+-- ##########################################################
+
+-- 1. Création des tables systèmes manquantes
+CREATE TABLE IF NOT EXISTS "Companies" (
+    "CompanyId" SERIAL PRIMARY KEY,
+    "Name" VARCHAR(255) NOT NULL DEFAULT 'Default Company'
+);
+
+INSERT INTO "Companies" ("CompanyId", "Name") 
+VALUES (1, 'PoWorks Default') 
+ON CONFLICT ("CompanyId") DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS "WebServiceConnections" (
+    "Id" SERIAL PRIMARY KEY,
+    "ConnectionId" VARCHAR(100),
+    "CompanyId" INTEGER,
+    "ConnectionName" VARCHAR(255),
+    "BaseUrl" VARCHAR(255),
+    "ClientId" VARCHAR(255),
+    "ClientSecret" TEXT,
+    "Username" VARCHAR(255),
+    "Password" TEXT,
+    "ApiKey" VARCHAR(255),
+    "AuthType" INTEGER DEFAULT 0,
+    "TimeoutSeconds" INTEGER DEFAULT 30,
+    "ProjectName" VARCHAR(255),
+    "IsDefault" BOOLEAN DEFAULT FALSE,
+    "IsActive" BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS "SqlServerConnections" (
+    "Id" SERIAL PRIMARY KEY,
+    "ConnectionId" VARCHAR(100),
+    "CompanyId" INTEGER,
+    "ConnectionName" VARCHAR(255),
+    "Host" VARCHAR(255),
+    "Port" VARCHAR(50),
+    "Database" VARCHAR(255),
+    "Username" VARCHAR(255),
+    "Password" TEXT,
+    "ProjectName" VARCHAR(255),
+    "IsDefault" BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS "Payments" (
+    "PaymentId" SERIAL PRIMARY KEY,
+    "BillId" INTEGER REFERENCES "Bills"("BillId") ON DELETE CASCADE,
+    "TenantID" INTEGER REFERENCES "Tenants"("TenantID") ON DELETE CASCADE,
+    "AmountPaid" NUMERIC(10,2) NOT NULL, 
+    "PaymentDate" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "PaymentMethod" VARCHAR(50),
+    "Reference" VARCHAR(100),
+    "CompanyId" INTEGER DEFAULT 1
+);
+
+-- 2. Ajout des colonnes manquantes (CompanyId, UserId, etc.)
+ALTER TABLE "Meters" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "UserId" TEXT; 
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "Bills" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "Bills" ADD COLUMN IF NOT EXISTS "GrandTotal" NUMERIC(10,2) DEFAULT 0;
+
+ALTER TABLE "MeterReadings" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "MeterReadingsDaily" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "MeterReadingsMonthly" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "MeterReadingsYearly" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+
+
+
+-- On recale le compteur de la table Companies sur l'ID le plus élevé actuel
+SELECT setval(pg_get_serial_sequence('"Companies"', 'CompanyId'), coalesce(max("CompanyId"), 1), max("CompanyId") IS NOT null) FROM "Companies";

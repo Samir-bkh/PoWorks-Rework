@@ -622,39 +622,64 @@ function handleHDSImport() {
         importReadings,
         connectionId: hdsContext.connectionId,
         tableName: hdsContext.tableName,
-        // NOUVEAU : On les ajoute à l'objet envoyé au serveur
+
         startDate: startDate,
         endDate: endDate
     };
 
-    fetch('/Import/ImportMeters', {  // ATTENTION: j'ai corrigé l'URL ici pour qu'elle matche ton contrôleur C# !
+   fetch('/Import/ImportMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(importData)
     })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Import failed: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
-            importBtn.textContent = originalText;
-            importBtn.disabled = false;
+            if (!data.success) {
+                importBtn.textContent = originalText;
+                importBtn.disabled = false;
+                alert(`Import failed: ${data.error || 'Unknown error'}`);
+                return;
+            }
 
-            if (data.success) {
-                let message = ` Successfully imported ${data.importedCount || 0} HDS meters!`;
-                if (data.readingsEnabled) {
-                    message += `\n Readings: ${data.readingsImported || 0} imported`;
-                }
-                alert(message);
-
+            if (!importReadings) {
+                importBtn.textContent = originalText;
+                importBtn.disabled = false;
+                alert(`Successfully imported ${data.importedCount || 0} HDS meters!`);
                 if (confirm('Import completed! Would you like to reload the page?')) {
                     window.location.reload();
                 }
-            } else {
-                alert(` Import failed: ${data.error || 'Unknown error'}`);
+                return;
             }
+
+            const meterNames = meters.map(m => m.hdsMeterName);
+            const readingsPayload = {
+                tableName: hdsContext.tableName,
+                meterNames: meterNames,
+                startDate: startDate,
+                endDate: endDate
+            };
+
+            return fetch('/Import/ImportMeterReadings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(readingsPayload)
+            })
+                .then(response => response.json())
+                .then(readingsData => {
+                    importBtn.textContent = originalText;
+                    importBtn.disabled = false;
+
+                    let message = `Successfully imported ${data.importedCount || 0} HDS meters!`;
+                    message += `\nReadings imported: ${readingsData.totalReadingsImported || 0}`;
+                    if (readingsData.errorMeters && readingsData.errorMeters.length > 0) {
+                        message += `\nWarning: ${readingsData.errorMeters.length} meters had errors.`;
+                    }
+                    alert(message);
+
+                    if (confirm('Import completed! Would you like to reload the page?')) {
+                        window.location.reload();
+                    }
+                });
         })
         .catch(error => {
             importBtn.textContent = originalText;

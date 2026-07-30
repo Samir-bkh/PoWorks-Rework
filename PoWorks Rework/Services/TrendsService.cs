@@ -127,7 +127,7 @@ namespace PoWorks_Rework.Services
                 try
                 {
                     var requestResult = await CreateTrendRequestAsync(variableName, settings);
-
+                    Console.WriteLine($"[TRENDS] {variableName} -> request {(requestResult.Success ? "OK" : "FAIL: " + requestResult.ErrorMessage)}");
                     if (requestResult.Success)
                     {
                         var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);

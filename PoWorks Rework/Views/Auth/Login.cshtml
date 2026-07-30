@@ -1,3 +1,10 @@
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IHtmlGenerator HtmlGenerator
+@{
+    Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+    Context.Response.Headers["Pragma"] = "no-cache";
+    Context.Response.Headers["Expires"] = "0";
+}
+
 @{
     Layout = null;
 }
@@ -63,7 +70,7 @@
                     </div>
                 }
 
-                <form action="/Auth/Login" method="post">
+                <form asp-controller="Auth" asp-action="Login" method="post">
                     <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
                     
                     <div class="mb-3">
