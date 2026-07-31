@@ -433,10 +433,10 @@ namespace PoWorks_Rework.Services
                             query += " AND m.\"TenantID\" = @TenantId";
                             parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
                         }
-                        if (filters.MeterId.HasValue)
+                        if (filters.MeterIds != null && filters.MeterIds.Any())
                         {
-                            query += " AND m.\"MeterId\" = @MeterId";
-                            parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
+                            query += " AND m.\"MeterId\" = ANY(@MeterIds)";
+                            parameters.Add(new NpgsqlParameter("@MeterIds", filters.MeterIds.ToArray()));
                         }
 
                         query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {curveNameSql}, {xAxisSql} ORDER BY {xAxisSql} ASC";
@@ -446,6 +446,7 @@ namespace PoWorks_Rework.Services
                         string timeGrouping = "to_char(DATE_TRUNC('day', mr.\"Timestamp\"), 'YYYY-MM-DD')";
                         if (filters.DateFilter?.ToLower() == "yearly") timeGrouping = "to_char(DATE_TRUNC('year', mr.\"Timestamp\"), 'YYYY')";
                         else if (filters.DateFilter?.ToLower() == "monthly") timeGrouping = "to_char(DATE_TRUNC('month', mr.\"Timestamp\"), 'YYYY-MM')";
+                        else if (filters.DateFilter?.ToLower() == "hourly") timeGrouping = "to_char(DATE_TRUNC('hour', mr.\"Timestamp\"), 'YYYY-MM-DD HH24:00')";
 
                         query = $@"
                             SELECT 
@@ -473,10 +474,11 @@ namespace PoWorks_Rework.Services
                             query += " AND m.\"TenantID\" = @TenantId";
                             parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
                         }
-                        if (filters.MeterId.HasValue)
+                   
+                        if (filters.MeterIds != null && filters.MeterIds.Any())
                         {
-                            query += " AND m.\"MeterId\" = @MeterId";
-                            parameters.Add(new NpgsqlParameter("@MeterId", filters.MeterId.Value));
+                            query += " AND m.\"MeterId\" = ANY(@MeterIds)";
+                            parameters.Add(new NpgsqlParameter("@MeterIds", filters.MeterIds.ToArray()));
                         }
 
                         query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {timeGrouping} ORDER BY {timeGrouping} ASC, {nameColumn}";

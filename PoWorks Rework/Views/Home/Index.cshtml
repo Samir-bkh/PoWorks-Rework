@@ -3,15 +3,9 @@
     Layout = "_Layout";
 }
 
-
-@{
-    ViewData["Title"] = "Dashboard";
-}
-
 <div class="alert alert-info shadow-sm mb-4">
     <i class="bi bi-building"></i> <strong>Active Workspace :</strong> @ViewData["CurrentTenant"]
 </div>
-
 
 <style>
     /* Full Screen Mode for the chart */
@@ -25,24 +19,24 @@
         margin: 0;
         border-radius: 0;
     }
-    
-    /* We give the chart all the available space*/
-    .chart-fullscreen .card-body {
-        height: calc(100vh - 70px) !important;
-        display: flex;
-        flex-direction: column;
-    }
 
-    /* We break the 400px height limit when we're in fullscreen*/
-    .chart-fullscreen canvas {
-        max-height: none !important; 
-        height: 100% !important;
-        flex-grow: 1;
-    }
+   
+
+        .chart-fullscreen .card-body {
+            height: calc(100vh - 70px) !important;
+            display: flex;
+            flex-direction: column;
+        }
+
+        
+        .chart-fullscreen #chartdiv {
+            max-height: none !important;
+            height: 100% !important;
+            flex-grow: 1;
+        }
 </style>
 
 <div class="container-fluid mt-4">
-    <!-- Warning Message -->
     @if (TempData["WarningMessage"] != null)
     {
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
@@ -88,31 +82,31 @@
                             </div>
                         </div>
 
-                        <!-- Meter Filter (Now Independent) -->
+                        <!-- Meter Filter (Multi-Select with Search) -->
                         <div class="col-md-3">
                             <div class="form-group">
-                                <label for="meterFilter">Meter</label>
-                                <div class="input-group">
-                                    <select id="meterFilter" class="form-control">
-                                        <option value="">All Meters (Loading...)</option>
-                                    </select>
-                                    <button id="loadMoreMeters" class="btn btn-outline-secondary" type="button" style="display: none;">
-                                        Load More
+                                <label>Meters to compare</label>
+                                <div class="dropdown w-100">
+                                    <button class="form-control text-start d-flex justify-content-between align-items-center bg-white"
+                                            type="button" id="meterDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside" style="cursor: pointer;">
+                                        <span id="meterDropdownText" class="text-truncate text-muted">Default (Top 5)</span>
+                                        <i class="bi bi-chevron-down text-muted"></i>
                                     </button>
+                                    <ul class="dropdown-menu w-100 p-2 shadow" aria-labelledby="meterDropdownBtn" style="max-height: 350px; overflow-y: auto;" id="meterFilterContainer">
+                                        <li><span class="dropdown-item-text text-muted">Loading meters...</span></li>
+                                    </ul>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- NEW: Meter Limit Control -->
+                        <!-- Default View / Top Consumers -->
                         <div class="col-md-2">
                             <div class="form-group">
-                                <label for="meterLimit">Meter Limit</label>
+                                <label for="meterLimit">Default View</label>
                                 <select id="meterLimit" class="form-control">
-                                    <option value="5" selected>5 meters</option>
-                                    <option value="10">10 meters</option>
-                                    <option value="25">25 meters</option>
-                                    <option value="50">50 meters</option>
-                                    <option value="100">100 meters</option>
+                                    <option value="3">Top 3 Consumers</option>
+                                    <option value="5" selected>Top 5 Consumers</option>
+                                    <option value="10">Top 10 Consumers</option>
                                 </select>
                             </div>
                         </div>
@@ -122,13 +116,13 @@
                             <div class="form-group">
                                 <label for="chartType">Chart Type</label>
                                 <select id="chartType" class="form-control">
+                                    <option value="line" selected>Area / Line Chart</option>
                                     <option value="bar">Bar Chart</option>
-                                    <option value="line">Line Chart</option>
                                 </select>
                             </div>
                         </div>
 
-                        <!-- NEW: Quick Actions -->
+                        <!-- Quick Actions -->
                         <div class="col-md-1">
                             <div class="form-group">
                                 <label>&nbsp;</label>
@@ -158,7 +152,7 @@
                         </div>
                     </div>
 
-                    <!-- NEW: Data Status Information -->
+                    <!-- Data Status Information -->
                     <div class="row mt-2">
                         <div class="col-12">
                             <div id="dataStatus" class="alert alert-info" style="display: none;">
@@ -178,7 +172,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-3">
                         <h5 class="mb-0">Energy Consumption</h5>
-                        
+
                         <div class="btn-group btn-group-sm" role="group" aria-label="Display mode">
                             <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
                             <label class="btn btn-outline-primary" for="modeStandard"><i class="bi bi-graph-up"></i> Standard</label>
@@ -186,15 +180,8 @@
                             <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
                             <label class="btn btn-outline-primary" for="modeComparison"><i class="bi bi-layers"></i> Comparison</label>
                         </div>
-                            <div class="btn-group btn-group-sm ms-2" role="group" aria-label="Groupement">
-                            <input type="radio" class="btn-check" name="groupBy" id="groupMeter" value="meter" autocomplete="off" checked>
-                            <label class="btn btn-outline-info" for="groupMeter"><i class="bi bi-speedometer2"></i> Meters</label>
-
-                            <input type="radio" class="btn-check" name="groupBy" id="groupTenant" value="tenant" autocomplete="off">
-                            <label class="btn btn-outline-info" for="groupTenant"><i class="bi bi-people"></i> Tenants</label>
-                        </div>
                     </div>
-                    
+
                     <div class="btn-group btn-group-sm" role="group">
                         <button id="resetZoomBtn" class="btn btn-outline-secondary" type="button" title="Reset the zoom">
                             <i class="bi bi-arrows-angle-expand"></i> Zoom
@@ -206,13 +193,12 @@
                             <i class="bi bi-download"></i>
                         </button>
                         <button id="fullscreenChart" class="btn btn-outline-secondary" type="button" title="Full Screen">
-                                <i class="bi bi-arrows-fullscreen"></i>
-                            </button>
+                            <i class="bi bi-arrows-fullscreen"></i>
+                        </button>
                     </div>
                 </div>
                 <div class="card-body">
-                    
-                    <!-- The tabs are well placed here -->
+
                     <div class="row mb-3">
                         <div class="col-12 d-flex justify-content-center">
                             <div class="btn-group shadow-sm" role="group">
@@ -222,26 +208,26 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <div id="loadingSpinner" class="text-center d-none">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
                         <p class="mt-2 text-muted">Loading chart data...</p>
                     </div>
-                    
-                    <canvas id="consumptionChart" style="max-height: 400px;"></canvas>
+
+            
+                    <div id="chartdiv" style="width: 100%; height: 450px;"></div>
                 </div>
             </div>
         </div>
     </div>
 
+
     <div class="row mt-4">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white">
-
-
                     <h5 id="topConsumersTitle" class="mb-0 text-danger"><i class="bi bi-fire"></i> Top 5 Counters (Overview)</h5>
                 </div>
                 <div class="card-body">
@@ -253,9 +239,7 @@
         </div>
     </div>
 
-    <!-- Summary Cards (DESIGN MODERNE) -->
     <div class="row mt-4">
-        <!-- Carte 1 : Total Consumption -->
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -272,8 +256,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Carte 2 : Average Daily -->
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -290,8 +272,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Carte 3 : Peak Usage -->
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -308,8 +288,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Carte 4 : Active Meters -->
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -328,10 +306,12 @@
         </div>
     </div>
 
+    @section Scripts {
 
-@section Scripts {
-    <script src="~/js/chart.min.js"></script>
-<script src="~/js/hammer.min.js"></script>
-<script src="~/js/chartjs-plugin-zoom.min.js"></script>
-    <script src="~/js/energy-dashboard.js"></script>
-}
+        <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+        <script src="https://cdn.amcharts.com/lib/5/xy.js"></script>
+        <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+        <script src="https://cdn.amcharts.com/lib/5/plugins/exporting.js"></script>
+
+        <script src="~/js/energy-dashboard.js"></script>
+    }

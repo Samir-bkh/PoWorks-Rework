@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System;
+using System.Linq;
+using System.Security.Claims;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -44,13 +46,25 @@ namespace PoWorks_Rework.Controllers
                 var user = await _userManager.FindByNameAsync(username);
                 if (user != null)
                 {
-                    var claims = await _userManager.GetClaimsAsync(user);
+              
+                    var claims = (await _userManager.GetClaimsAsync(user)).ToList();
+
+               
+                    if (!claims.Any(c => c.Type == "CompanyId"))
+                    {
+                        Console.WriteLine("Aucun CompanyId trouvé, assignation à la Company 1 par défaut.");
+                        claims.Add(new Claim("CompanyId", "1"));
+
+                
+                        await _userManager.AddClaimAsync(user, new Claim("CompanyId", "1"));
+                    }
+
+               
                     await _signInManager.SignInWithClaimsAsync(user, rememberMe, claims);
                 }
 
                 Console.WriteLine("CONNEXION RÉUSSIE !");
 
-                // 🟢 FIX : Redirection sécurisée avec le Tilde (~)
                 if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                 {
                     return LocalRedirect(returnUrl ?? "~/");
@@ -65,8 +79,6 @@ namespace PoWorks_Rework.Controllers
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();
-
-            
             return LocalRedirect("~/");
         }
 

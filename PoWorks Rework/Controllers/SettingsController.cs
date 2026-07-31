@@ -330,12 +330,20 @@ namespace PoWorks_Rework.Controllers
                 {
                     ConnectionId = reader["ConnectionId"].ToString(),
                     ConnectionName = reader["ConnectionName"].ToString(),
-                    BaseUrl = reader["BaseUrl"].ToString()
+                    BaseUrl = reader["BaseUrl"].ToString(),
+                    ClientId = reader["ClientId"] != DBNull.Value ? reader["ClientId"].ToString() : "",
+                    ClientSecret = reader["ClientSecret"] != DBNull.Value ? _encryptionService.Decrypt(reader["ClientSecret"].ToString()) : "",
+                    Username = reader["Username"] != DBNull.Value ? reader["Username"].ToString() : "",
+                    Password = reader["Password"] != DBNull.Value ? _encryptionService.Decrypt(reader["Password"].ToString()) : "",
+                    ProjectName = reader["ProjectName"] != DBNull.Value ? reader["ProjectName"].ToString() : "",
+                    TimeoutSeconds = reader["TimeoutSeconds"] != DBNull.Value ? Convert.ToInt32(reader["TimeoutSeconds"]) : 30,
+                    IsDefault = reader["IsDefault"] != DBNull.Value && Convert.ToBoolean(reader["IsDefault"]),
+                  
+                    EnableAutomaticImport = reader["IsActive"] != DBNull.Value && Convert.ToBoolean(reader["IsActive"])
                 });
             }
             return connections;
         }
-
         private void UpdatePostgresAppSettings(DatabaseSettings settings)
         {
             var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
@@ -379,18 +387,18 @@ namespace PoWorks_Rework.Controllers
                 using var conn = _databaseService.CreateNewConnection();
                 await conn.OpenAsync();
 
-                // Supprimer les anciennes connexions
+         
                 using (var deleteCmd = new NpgsqlCommand("DELETE FROM \"WebServiceConnections\" WHERE \"CompanyId\" = 1", conn))
                 {
                     await deleteCmd.ExecuteNonQueryAsync();
                 }
 
-                // Insérer les nouvelles
+            
                 foreach (var connData in request.Connections)
                 {
                     string insertSql = @"INSERT INTO ""WebServiceConnections"" 
-                                       (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsActive"", ""CompanyId"")
-                                       VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isActive, 1)";
+                               (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsDefault"", ""IsActive"", ""CompanyId"")
+                               VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isDefault, @isActive, 1)";
 
                     using var cmd = new NpgsqlCommand(insertSql, conn);
                     cmd.Parameters.AddWithValue("id", connData.ContainsKey("ConnectionId") ? connData["ConnectionId"] : Guid.NewGuid().ToString());
@@ -398,14 +406,16 @@ namespace PoWorks_Rework.Controllers
                     cmd.Parameters.AddWithValue("baseUrl", connData.ContainsKey("BaseUrl") ? connData["BaseUrl"] : "");
                     cmd.Parameters.AddWithValue("clientId", connData.ContainsKey("ClientId") ? connData["ClientId"] : "");
 
-                    string encryptedSecret = connData.ContainsKey("ClientSecret") ? _encryptionService.Encrypt(connData["ClientSecret"]) : "";
-                    string encryptedPassword = connData.ContainsKey("Password") ? _encryptionService.Encrypt(connData["Password"]) : "";
+                    string encryptedSecret = connData.ContainsKey("ClientSecret") && !string.IsNullOrEmpty(connData["ClientSecret"]) ? _encryptionService.Encrypt(connData["ClientSecret"]) : "";
+                    string encryptedPassword = connData.ContainsKey("Password") && !string.IsNullOrEmpty(connData["Password"]) ? _encryptionService.Encrypt(connData["Password"]) : "";
 
                     cmd.Parameters.AddWithValue("clientSecret", encryptedSecret);
                     cmd.Parameters.AddWithValue("username", connData.ContainsKey("Username") ? connData["Username"] : "");
                     cmd.Parameters.AddWithValue("password", encryptedPassword);
                     cmd.Parameters.AddWithValue("projectName", connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "");
-                    cmd.Parameters.AddWithValue("isActive", connData.ContainsKey("IsDefault") && connData["IsDefault"].ToLower() == "true");
+
+                    cmd.Parameters.AddWithValue("isDefault", connData.ContainsKey("IsDefault") && connData["IsDefault"].ToLower() == "true");
+                    cmd.Parameters.AddWithValue("isActive", connData.ContainsKey("EnableAutomaticImport") && connData["EnableAutomaticImport"].ToLower() == "true");
 
                     await cmd.ExecuteNonQueryAsync();
                 }

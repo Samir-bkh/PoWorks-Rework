@@ -38,15 +38,7 @@
 			</a>
 		</li>
 
-		
-		@if (User.HasClaim("Permission", "ViewPcVueConfig") || isAdmin)
-		{
-		<li class="@GetActiveClass("PcVueConfig")">
-			<a asp-controller="PcVueConfig" asp-action="Index">
-				<i class="bi bi-server"></i> PcVue Config
-			</a>
-		</li>
-		}
+
 
 
 		<li class="@GetActiveClass("Tenant")">

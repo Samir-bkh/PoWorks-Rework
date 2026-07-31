@@ -6,7 +6,7 @@ namespace PoWorks_Rework.Models
     {
         public string DateFilter { get; set; } = "monthly";
         public int? TenantId { get; set; }
-        public int? MeterId { get; set; }
+        public List<int> MeterIds { get; set; } = new List<int>();
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public int Limit { get; set; } = 5; 

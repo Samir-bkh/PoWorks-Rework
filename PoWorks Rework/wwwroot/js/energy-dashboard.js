@@ -1,26 +1,23 @@
-﻿// FIXED: Energy Dashboard JavaScript - Date Filtering and Filter Dependencies
+﻿// NEW: amCharts 5 Integration - Energy Dashboard
 (function () {
     'use strict';
 
     // Global variables
-    let chart = null;
     let currentData = [];
     let tenants = [];
     let meters = [];
-    let loadingTimeout = null;
-    let meterOffset = 0;
-    let hasMoreMeters = false;
     let autoRefreshInterval = null;
-    let availableDateRange = null;
 
-    // FIXED: Enhanced initialization with intelligent date defaults
+    // AmCharts globals
+    let root = null;
+    let exporting = null;
+
     document.addEventListener('DOMContentLoaded', function () {
-        console.log('FIXED Dashboard initializing with intelligent date handling...');
+        console.log('Dashboard initializing with amCharts 5...');
 
         try {
             attachEventListeners();
 
-            // FIXED: Load intelligent date defaults first, then initialize
             Promise.all([
                 loadDateRangeSuggestions(),
                 loadTenants()
@@ -30,8 +27,6 @@
                 return loadMetersForCurrentDateRange();
             }).then(() => {
                 return loadChartData();
-            }).then(() => {
-                console.log('FIXED Dashboard initialization completed');
             }).catch(error => {
                 console.error('Dashboard initialization error:', error);
                 showNotification('Dashboard initialization failed, showing demo data', 'warning');
@@ -44,47 +39,32 @@
         }
     });
 
-    // FIXED: Load intelligent date range suggestions
     async function loadDateRangeSuggestions() {
         try {
             const response = await fetch('/Dashboard/GetDateRangeSuggestions');
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const suggestions = await response.json();
 
             if (suggestions.success) {
-                // FIXED: Set intelligent defaults based on available data
                 document.getElementById('startDate').value = suggestions.defaultStartDate;
                 document.getElementById('endDate').value = suggestions.defaultEndDate;
-
                 updateDataStatus(suggestions.message, 'info');
 
-                // Store available date range info
                 if (suggestions.alternatives && suggestions.alternatives.length > 0) {
                     addDateRangeAlternatives(suggestions.alternatives);
                 }
-
-                console.log('Set intelligent date defaults:', suggestions.defaultStartDate, 'to', suggestions.defaultEndDate);
             } else {
-                // Fallback to default date initialization
                 initializeDateFilters();
                 updateDataStatus('Using default date range', 'warning');
             }
-
         } catch (error) {
-            console.error('Error loading date range suggestions:', error);
             initializeDateFilters();
             updateDataStatus('Error loading optimal date range, using defaults', 'warning');
         }
     }
 
-    // FIXED: Add date range alternatives to UI
     function addDateRangeAlternatives(alternatives) {
         const dateFilter = document.getElementById('dateFilter');
-
-        // Add custom options for quick selection
         alternatives.forEach(alt => {
             const option = document.createElement('option');
             option.value = `custom_${alt.name.replace(/\s+/g, '_').toLowerCase()}`;
@@ -100,7 +80,6 @@
         const endDate = new Date();
         const startDate = new Date();
         startDate.setMonth(startDate.getMonth() - 1);
-
         document.getElementById('startDate').value = formatDate(startDate);
         document.getElementById('endDate').value = formatDate(endDate);
     }
@@ -109,119 +88,65 @@
         return date.toISOString().split('T')[0];
     }
 
-    // FIXED: Enhanced event listeners with date change handling
     function attachEventListeners() {
         document.getElementById('tenantFilter').addEventListener('change', onTenantChange);
         document.getElementById('applyFilters').addEventListener('click', loadChartData);
         document.getElementById('resetFilters').addEventListener('click', resetFilters);
-        document.getElementById('chartType').addEventListener('change', updateChartType);
+        document.getElementById('chartType').addEventListener('change', () => loadChartData());
 
-        // FIXED: Date filter changes now trigger meter reload
         document.getElementById('dateFilter').addEventListener('change', onDateFilterChange);
         document.getElementById('startDate').addEventListener('change', onDateRangeChange);
         document.getElementById('endDate').addEventListener('change', onDateRangeChange);
 
-        // Meter controls
         document.getElementById('meterLimit').addEventListener('change', onMeterLimitChange);
-        document.getElementById('loadMoreMeters').addEventListener('click', loadMoreMeters);
         document.getElementById('refreshMeters').addEventListener('click', refreshMeters);
 
-        // Auto refresh and export
         document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
         document.getElementById('exportChart').addEventListener('click', exportChart);
 
-        // FULL SCREEN
         document.getElementById('fullscreenChart')?.addEventListener('click', toggleFullscreen);
 
-        
-        document.getElementById('tabDaily')?.addEventListener('click', (e) => { 
-            e.preventDefault(); 
-            switchTab('daily', 'tabDaily'); 
+        document.getElementById('tabDaily')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab('daily', 'tabDaily');
         });
-        document.getElementById('tabMonthly')?.addEventListener('click', (e) => { 
-            e.preventDefault(); 
-            switchTab('monthly', 'tabMonthly'); 
+        document.getElementById('tabMonthly')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab('monthly', 'tabMonthly');
         });
-        document.getElementById('tabYearly')?.addEventListener('click', (e) => { 
-            e.preventDefault(); 
-            switchTab('yearly', 'tabYearly'); 
+        document.getElementById('tabYearly')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab('yearly', 'tabYearly');
         });
 
         document.getElementById('resetZoomBtn')?.addEventListener('click', () => {
-            if (chart) {
-                chart.resetZoom();
+            if (root) {
+                let chartObj = root.container.children.getIndex(0);
+                if (chartObj && chartObj.xAxes) {
+                    chartObj.xAxes.getIndex(0).zoom(0, 1);
+                }
             }
-        }); 
-
-        
-        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                console.log(`Display mode changed to : ${radio.value}`);
-                loadChartData(); 
-            });
         });
 
-        
-        document.querySelectorAll('input[name="groupBy"]').forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                console.log(`Group changed to : ${e.target.value}`);
-                
-                const meterSelect = document.getElementById('meterFilter');
-                
-                if (e.target.value === 'tenant') {
-                    
-                    if (meterSelect.value !== '') {
-                        showNotification("Filter reset: Showing all meters for the tenant.", "info");
-                    }
-                    
-                    meterSelect.value = ''; // Force "All Meters"
-                    meterSelect.disabled = true; 
-                   
-                    meterSelect.title = "Filter unavailable in Tenant view (Total consumption)"; 
-                } else {
-                    meterSelect.disabled = false; 
-                    meterSelect.title = ""; 
-                }
-
-                loadChartData(); 
-            });
+        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+            radio.addEventListener('change', () => loadChartData());
         });
     }
 
-    
-
-    // Load tenants 
     async function loadTenants() {
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-            const response = await fetch('/Dashboard/GetTenants', {
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            tenants = data || [];
+            const response = await fetch('/Dashboard/GetTenants');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            tenants = await response.json() || [];
             populateTenantDropdown();
-
         } catch (error) {
             console.error('Error loading tenants:', error);
-            if (error.name === 'AbortError') {
-                showNotification('Tenant loading timeout - continuing without tenants', 'warning');
-            }
         }
     }
 
     function populateTenantDropdown() {
         const tenantSelect = document.getElementById('tenantFilter');
         tenantSelect.innerHTML = '<option value="">All Tenants</option>';
-
         tenants.forEach(tenant => {
             const option = document.createElement('option');
             option.value = tenant.id;
@@ -230,138 +155,86 @@
         });
     }
 
-    // FIXED: Enhanced tenant change that considers date range
     function onTenantChange(event) {
-        const tenantId = event.target.value;
-
-        // FIXED: Always reload meters for the current date range when tenant changes
         loadMetersForCurrentDateRange();
     }
 
-    // FIXED: Date filter change handler
     function onDateFilterChange(event) {
         const filterType = event.target.value;
 
-        // Check if it's a custom alternative
         if (filterType.startsWith('custom_')) {
             const option = event.target.selectedOptions[0];
             document.getElementById('startDate').value = option.dataset.startDate;
             document.getElementById('endDate').value = option.dataset.endDate;
-            showNotification(`Applied ${option.textContent}: ${option.dataset.description}`, 'info');
+            showNotification(`Applied ${option.textContent}`, 'info');
         } else {
-            // Standard date filter logic
             const startDate = document.getElementById('startDate');
             const endDate = document.getElementById('endDate');
             const today = new Date();
 
             switch (filterType) {
                 case 'daily':
-                    // The past 30 days
                     startDate.value = formatDate(new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000));
                     endDate.value = formatDate(today);
                     break;
                 case 'monthly':
-                    // The past 12 months
                     startDate.value = formatDate(new Date(today.getFullYear(), today.getMonth() - 11, 1));
                     endDate.value = formatDate(today);
                     break;
                 case 'yearly':
-                    // The past 5 years 
                     startDate.value = formatDate(new Date(today.getFullYear() - 4, 0, 1));
                     endDate.value = formatDate(today);
                     break;
             }
         }
-
-        // FIXED: Trigger meter reload and chart update when date filter changes
         onDateRangeChange();
     }
 
-    // FIXED: Date range change handler
     async function onDateRangeChange() {
-        console.log('Date range changed, reloading meters and chart...');
-
-        // Validate date range
         const startDate = new Date(document.getElementById('startDate').value);
         const endDate = new Date(document.getElementById('endDate').value);
-
         if (startDate >= endDate) {
             showNotification('Start date must be before end date', 'error');
             return;
         }
-
-        const daysDiff = (endDate - startDate) / (1000 * 60 * 60 * 24);
-        if (daysDiff > 365) {
-            showNotification('Date range too large (max 365 days). Chart performance may be affected.', 'warning');
-        }
-
-        updateDataStatus('Checking for data in new date range', 'info');
-
         try {
-            // FIXED: Reload meters for the new date range
             await loadMetersForCurrentDateRange();
-
-            // FIXED: Reload chart data for new date range
             await loadChartData();
-
         } catch (error) {
             console.error('Error handling date range change:', error);
-            showNotification('Error loading data for new date range', 'error');
         }
     }
 
-    // NEW: Load dashboard statistics for current date range
     async function loadDashboardStats() {
         try {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
-
             const url = `/Dashboard/GetDashboardStats?startDate=${startDate}&endDate=${endDate}`;
             const response = await fetch(url);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const stats = await response.json();
-            updateDashboardStats(stats);
 
             if (stats.dateRange && !stats.dateRange.hasDataInRange) {
-                updateDataStatus(`No data found in range ${startDate} to ${endDate}. ${stats.message}`, 'warning');
+                updateDataStatus(`No data found in range.`, 'warning');
             } else {
                 updateDataStatus(stats.message, stats.hasData ? 'success' : 'warning');
             }
-
         } catch (error) {
-            console.error('Error loading dashboard stats:', error);
             updateDataStatus('Unable to load dashboard statistics', 'warning');
         }
     }
 
-   // Update dashboard statistics display
-    function updateDashboardStats(stats) {
-// The "Meter Information" panel was removed from the interface because it was unnecessary for the end user.
-// We keep the function empty so as not to break the loading chain (loadDashboardStats).
-    }
-
-    // FIXED: Load meters that have data in the current date range
     async function loadMetersForCurrentDateRange() {
         try {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             const tenantId = document.getElementById('tenantFilter').value;
-            const limit = parseInt(document.getElementById('meterLimit').value) || 5;
-
-            updateDataStatus('Loading meters with data in date range...', 'info');
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
 
             const requestBody = {
                 startDate: startDate,
                 endDate: endDate,
                 tenantId: tenantId || null,
-                limit: limit,
+                limit: 1000,
                 offset: 0,
                 includeNullTenants: true
             };
@@ -369,336 +242,413 @@
             const response = await fetch('/Dashboard/GetMetersWithData', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-                signal: controller.signal
+                body: JSON.stringify(requestBody)
             });
 
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             if (data.success) {
                 meters = data.meters || [];
-                hasMoreMeters = data.hasMore || false;
-                meterOffset = limit;
-
                 populateMeterDropdown();
-                updateLoadMoreButton();
-
-                updateDataStatus(data.message, 'success');
-
-                console.log(`Loaded ${meters.length} meters with data in range ${startDate} to ${endDate}`);
-            } else {
-                throw new Error(data.error || 'Failed to load meters');
             }
-
         } catch (error) {
-            console.error('Error loading meters for date range:', error);
-
-            if (error.name === 'AbortError') {
-                showNotification('Meter loading timeout for date range', 'warning');
-            } else {
-                showNotification(`Error loading meters: ${error.message}`, 'error');
-            }
-
-            updateDataStatus('Error loading meters for date range', 'error');
-
-            // Clear meter list on error
+            console.error('Error loading meters:', error);
             meters = [];
             populateMeterDropdown();
         }
     }
 
-    // Enhanced meter dropdown population (FIXED: Memorize selection)
     function populateMeterDropdown() {
-        const meterSelect = document.getElementById('meterFilter');
-        
-        // 1. Save the currently selected counter before destroying everything
-        const currentSelectedMeter = meterSelect.value;
+        const container = document.getElementById('meterFilterContainer');
+        const btnText = document.getElementById('meterDropdownText');
+        const previouslyChecked = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => cb.value);
 
-        meterSelect.innerHTML = '<option value="">All Meters</option>';
+        container.innerHTML = '';
 
         if (meters.length === 0) {
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No meters with data in date range';
-            option.disabled = true;
-            meterSelect.appendChild(option);
+            container.innerHTML = '<li><span class="dropdown-item-text text-muted">No meters available</span></li>';
+            btnText.textContent = 'No meters available';
             return;
         }
 
+        container.innerHTML = `
+            <li class="px-2 pb-2 border-bottom sticky-top bg-white" style="z-index: 1050; margin-top: -8px; padding-top: 8px;">
+                <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                    <input type="text" id="meterSearchInput" class="form-control" placeholder="Search meters..." autocomplete="off">
+                </div>
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 fw-bold" id="selectAllMeters">Select All</button>
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-danger" id="clearAllMeters">Clear</button>
+                </div>
+            </li>
+        `;
+
         meters.forEach(meter => {
-            const option = document.createElement('option');
-            option.value = meter.id;
-            option.textContent = meter.displayName || `${meter.name} (${meter.type})`;
+            const isChecked = previouslyChecked.includes(meter.id.toString()) ? 'checked' : '';
+            let label = meter.displayName || `${meter.name} (${meter.type})`;
+            if (meter.tenantName) label += ` - ${meter.tenantName}`;
 
-            if (meter.tenantName) {
-                option.textContent += ` - ${meter.tenantName}`;
-            } else {
-                option.textContent += ' [No Tenant]';
-            }
-
-            meterSelect.appendChild(option);
+            const li = document.createElement('li');
+            li.className = 'dropdown-item-text p-1 meter-item';
+            li.innerHTML = `
+                <div class="form-check cursor-pointer">
+                    <input class="form-check-input meter-checkbox" type="checkbox" value="${meter.id}" id="meterCb_${meter.id}" ${isChecked} style="cursor: pointer;">
+                    <label class="form-check-label d-block text-truncate meter-label" for="meterCb_${meter.id}" title="${label}" style="cursor: pointer;">
+                        ${label}
+                    </label>
+                </div>
+            `;
+            container.appendChild(li);
         });
 
-        // 2. Restore selection
-        if (currentSelectedMeter) {
-    
-            const optionExists = Array.from(meterSelect.options).some(opt => opt.value === currentSelectedMeter);
-            if (optionExists) {
-                meterSelect.value = currentSelectedMeter; 
-            } else {
-             
-                const extraOption = document.createElement('option');
-                extraOption.value = currentSelectedMeter;
-                extraOption.textContent = "Selected counter";
-                meterSelect.appendChild(extraOption);
-                meterSelect.value = currentSelectedMeter;
-            }
-        }
-    }
+        updateMeterDropdownText();
 
-    // Meter limit change handler (updated)
-    function onMeterLimitChange(event) {
-        const newLimit = parseInt(event.target.value);
-        console.log(`Meter limit changed to: ${newLimit}`);
-
-        // Reset and reload with new limit for current date range
-        meterOffset = 0;
-        hasMoreMeters = false;
-        loadMetersForCurrentDateRange();
-    }
-
-    // Load more meters (updated)
-    async function loadMoreMeters() {
-        try {
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            const tenantId = document.getElementById('tenantFilter').value;
-            const limit = parseInt(document.getElementById('meterLimit').value) || 5;
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-            const requestBody = {
-                startDate: startDate,
-                endDate: endDate,
-                tenantId: tenantId || null,
-                limit: limit,
-                offset: meterOffset,
-                includeNullTenants: true
-            };
-
-            const response = await fetch('/Dashboard/GetMetersWithData', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-                signal: controller.signal
+        const searchInput = document.getElementById('meterSearchInput');
+        searchInput?.addEventListener('click', (e) => e.stopPropagation());
+        searchInput?.addEventListener('input', function (e) {
+            const searchTerm = e.target.value.toLowerCase();
+            document.querySelectorAll('.meter-item').forEach(item => {
+                const labelText = item.querySelector('.meter-label').textContent.toLowerCase();
+                item.style.display = labelText.includes(searchTerm) ? '' : 'none';
             });
+        });
 
-            clearTimeout(timeoutId);
+        document.querySelectorAll('.meter-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => {
+                updateMeterDropdownText();
+                loadChartData();
+            });
+        });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+        document.getElementById('selectAllMeters')?.addEventListener('click', () => {
+            let changed = false;
+            document.querySelectorAll('.meter-item').forEach(item => {
+                if (item.style.display !== 'none') {
+                    const cb = item.querySelector('.meter-checkbox');
+                    if (!cb.checked) { cb.checked = true; changed = true; }
+                }
+            });
+            if (changed) { updateMeterDropdownText(); loadChartData(); }
+        });
 
-            const data = await response.json();
-
-            if (data.success && data.meters.length > 0) {
-                meters = meters.concat(data.meters);
-                hasMoreMeters = data.hasMore || false;
-                meterOffset += limit;
-
-                populateMeterDropdown();
-                updateLoadMoreButton();
-
-                showNotification(`Loaded ${data.meters.length} additional meters`, 'success');
-            } else {
-                hasMoreMeters = false;
-                updateLoadMoreButton();
-                showNotification('No more meters to load', 'info');
-            }
-
-        } catch (error) {
-            console.error('Error loading more meters:', error);
-            showNotification('Error loading additional meters', 'error');
-        }
+        document.getElementById('clearAllMeters')?.addEventListener('click', () => {
+            let changed = false;
+            document.querySelectorAll('.meter-checkbox').forEach(cb => {
+                if (cb.checked) { cb.checked = false; changed = true; }
+            });
+            if (changed) { updateMeterDropdownText(); loadChartData(); }
+        });
     }
 
-    // Refresh meters (updated)
-    async function refreshMeters() {
-        meterOffset = 0;
-        hasMoreMeters = false;
-        await loadMetersForCurrentDateRange();
-        showNotification('Meter list refreshed for current date range', 'success');
-    }
+    function updateMeterDropdownText() {
+        const checkedCount = document.querySelectorAll('.meter-checkbox:checked').length;
+        const btnText = document.getElementById('meterDropdownText');
+        const currentLimit = document.getElementById('meterLimit').value || 5;
 
-    // Update load more button (unchanged)
-    function updateLoadMoreButton() {
-        const loadMoreBtn = document.getElementById('loadMoreMeters');
-
-        if (hasMoreMeters) {
-            loadMoreBtn.style.display = 'block';
-            loadMoreBtn.textContent = `Load More (${meters.length} loaded)`;
+        if (checkedCount === 0) {
+            btnText.textContent = `Default View (Top ${currentLimit})`;
+            btnText.classList.add('text-muted');
+        } else if (checkedCount === 1) {
+            const label = document.querySelector('.meter-checkbox:checked').nextElementSibling.textContent.trim();
+            btnText.textContent = label;
+            btnText.classList.remove('text-muted');
         } else {
-            loadMoreBtn.style.display = 'none';
+            btnText.textContent = `${checkedCount} meters selected`;
+            btnText.classList.remove('text-muted');
         }
     }
 
-    // FIXED: Enhanced chart loading with better error handling for date ranges
-    async function loadChartData(forcedChartType = null) {
-        console.log('FIXED: Loading chart data with date validation...');
+    function onMeterLimitChange(event) {
+        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = false);
+        if (typeof updateMeterDropdownText === 'function') updateMeterDropdownText();
+        loadMetersForCurrentDateRange().then(() => loadChartData());
+    }
+
+    async function refreshMeters() {
+        await loadMetersForCurrentDateRange();
+        showNotification('Meter list refreshed', 'success');
+    }
+
+    // ============================================================
+    // AMCHARTS 5 RENDERING
+    // ============================================================
+
+    // Transform backend labels into MS timestamps for amCharts
+    function parseLabelToTs(label) {
+        if (typeof label === 'number') return label;
+        if (label.length === 4) return new Date(`${label}-01-01T00:00:00`).getTime();
+        if (label.length === 7) return new Date(`${label}-01T00:00:00`).getTime();
+        if (label.length === 10) return new Date(`${label}T00:00:00`).getTime();
+        return new Date(label.replace(' ', 'T') + ':00').getTime();
+    }
+
+    // Format the backend data to [{x: timestamp, y: value}] required by our amCharts series
+    function toTimeSeriesFormat(chartData) {
+        if (!chartData || !chartData.labels) return chartData;
+        const points = chartData.labels.map(l => parseLabelToTs(l));
+        const datasets = chartData.datasets.map(ds => ({
+            label: ds.label,
+            data: ds.data.map((v, i) => ({ x: points[i], y: v || 0 }))
+        }));
+        return { datasets };
+    }
+
+    async function loadChartData() {
+        console.log('Loading chart data...');
         showLoading(true);
 
-        if (loadingTimeout) {
-            clearTimeout(loadingTimeout);
-        }
-
-        loadingTimeout = setTimeout(() => {
-            console.warn('Chart loading timeout - showing demo data');
-            showDemoChart();
-            showNotification('Chart loading took too long - showing demo data', 'warning');
-        }, 15000);
+        const dateFilterValue = document.getElementById('dateFilter').value;
+        const selectedMeters = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
 
         const filters = {
-            dateFilter: document.getElementById('dateFilter').value,
+            dateFilter: dateFilterValue,
             tenantId: document.getElementById('tenantFilter').value || null,
-            meterId: document.getElementById('meterFilter').value || null,
+            meterIds: selectedMeters,
             startDate: document.getElementById('startDate').value,
             endDate: document.getElementById('endDate').value,
             limit: parseInt(document.getElementById('meterLimit').value) || 5,
-            chartType: forcedChartType, 
             isComparisonMode: document.getElementById('modeComparison').checked,
-            groupBy: document.querySelector('input[name="groupBy"]:checked')?.value || 'meter'
+            groupBy: 'meter'
         };
 
-        console.log('FIXED Filters:', filters);
-
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000);
-
             const response = await fetch('/Dashboard/GetConsumptionData', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(filters),
-                signal: controller.signal
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters)
             });
 
-            clearTimeout(timeoutId);
-            clearTimeout(loadingTimeout);
-
-            console.log('Response Status:', response.status);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
-            console.log('FIXED Received data:', data);
 
-            // FIXED: Handle no data in range scenario
             if (data.noDataInRange && data.suggestions) {
                 showNotification(data.message, 'warning');
                 showDateRangeSuggestions(data.suggestions);
-                showDemoChart();
                 showLoading(false);
                 return;
             }
 
-            // Handle demo data notification
-            if (data.isDemoData) {
-                showNotification(data.message || 'Showing demo data', 'info');
-            } else if (data.message) {
-                showNotification(data.message, 'info');
-            }
+            if (data.dataInfo) updateDataInfoDisplay(data.dataInfo);
 
-            // Enhanced data display with additional info
-            if (data.dataInfo) {
-                updateDataInfoDisplay(data.dataInfo);
-            }
+            currentData = toTimeSeriesFormat(data.chartData);
+            updateAmChart(currentData);
 
-            currentData = data.chartData;
-            updateChart(data.chartData);
-            
-
-            if (data.chartData && data.chartData.datasets) {
-                renderTopConsumers(data.chartData.datasets);
-            }
-            
+            if (currentData.datasets) renderTopConsumers(currentData.datasets);
             updateSummaryCards(data.summary);
-            updateSummaryCards(data.summary);
+
             showLoading(false);
 
-            console.log('FIXED Chart updated successfully');
-
         } catch (error) {
-            clearTimeout(loadingTimeout);
             console.error('Chart loading error:', error);
+            showNotification(`Error: ${error.message}`, 'error');
+            showLoading(false);
+        }
+    }
+    // The Magic function that builds amCharts!
+    function updateAmChart(data) {
+        const chartdiv = document.getElementById('chartdiv');
+        if (!chartdiv) return;
 
-            if (error.name === 'AbortError') {
-                console.warn('Request timeout - showing demo data');
-                showNotification('Request timeout - showing demo data', 'warning');
+        // Destroy previous instance completely
+        if (root) {
+            root.dispose();
+            root = null;
+            exporting = null;
+        }
+
+        if (!data || !data.datasets || data.datasets.length === 0) return;
+
+        const chartType = document.getElementById('chartType')?.value || 'line';
+
+        const dateFilter = document.getElementById('dateFilter').value;
+        let timeUnit = "day";
+        let tooltipFormat = "[bold]{name}[/]\n{valueX.formatDate('yyyy-MM-dd')}: {valueY} kWh";
+
+        if (dateFilter === "daily") {
+            timeUnit = "hour";
+            tooltipFormat = "[bold]{name}[/]\n{valueX.formatDate('yyyy-MM-dd HH:mm')}: {valueY} kWh";
+        } else if (dateFilter === "yearly") {
+            timeUnit = "month";
+            tooltipFormat = "[bold]{name}[/]\n{valueX.formatDate('MMM yyyy')}: {valueY} kWh";
+        }
+
+        const startDateInput = document.getElementById('startDate').value;
+        const endDateInput = document.getElementById('endDate').value;
+        const startTs = new Date(startDateInput + "T00:00:00").getTime();
+        const endTs = new Date(endDateInput + "T23:59:59").getTime();
+
+        root = am5.Root.new("chartdiv");
+
+        if (root._logo) {
+            root._logo.dispose();
+        }
+
+        root.setThemes([am5themes_Animated.new(root)]);
+
+        let chart = root.container.children.push(am5xy.XYChart.new(root, {
+            panX: false,
+            panY: false, 
+            wheelX: "panX",
+            wheelY: "zoomX",
+            layout: root.verticalLayout,
+            pinchZoomX: true
+        }));
+
+        let xAxis = chart.xAxes.push(am5xy.DateAxis.new(root, {
+            min: startTs,
+            max: endTs,
+            strictMinMax: true,
+            maxDeviation: 0.2,
+            baseInterval: { timeUnit: timeUnit, count: 1 },
+            renderer: am5xy.AxisRendererX.new(root, {
+                minGridDistance: 60,
+                minorGridEnabled: true
+            }),
+            tooltip: am5.Tooltip.new(root, {})
+        }));
+
+        let yAxis = chart.yAxes.push(am5xy.ValueAxis.new(root, {
+            renderer: am5xy.AxisRendererY.new(root, {}),
+            tooltip: am5.Tooltip.new(root, {
+                animationDuration: 150 
+            })
+        }));
+
+        // 🟢 FIX 1 : LE VRAI CARRÉ DE SÉLECTION CLASSIQUE
+        let cursor = chart.set("cursor", am5xy.XYCursor.new(root, {
+            behavior: "zoomXY", // Permet de dessiner un vrai rectangle dans toutes les directions !
+            xAxis: xAxis,
+            yAxis: yAxis
+        }));
+
+        // On affiche une belle croix de visée (lignes en pointillé)
+        cursor.lineX.setAll({ strokeDasharray: [3, 3] });
+        cursor.lineY.setAll({ visible: true, strokeDasharray: [3, 3] });
+
+
+        cursor.set("maxTooltipDistance", 0);
+
+        const colors = [
+            am5.color(0x36A2EB), am5.color(0xFF6384), am5.color(0xFFCE56),
+            am5.color(0x4BC0C0), am5.color(0x9966FF), am5.color(0xFF9F40)
+        ];
+
+        data.datasets.forEach((ds, index) => {
+            let color = colors[index % colors.length];
+            let series;
+
+            if (chartType === 'bar') {
+                series = chart.series.push(am5xy.ColumnSeries.new(root, {
+                    name: ds.label,
+                    xAxis: xAxis,
+                    yAxis: yAxis,
+                    valueYField: "y",
+                    valueXField: "x",
+                    fill: color,
+                    stroke: color,
+                    tooltip: am5.Tooltip.new(root, {
+                        labelText: tooltipFormat,
+                        dy: -5 // Remonte un peu la bulle pour pas la cacher sous la souris
+                    })
+                }));
             } else {
-                showNotification(`Error: ${error.message} - showing demo data`, 'error');
+                series = chart.series.push(am5xy.LineSeries.new(root, {
+                    name: ds.label,
+                    xAxis: xAxis,
+                    yAxis: yAxis,
+                    valueYField: "y",
+                    valueXField: "x",
+                    fill: color,
+                    stroke: color,
+                    // 🟢 FIX 2 : On redonne la bulle au graphique, le curseur se chargera de l'afficher proprement
+                    tooltip: am5.Tooltip.new(root, {
+                        labelText: tooltipFormat
+                    })
+                }));
+
+                series.strokes.template.setAll({ strokeWidth: 3 });
+
+                series.fills.template.setAll({
+                    visible: true,
+                    fillOpacity: 0.2
+                });
+
+                series.bullets.push(function () {
+                    return am5.Bullet.new(root, {
+                        sprite: am5.Circle.new(root, {
+                            radius: 4,
+                            fill: color,
+                            stroke: root.interfaceColors.get("background"),
+                            strokeWidth: 2
+                        })
+                    });
+                });
             }
 
-            showDemoChart();
+            series.data.setAll(ds.data);
+        });
+
+        
+        let legend = chart.children.push(am5.Legend.new(root, {
+            centerX: am5.p50,
+            x: am5.p50,
+            paddingTop: 15,
+            useDefaultMarker: true
+        }));
+        legend.data.setAll(chart.series.values);
+
+        let scrollbarX = am5xy.XYChartScrollbar.new(root, {
+            orientation: "horizontal",
+            height: 50
+        });
+        chart.set("scrollbarX", scrollbarX);
+
+        let sbxAxis = scrollbarX.chart.xAxes.push(am5xy.DateAxis.new(root, {
+            baseInterval: { timeUnit: timeUnit, count: 1 },
+            renderer: am5xy.AxisRendererX.new(root, {
+                opposite: false,
+                strokeOpacity: 0
+            })
+        }));
+
+        let sbyAxis = scrollbarX.chart.yAxes.push(am5xy.ValueAxis.new(root, {
+            renderer: am5xy.AxisRendererY.new(root, {})
+        }));
+
+        if (data.datasets.length > 0) {
+            let sbseries = scrollbarX.chart.series.push(am5xy.LineSeries.new(root, {
+                xAxis: sbxAxis,
+                yAxis: sbyAxis,
+                valueYField: "y",
+                valueXField: "x"
+            }));
+            let dsData = data.datasets[0].data;
+            sbseries.fills.template.setAll({ visible: true, fillOpacity: 0.2 });
+            sbseries.data.setAll(dsData);
         }
+
+        exporting = am5plugins_exporting.Exporting.new(root, {
+            menu: null,
+            dataSource: chart
+        });
+
+        chart.appear(1000, 100);
     }
 
-    // NEW: Show date range suggestions when no data found
-    function showDateRangeSuggestions(suggestions) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-info alert-dismissible fade show mt-3';
-        alertDiv.innerHTML = `
-            <h6>Suggested Date Ranges:</h6>
-            <p>${suggestions.message}</p>
-            <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-outline-primary" onclick="applySuggestedDateRange('${suggestions.defaultStartDate}', '${suggestions.defaultEndDate}')">
-                    Use Suggested Range
-                </button>
-                ${suggestions.alternatives.map(alt =>
-            `<button type="button" class="btn btn-outline-secondary" onclick="applySuggestedDateRange('${alt.startDate}', '${alt.endDate}')" title="${alt.description}">
-                        ${alt.name}
-                    </button>`
-        ).join('')}
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-
-        const container = document.querySelector('.container-fluid');
-        if (container) {
-            container.insertBefore(alertDiv, container.children[1]);
-        }
+    function showDemoChart() {
+        // Fallback removed for brevity - rely on true data flow now.
+        showLoading(false);
     }
 
-    // NEW: Apply suggested date range
-    window.applySuggestedDateRange = function (startDate, endDate) {
-        document.getElementById('startDate').value = startDate;
-        document.getElementById('endDate').value = endDate;
-
-        // Remove suggestion alert
-        const alerts = document.querySelectorAll('.alert-info');
-        alerts.forEach(alert => alert.remove());
-
-        // Trigger reload
-        onDateRangeChange();
-    };
-
-    // Rest of the functions remain unchanged from Phase 2
-    // (updateDataInfoDisplay, showDemoChart, updateChart, etc.)
-
+    // ============================================================
+    // MISCELLANEOUS UI UPDATES
+    // ============================================================
     function updateDataInfoDisplay(dataInfo) {
         const activeMetersDetail = document.getElementById('activeMetersDetail');
         if (activeMetersDetail && dataInfo.availableMeters) {
-            activeMetersDetail.textContent = `Out of ${dataInfo.availableMeters} available (limit: ${dataInfo.appliedLimit})`;
+            activeMetersDetail.textContent = `Out of ${dataInfo.availableMeters} available`;
         }
 
         const statusMessage = `Showing ${dataInfo.shownMeters} of ${dataInfo.availableMeters} meters (${dataInfo.metersWithTenants} with tenants, ${dataInfo.metersWithoutTenants} without)`;
@@ -711,202 +661,41 @@
 
         if (statusDiv && statusText) {
             statusText.textContent = message;
-            statusDiv.className = `alert alert-${getBootstrapAlertClass(type)}`;
+            statusDiv.className = `alert alert-${type === 'error' ? 'danger' : type}`;
             statusDiv.style.display = 'block';
+            statusDiv.style.opacity = '1';
+            statusDiv.style.transition = 'opacity 0.5s ease'; 
 
             if (type === 'success') {
                 setTimeout(() => {
-                    statusDiv.style.display = 'none';
-                }, 5000);
+
+                    statusDiv.style.opacity = '0';
+                }, 4000);
             }
         }
     }
 
-    // Keep all other functions from Phase 2 unchanged
-    // (showDemoChart, updateChart, updateSummaryCards, resetFilters, etc.)
-
-    function showDemoChart() {
-        const demoData = {
-            labels: ['2025-08-05', '2025-08-06', '2025-08-07', '2025-08-08', '2025-08-09', '2025-08-10', '2025-08-11'],
-            datasets: [
-                {
-                    label: 'Demo Meter 1 (kWh)',
-                    data: [120, 135, 148, 162, 155, 170, 165]
-                },
-                {
-                    label: 'Demo Meter 2 (kWh)',
-                    data: [200, 210, 235, 225, 240, 255, 250]
-                }
-            ]
-        };
-
-        const demoSummary = {
-            totalConsumption: 1925,
-            averageDaily: 275,
-            peakUsage: 255,
-            activeMeters: 2
-        };
-
-        currentData = demoData;
-        updateChart(demoData);
-        updateSummaryCards(demoSummary);
-        showLoading(false);
-    }
-
-    if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
-    Chart.register(ChartZoom);
-    }
-
-   function updateChart(data, forcedType = null) {
-        console.log('Updating chart with data:', data);
-
-        const canvas = document.getElementById('consumptionChart');
-        if (!canvas) {
-            console.error('Canvas not found');
-            return;
-        }
-
-        const ctx = canvas.getContext('2d');
-        const chartType = forcedType || document.getElementById('chartType')?.value || 'bar';
-
-        if (typeof Chart === 'undefined') {
-            console.error('Chart.js not loaded');
-            return;
-        }
-
-        if (chart) {
-            chart.destroy();
-        }
-
-        try {
-            const processedDatasets = data.datasets.map((dataset, index) => {
-                
-                const emvueColors = {
-                    'Monday': '#4BC0C0',     
-                    'Tuesday': '#36A2EB',     
-                    'Wednesday': '#FF9F40', 
-                    'Thursday': '#FFCE56',    
-                    'Friday': '#9966FF',  
-                    'Saturday': '#FF6384',    
-                    'Sunday': '#C9CBCF'   
-                };
-
-                const colorKey = Object.keys(emvueColors).find(k => dataset.label.includes(k));
-                const finalColor = colorKey ? emvueColors[colorKey] : getColor(index, 1);
-                
-               
-                const validPointsCount = dataset.data.filter(v => v !== null && v !== undefined).length;
-                
-               
-                const pRadius = validPointsCount <= 1 ? 6 : 3;
-                
-                return {
-                    label: dataset.label,
-                    data: dataset.data,
-                    backgroundColor: chartType === 'line' ? 'transparent' : finalColor,
-                    borderColor: finalColor,
-                    borderWidth: chartType === 'line' ? 2.5 : 1, 
-                    fill: false, 
-                    tension: 0.1, 
-                    spanGaps: true,  
-                    pointRadius: pRadius,
-                    pointBackgroundColor: finalColor, 
-                    pointHoverRadius: 6 
-                };
-            });
-
-            chart = new Chart(ctx, {
-                type: chartType,
-                data: {
-                    labels: data.labels,
-                    datasets: processedDatasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { 
-                            position: 'right',  
-                            align: 'start',     
-                            labels: { 
-                                usePointStyle: true, 
-                                boxWidth: 8,    
-                                padding: 12,    
-                                font: {
-                                    size: 11    
-                                }
-                            } 
-                        },
-                        title: { display: false },
-                        zoom: {
-                            zoom: {
-                                wheel: { enabled: true },
-                                drag: { enabled: true, backgroundColor: 'rgba(233, 30, 99, 0.2)' },
-                                mode: 'x',
-                            },
-                            pan: { enabled: true, mode: 'x' }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#f0f0f0' }, 
-                            title: { display: true, text: 'Puissance (kW) / Énergie (kWh)', color: '#888' }
-                        },
-                        x: { grid: { display: false } }
-                    }
-                }
-            });
-            console.log('Chart created successfully');
-        } catch (chartError) {
-            console.error('Chart creation error:', chartError);
-        }
-    }
-
-    function updateChartType() {
-        if (currentData && currentData.labels) {
-            updateChart(currentData);
-        }
-    }
-
-    function getColor(index, alpha) {
-        const colors = [
-            `rgba(54, 162, 235, ${alpha})`,
-            `rgba(255, 99, 132, ${alpha})`,
-            `rgba(255, 206, 86, ${alpha})`,
-            `rgba(75, 192, 192, ${alpha})`,
-            `rgba(153, 102, 255, ${alpha})`,
-            `rgba(255, 159, 64, ${alpha})`
-        ];
-        return colors[index % colors.length]; 
-    }
 
     function updateSummaryCards(summary) {
-        try {
-            document.getElementById('totalConsumption').textContent = `${summary.totalConsumption.toFixed(2)} kWh`;
-            document.getElementById('avgDaily').textContent = `${summary.averageDaily.toFixed(2)} kWh`;
-            document.getElementById('peakUsage').textContent = `${summary.peakUsage.toFixed(2)} kWh`;
-            document.getElementById('activeMeters').textContent = summary.activeMeters;
-
-            const totalDetail = document.getElementById('totalConsumptionDetail');
-            if (totalDetail && summary.totalMeters) {
-                totalDetail.textContent = `From ${summary.activeMeters} of ${summary.totalMeters} meters`;
-            }
-
-        } catch (error) {
-            console.error('Error updating summary cards:', error);
+        if (!summary) return;
+        document.getElementById('totalConsumption').textContent = `${summary.totalConsumption.toFixed(2)} kWh`;
+        document.getElementById('avgDaily').textContent = `${summary.averageDaily.toFixed(2)} kWh`;
+        document.getElementById('peakUsage').textContent = `${summary.peakUsage.toFixed(2)} kWh`;
+        document.getElementById('activeMeters').textContent = summary.activeMeters;
+        const totalDetail = document.getElementById('totalConsumptionDetail');
+        if (totalDetail && summary.totalMeters) {
+            totalDetail.textContent = `From ${summary.activeMeters} of ${summary.totalMeters} meters`;
         }
     }
 
     function resetFilters() {
         document.getElementById('dateFilter').value = 'monthly';
         document.getElementById('tenantFilter').value = '';
-        document.getElementById('meterFilter').value = '';
+        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = false);
+        if (typeof updateMeterDropdownText === 'function') updateMeterDropdownText();
         document.getElementById('meterLimit').value = '5';
-        document.getElementById('chartType').value = 'bar';
+        document.getElementById('chartType').value = 'line';
 
-        // Reset to intelligent defaults
         loadDateRangeSuggestions().then(() => {
             meterOffset = 0;
             hasMoreMeters = false;
@@ -917,7 +706,6 @@
 
     function toggleAutoRefresh() {
         const button = document.getElementById('autoRefresh');
-
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
             autoRefreshInterval = null;
@@ -925,24 +713,17 @@
             button.title = 'Enable Auto Refresh (30s)';
             showNotification('Auto refresh disabled', 'info');
         } else {
-            autoRefreshInterval = setInterval(() => {
-                console.log('🔄 Auto refreshing chart data...');
-                loadChartData();
-            }, 30000);
-
+            autoRefreshInterval = setInterval(() => loadChartData(), 30000);
             button.classList.add('active');
             button.title = 'Disable Auto Refresh';
             showNotification('Auto refresh enabled (30s)', 'success');
         }
     }
 
+    // Connect Export button to amCharts 5
     function exportChart() {
-        if (chart) {
-            const url = chart.toBase64Image();
-            const link = document.createElement('a');
-            link.download = `energy-consumption-${new Date().toISOString().split('T')[0]}.png`;
-            link.href = url;
-            link.click();
+        if (exporting) {
+            exporting.download("png");
             showNotification('Chart exported successfully', 'success');
         } else {
             showNotification('No chart available to export', 'warning');
@@ -951,8 +732,7 @@
 
     function showLoading(show) {
         const spinner = document.getElementById('loadingSpinner');
-        const chartCanvas = document.getElementById('consumptionChart');
-
+        const chartCanvas = document.getElementById('chartdiv');
         if (show) {
             if (spinner) spinner.classList.remove('d-none');
             if (chartCanvas) chartCanvas.style.opacity = '0.5';
@@ -963,149 +743,80 @@
     }
 
     function showNotification(message, type = 'info') {
-        console.log(`${type.toUpperCase()}: ${message}`);
-
         const existingAlerts = document.querySelectorAll('.dashboard-alert');
         existingAlerts.forEach(alert => alert.remove());
-
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${getBootstrapAlertClass(type)} alert-dismissible fade show dashboard-alert`;
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-
+        alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show dashboard-alert`;
+        alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
         const container = document.querySelector('.container-fluid');
         if (container) {
             container.insertBefore(alertDiv, container.firstChild);
-
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.remove();
-                }
-            }, type === 'error' ? 8000 : 5000);
+            setTimeout(() => { if (alertDiv.parentNode) alertDiv.remove(); }, 5000);
         }
     }
 
-    function getBootstrapAlertClass(type) {
-        switch (type) {
-            case 'error': return 'danger';
-            case 'warning': return 'warning';
-            case 'success': return 'success';
-            default: return 'info';
-        }
-    }
-
-    
-    window.switchTab = function(filterValue, activeBtnId) {
-        console.log(`Clicked tab : ${filterValue}`);
-
-        // 1. Change the apparence of the butom 
+    window.switchTab = function (filterValue, activeBtnId) {
         document.getElementById('tabDaily').classList.remove('active');
         document.getElementById('tabMonthly').classList.remove('active');
         document.getElementById('tabYearly').classList.remove('active');
         document.getElementById(activeBtnId).classList.add('active');
 
-       
-
-        // 2. Change the date filter and trigger the update
         const dateFilter = document.getElementById('dateFilter');
         if (dateFilter) {
             dateFilter.value = filterValue;
-            dateFilter.dispatchEvent(new Event('change')); 
+            dateFilter.dispatchEvent(new Event('change'));
         }
     };
 
-    //Calculate and show the Top 5
     function renderTopConsumers(datasets) {
         const container = document.getElementById('topConsumersList');
-        const titleElement = document.getElementById('topConsumersTitle'); 
-        if (!container) return; 
+        const titleElement = document.getElementById('topConsumersTitle');
+        if (!container) return;
 
-        
-        const tenantSelect = document.getElementById('tenantFilter');
-        let tenantName = "Globale View"; 
-        if (tenantSelect && tenantSelect.selectedIndex > 0) {
-            tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; 
-        }
-
-        const groupBy = document.querySelector('input[name="groupBy"]:checked')?.value || 'meter';
-        const titleType = groupBy === 'tenant' ? 'tenants' : 'meters';
-
-        if (titleElement) {
-            titleElement.innerHTML = `<i class=""></i> Top 5 of ${titleType} (${tenantName})`;
-        }
-        
-    
-        if (tenantSelect && tenantSelect.selectedIndex > 0) {
-            tenantName = tenantSelect.options[tenantSelect.selectedIndex].text; 
-        }
-
-        if (titleElement) {
-            titleElement.innerHTML = `<i class=""></i> Top 5 of Meters (${tenantName})`;
-        }
-        // ----------------------------------
+        const currentLimit = parseInt(document.getElementById('meterLimit').value) || 5;
+        if (titleElement) titleElement.innerHTML = `<i class="bi bi-fire"></i> Top ${currentLimit} Meters`;
 
         if (!datasets || datasets.length <= 1) {
-            container.innerHTML = `
-                <div class="alert alert-light text-center border mt-2">
-                    <i class="bi bi-info-circle text-primary"></i> 
-                    Select <strong>All Meters</strong> (or increase the limit) to see the comparative ranking.
-                </div>`;
+            container.innerHTML = `<div class="alert alert-light text-center border mt-2">Select <strong>All Meters</strong> to see ranking.</div>`;
             return;
         }
 
-        // 1. Calucl the sum for each meter
-        const totals = datasets.map(ds => {
-            const sum = ds.data.reduce((a, b) => a + (b || 0), 0); 
-            return { name: ds.label, total: sum };
-        });
-
-        // 2. (DESC)
+        const totals = datasets.map(ds => ({ name: ds.label, total: ds.data.reduce((a, b) => a + ((b && b.y) || 0), 0) }));
         totals.sort((a, b) => b.total - a.total);
+        const topList = totals.slice(0, currentLimit);
+        const maxTotal = topList[0].total > 0 ? topList[0].total : 1;
 
-        // 3. Keep only the first 5
-        const top5 = totals.slice(0, 5);
-
-       
-        const maxTotal = top5[0].total > 0 ? top5[0].total : 1;
-
-        //Create the HTML code for progress bars
-        container.innerHTML = top5.map(item => {
+        const listHtml = topList.map(item => {
             const percent = (item.total / maxTotal) * 100;
             return `
                 <div class="mb-3">
                     <div class="d-flex justify-content-between mb-1">
-                        <span class="fw-bold text-secondary">${item.name}</span>
-                        <span class="fw-bold">${item.total.toFixed(2)} kWh</span>
+                        <span class="fw-bold text-secondary text-truncate" style="max-width: 70%;">${item.name}</span>
+                        <span class="fw-bold text-nowrap">${item.total.toFixed(2)} kWh</span>
                     </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar bg-danger" role="progressbar" style="width: ${percent}%"></div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-danger" style="width: ${percent}%"></div>
                     </div>
                 </div>
             `;
         }).join('');
+
+        container.innerHTML = `<div style="max-height: 250px; overflow-y: auto; padding-right: 5px;">${listHtml}</div>`;
     }
 
-    // Function to make the chart full screen
     function toggleFullscreen() {
-        const chartCard = document.getElementById('consumptionChart').closest('.card');
+        const chartCard = document.getElementById('chartdiv').closest('.card');
         const icon = document.querySelector('#fullscreenChart i');
-        
         if (chartCard.classList.contains('chart-fullscreen')) {
-            // Exit the full screen
             chartCard.classList.remove('chart-fullscreen');
             icon.classList.remove('bi-fullscreen-exit');
             icon.classList.add('bi-arrows-fullscreen');
-            document.body.style.overflow = 'auto'; // 
-            showNotification("Full screen mode off", "info");
+            document.body.style.overflow = 'auto';
         } else {
-            // Go full screen
             chartCard.classList.add('chart-fullscreen');
             icon.classList.remove('bi-arrows-fullscreen');
             icon.classList.add('bi-fullscreen-exit');
-            document.body.style.overflow = 'hidden'; 
-            showNotification("Full screen mode on (Press again to exit)", "success");
+            document.body.style.overflow = 'hidden';
         }
     }
 

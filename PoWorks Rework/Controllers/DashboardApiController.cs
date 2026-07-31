@@ -210,6 +210,7 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, meters = new List<object>(), error = ex.Message });
             }
         }
+
         [HttpPost]
         public async Task<IActionResult> GetConsumptionData([FromBody] DashboardFilterRequest request)
         {
@@ -220,25 +221,31 @@ namespace PoWorks_Rework.Controllers
                     return Json(_dashboardDataService.GenerateDemoChartData("Database not configured. Showing demo data."));
                 }
 
-                
                 DateTime? adjustedEndDate = request.EndDate.HasValue ? request.EndDate.Value.Date.AddDays(1).AddTicks(-1) : null;
 
                 var filters = new MeterReadingFilters
                 {
                     DateFilter = request.DateFilter ?? "monthly",
                     TenantId = request.TenantId,
-                    MeterId = request.MeterId,
+                    MeterIds = request.MeterIds ?? new List<int>(),
                     StartDate = request.StartDate,
-                    EndDate = adjustedEndDate, 
-                    Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 25)),
+                    EndDate = adjustedEndDate,
+                    Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
                     ActiveOnly = true,
                     IncludeNullTenants = true,
                     IsComparisonMode = request.IsComparisonMode,
                     GroupBy = request.GroupBy
                 };
-                
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
+
+
+                if (!filters.MeterIds.Any())
+                {
+                    var topMeters = await _dashboardDataService.GetActiveMetersWithDataAsync(filters);
+                    filters.MeterIds = topMeters.Select(m => m.MeterId).ToList();
+                }
+
                 var consumptionData = await _dashboardDataService.GetMeterReadingsAsync(filters);
 
                 if (!consumptionData.Any())
@@ -275,6 +282,7 @@ namespace PoWorks_Rework.Controllers
                 return Json(_dashboardDataService.GenerateDemoChartData($"Error loading data: {ex.Message}"));
             }
         }
+
         [HttpGet]
         public async Task<IActionResult> GetDashboardStats(DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -330,7 +338,9 @@ namespace PoWorks_Rework.Controllers
     {
         public string DateFilter { get; set; } = "monthly";
         public int? TenantId { get; set; }
-        public int? MeterId { get; set; }
+
+        public List<int> MeterIds { get; set; } = new List<int>();
+
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public int? Limit { get; set; } = 5;

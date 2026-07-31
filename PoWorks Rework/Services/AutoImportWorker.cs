@@ -59,13 +59,18 @@ namespace PoWorks_Rework.Services
                     var apiSettings = await GetApiSettingsAsync(dbService, companyId);
                     if (apiSettings == null) continue;
 
+                   
+                    if (!apiSettings.EnableAutomaticImport)
+                    {
+                        _logger.LogInformation("Automatic import is disabled for Company {Id}. Skipping.", companyId);
+                        continue;
+                    }
                     var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
                     if (string.IsNullOrEmpty(testToken))
                     {
                         _logger.LogWarning("Failed to acquire token for Company {Id}. Skipping this cycle.", companyId);
                         continue;
                     }
-
                     await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                     {
                         var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
@@ -205,6 +210,7 @@ namespace PoWorks_Rework.Services
             return dict;
         }
 
+     
         private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService, int companyId)
         {
             try
@@ -212,10 +218,12 @@ namespace PoWorks_Rework.Services
                 return await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
                     string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
-                                          ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
-                                          ""ProjectName"", ""IsDefault""
-                                   FROM ""WebServiceConnections""
-                                   LIMIT 1";
+                                  ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
+                                  ""ProjectName"", ""IsDefault"", ""IsActive""
+                           FROM ""WebServiceConnections""
+                           WHERE ""IsDefault"" = true OR ""IsDefault"" = false
+                           ORDER BY ""IsDefault"" DESC
+                           LIMIT 1";
 
                     using var cmd = new NpgsqlCommand(sql, conn, tr);
                     using var reader = await cmd.ExecuteReaderAsync();
@@ -235,7 +243,9 @@ namespace PoWorks_Rework.Services
                             AuthType = (AuthenticationType)reader.GetInt32(8),
                             TimeoutSeconds = reader.GetInt32(9),
                             ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
-                            IsDefault = reader.GetBoolean(11)
+                            IsDefault = reader.GetBoolean(11),
+                          
+                            EnableAutomaticImport = reader.IsDBNull(12) ? false : reader.GetBoolean(12)
                         };
                     }
                     return null;

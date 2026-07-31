@@ -39,6 +39,9 @@ namespace PoWorks_Rework.Models
 
         [Display(Name = "PCVue Project Name")]
         public string ProjectName { get; set; } = "";
+
+        [Display(Name = "Enable Automatic Data Import")]
+        public bool EnableAutomaticImport { get; set; } = false;
         public string GetAuthHeaderValue()
         {
             return AuthType switch
