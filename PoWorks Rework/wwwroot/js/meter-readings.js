@@ -456,10 +456,9 @@ const MeterReadings = {
 
     updatePaginationInfo: function (pagination) {
         this.config.currentPage = pagination.currentPage;
-    },
-viewReadingDetails: function (readingId) {
+    }, viewReadingDetails: function (readingId) {
         console.log("STEP 1: Click detected on reading ID", readingId);
-        
+
         const modalEl = document.getElementById('readingDetailsModal');
         if (!modalEl) {
             alert("Error: Modal element not found in DOM.");
@@ -470,17 +469,17 @@ viewReadingDetails: function (readingId) {
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
             const content = document.getElementById('readingDetailsContent');
             const row = document.querySelector(`tr[data-reading-id="${readingId}"]`);
-            
-            console.log("STEP 2: Elements search...", { 
-                ModalFound: !!content, 
-                RowFound: !!row 
+
+            console.log("STEP 2: Elements search...", {
+                ModalFound: !!content,
+                RowFound: !!row
             });
 
             if (row && content) {
                 const meterName = row.cells[0].innerText.trim();
                 const timestamp = row.cells[1].innerText.trim();
                 const value = row.cells[2].innerText.trim();
-                
+
                 content.innerHTML = `
                     <div class="alert alert-light border border-primary text-start m-3">
                         <h4 class="alert-heading text-primary"><i class="bi bi-speedometer2"></i> ${meterName}</h4>
@@ -505,7 +504,81 @@ viewReadingDetails: function (readingId) {
         } catch (error) {
             console.error("Bootstrap critical error:", error);
         }
+    },
+
+    showExportDialog: function () {
+        const existing = document.getElementById('exportReadingsModal');
+        if (existing) existing.remove();
+
+        const modalHtml = `
+        <div class="modal fade" id="exportReadingsModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-download"></i> Export Readings</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Format</label>
+                            <select class="form-select" id="exportFormatSelect">
+                                <option value="csv">CSV</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="exportIgnoreDates">
+                            <label class="form-check-label" for="exportIgnoreDates">
+                                Export entire history (ignore date filters)
+                            </label>
+                        </div>
+                        <small class="text-muted">
+                            By default, the export respects your current meter selection and date range.
+                        </small>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="confirmExportBtn">
+                            <i class="bi bi-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        const modalEl = document.getElementById('exportReadingsModal');
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+        document.getElementById('confirmExportBtn').addEventListener('click', () => {
+            this.executeExport();
+            modal.hide();
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', () => modalEl.remove());
+    },
+
+    executeExport: function () {
+        const format = document.getElementById('exportFormatSelect').value;
+        const ignoreDates = document.getElementById('exportIgnoreDates').checked;
+
+        const params = new URLSearchParams({
+            viewType: this.config.currentViewType,
+            format: format
+        });
+
+        if (this.config.selectedMeterId) params.append('meterIds', this.config.selectedMeterId);
+
+        if (!ignoreDates) {
+            if (this.config.startDate) params.append('startDate', this.config.startDate);
+            if (this.config.endDate) params.append('endDate', this.config.endDate);
+        }
+
+        window.location.href = `${this.endpoints.exportReadings}?${params}`;
     }
-    };
+
+};
 
 window.MeterReadings = MeterReadings;

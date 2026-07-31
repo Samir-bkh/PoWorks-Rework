@@ -146,6 +146,98 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+
+
+        [HttpGet]
+        public async Task<IActionResult> Export(string meterIds, string viewType = "raw", DateTime? startDate = null, DateTime? endDate = null, string format = "csv")
+        {
+            try
+            {
+                if (!_databaseService.IsInitialized)
+                    return Json(new { success = false, error = "Database not configured" });
+
+                var selectedIds = ParseMeterIds(meterIds);
+
+                // On récupère TOUT (pas de pagination) en demandant une pageSize énorme
+                var readings = await GetReadingsByType(selectedIds, viewType, page: 1, pageSize: int.MaxValue, startDate, endDate);
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+                string fileName = $"MeterReadings_{viewType}_{timestamp}";
+
+                if (format.ToLower() == "json")
+                {
+                    var json = System.Text.Json.JsonSerializer.Serialize(readings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", $"{fileName}.json");
+                }
+                else
+                {
+                    var sb = new System.Text.StringBuilder();
+                    bool isRaw = viewType.ToLower() == "raw";
+                    bool isYearly = viewType.ToLower() == "yearly";
+
+                    var headers = new List<string> { "MeterId", "MeterName", "Timestamp", "Value" };
+                    if (isRaw)
+                    {
+                        headers.Add("Quality");
+                    }
+                    else
+                    {
+                        headers.AddRange(new[] { "MinValue", "MaxValue", "ReadingCount" });
+                        if (!isYearly) headers.Add("SumValue");
+                    }
+                    sb.AppendLine(string.Join(",", headers));
+
+                    foreach (var r in readings)
+                    {
+                        var values = new List<string>
+                {
+                    r.MeterId.ToString(),
+                    EscapeCsv(r.MeterName),
+                    r.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"),
+                    r.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                };
+
+                        if (isRaw)
+                        {
+                            values.Add(r.Quality?.ToString() ?? "");
+                        }
+                        else
+                        {
+                            values.Add(r.MinValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "");
+                            values.Add(r.MaxValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "");
+                            values.Add(r.ReadingCount?.ToString() ?? "");
+                            if (!isYearly) values.Add(r.SumValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "");
+                        }
+
+                        sb.AppendLine(string.Join(",", values));
+                    }
+
+                    var preamble = System.Text.Encoding.UTF8.GetPreamble();
+                    var data = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+                    var fileBytes = new byte[preamble.Length + data.Length];
+                    Buffer.BlockCopy(preamble, 0, fileBytes, 0, preamble.Length);
+                    Buffer.BlockCopy(data, 0, fileBytes, preamble.Length, data.Length);
+
+                    return File(fileBytes, "text/csv", $"{fileName}.csv");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting readings");
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        private string EscapeCsv(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            if (value.Contains(",") || value.Contains("\""))
+            {
+                return "\"" + value.Replace("\"", "\"\"") + "\"";
+            }
+            return value;
+        }
+
         #region Private Helper Methods
 
         private async Task<List<MeterReading>> GetReadingsByType(List<int> meterIds, string viewType, int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
@@ -472,6 +564,9 @@ namespace PoWorks_Rework.Controllers
 
         #endregion
     }
+
+
+
 
     public static class NpgsqlDataReaderExtensions
     {
