@@ -17,6 +17,7 @@
 
         try {
             attachEventListeners();
+            document.getElementById('dateFilter').value = 'daily'; 
 
             Promise.all([
                 loadDateRangeSuggestions(),
@@ -446,12 +447,23 @@
             showLoading(false);
         }
     }
-    // The Magic function that builds amCharts!
+    let chartRenderToken = 0;
+
     function updateAmChart(data) {
         const chartdiv = document.getElementById('chartdiv');
         if (!chartdiv) return;
 
-        // Destroy previous instance completely
+        const myToken = ++chartRenderToken;
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (myToken !== chartRenderToken) return;
+                renderAmChartNow(data, chartdiv);
+            });
+        });
+    }
+
+    function renderAmChartNow(data, chartdiv) {
         if (root) {
             root.dispose();
             root = null;

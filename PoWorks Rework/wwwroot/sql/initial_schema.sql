@@ -338,6 +338,9 @@ CREATE TABLE IF NOT EXISTS "WebServiceConnections" (
     "IsActive" BOOLEAN DEFAULT TRUE
 );
 
+ALTER TABLE "WebServiceConnections" ADD COLUMN IF NOT EXISTS "EnableAutomaticImport" BOOLEAN DEFAULT FALSE;
+
+
 CREATE TABLE IF NOT EXISTS "SqlServerConnections" (
     "Id" SERIAL PRIMARY KEY,
     "ConnectionId" VARCHAR(100),

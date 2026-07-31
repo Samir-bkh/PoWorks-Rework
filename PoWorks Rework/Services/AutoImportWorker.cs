@@ -20,10 +20,11 @@ namespace PoWorks_Rework.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("PILOT START - Cycle: {Delay} minutes", _cycleDelayMinutes);
+            _logger.LogInformation("PILOT START - Le service d'importation est lancé.");
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                _logger.LogInformation("--- DEBUT D'UN CYCLE D'IMPORT ({Delay} min) ---", _cycleDelayMinutes);
                 try
                 {
                     await RunImportCycleAsync(stoppingToken);
@@ -32,16 +33,17 @@ namespace PoWorks_Rework.Services
                 {
                     _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message} | StackTrace: {Stack}", ex.Message, ex.StackTrace);
                 }
+
+                _logger.LogInformation("--- FIN DU CYCLE, MISE EN VEILLE ---");
                 await Task.Delay(TimeSpan.FromMinutes(_cycleDelayMinutes), stoppingToken);
             }
         }
 
         private async Task RunImportCycleAsync(CancellationToken stoppingToken)
         {
-
             if (!await ImportLock.Gate.WaitAsync(0, stoppingToken))
             {
-                _logger.LogInformation("Manual import or another process is running, skipping this auto-import cycle.");
+                _logger.LogWarning("Manual import or another process is running, skipping this auto-import cycle.");
                 return;
             }
 
@@ -53,36 +55,44 @@ namespace PoWorks_Rework.Services
                 var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
 
                 var companyIds = await GetAllCompanyIdsAsync(dbService);
+                _logger.LogInformation(">> Trouvé {Count} compagnie(s) dans la base.", companyIds.Count);
 
                 foreach (var companyId in companyIds)
                 {
-                    var apiSettings = await GetApiSettingsAsync(dbService, companyId);
-                    if (apiSettings == null) continue;
+                    _logger.LogInformation(">> Traitement de la compagnie ID: {CompanyId}", companyId);
 
-                   
-                    if (!apiSettings.EnableAutomaticImport)
+                    var apiSettings = await GetApiSettingsAsync(dbService, companyId);
+                    if (apiSettings == null)
                     {
-                        _logger.LogInformation("Automatic import is disabled for Company {Id}. Skipping.", companyId);
+                        _logger.LogWarning(">> ERREUR: Aucun paramètre WebService trouvé pour la compagnie {Id}. On passe à la suivante.", companyId);
                         continue;
                     }
+
+                    if (!apiSettings.EnableAutomaticImport)
+                    {
+                        _logger.LogInformation(">> Import automatique désactivé pour la compagnie {Id}. On passe à la suivante.", companyId);
+                        continue;
+                    }
+
                     var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
                     if (string.IsNullOrEmpty(testToken))
                     {
-                        _logger.LogWarning("Failed to acquire token for Company {Id}. Skipping this cycle.", companyId);
+                        _logger.LogWarning(">> ERREUR: Impossible de récupérer le token PCVue pour la compagnie {Id}.", companyId);
                         continue;
                     }
+
                     await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                     {
                         var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
+                        _logger.LogInformation(">> Trouvé {Count} compteur(s) actif(s) à importer pour la compagnie {Id}.", metersToImport.Count, companyId);
 
                         if (!metersToImport.Any()) return;
 
-                        var lastTimestamps = await GetLastTimestampsAsync(connection, transaction);
+                        var lastReadings = await GetLastKnownReadingsAsync(connection, transaction);
                         DateTime endTime = DateTime.Now;
 
-                        
                         var meterGroups = metersToImport
-                            .GroupBy(m => lastTimestamps.ContainsKey(m.MeterId) ? lastTimestamps[m.MeterId] : endTime.AddHours(-1))
+                            .GroupBy(m => lastReadings.ContainsKey(m.MeterId) ? lastReadings[m.MeterId].Timestamp : endTime.AddHours(-1))
                             .ToList();
 
                         var allTrendResults = new List<VariableTrendResult>();
@@ -93,6 +103,7 @@ namespace PoWorks_Rework.Services
                             if (groupStartTime >= endTime) continue;
 
                             var variableNames = group.Select(m => m.OriginalVariableName).ToList();
+                            _logger.LogInformation(">> Appel PCVue pour {Count} variable(s) depuis {Time}", variableNames.Count, groupStartTime);
 
                             var groupResults = await trendsService.ProcessVariablesTrendsAsync(
                                 variableNames,
@@ -103,8 +114,6 @@ namespace PoWorks_Rework.Services
                             allTrendResults.AddRange(groupResults);
                         }
 
-                        if (!allTrendResults.Any(r => r.Success && r.TrendData != null && r.TrendData.Any())) return;
-
                         using var tempTableCmd = new NpgsqlCommand(@"
                             CREATE TEMP TABLE ""TempMeterReadings"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
                             ALTER TABLE ""TempMeterReadings"" DROP COLUMN ""ReadingId"";
@@ -112,34 +121,64 @@ namespace PoWorks_Rework.Services
 
                         await tempTableCmd.ExecuteNonQueryAsync();
 
+                        int pointsAdded = 0;
+                        int paddingAdded = 0;
+
                         using (var writer = await connection.BeginBinaryImportAsync(@"COPY ""TempMeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") FROM STDIN (FORMAT BINARY)", stoppingToken))
                         {
-                            foreach (var result in allTrendResults)
+                            foreach (var meter in metersToImport)
                             {
-                                if (!result.Success || result.TrendData == null) continue;
+                                var result = allTrendResults.FirstOrDefault(r => r.VariableName == meter.OriginalVariableName);
 
-                                var meter = metersToImport.FirstOrDefault(m => m.OriginalVariableName == result.VariableName);
-                                if (meter == null) continue;
+                                bool hasNewData = false;
+                                decimal latestValue = 0;
+                                DateTime meterStartTime = lastReadings.ContainsKey(meter.MeterId) ? lastReadings[meter.MeterId].Timestamp : endTime.AddHours(-1);
 
-                                var meterStartTime = lastTimestamps.ContainsKey(meter.MeterId) ? lastTimestamps[meter.MeterId] : endTime.AddHours(-1);
-
-                                foreach (var point in result.TrendData)
+                                if (result != null && result.Success && result.TrendData != null)
                                 {
-                                    if (point.Quality?.ToLower() != "good" || !point.TimestampParsed.HasValue) continue;
+                                    foreach (var point in result.TrendData)
+                                    {
+                                        if (point.Quality?.ToLower() != "good" || !point.TimestampParsed.HasValue) continue;
 
-                                    DateTime localTime = point.TimestampParsed.Value.ToLocalTime();
-                                    if (localTime <= meterStartTime) continue;
+                                        DateTime localTime = point.TimestampParsed.Value.ToLocalTime();
+                                        if (localTime <= meterStartTime) continue;
 
+                                        decimal pointValue = Convert.ToDecimal(point.Value);
+
+                                        await writer.StartRowAsync(stoppingToken);
+                                        await writer.WriteAsync(meter.MeterId, NpgsqlDbType.Integer, stoppingToken);
+                                        await writer.WriteAsync(localTime, NpgsqlDbType.Timestamp, stoppingToken);
+                                        await writer.WriteAsync(pointValue, NpgsqlDbType.Numeric, stoppingToken);
+                                        await writer.WriteAsync(192, NpgsqlDbType.Integer, stoppingToken);
+                                        await writer.WriteAsync(companyId, NpgsqlDbType.Integer, stoppingToken);
+
+                                        hasNewData = true;
+                                        latestValue = pointValue;
+                                        pointsAdded++;
+                                    }
+                                }
+
+                                if (!hasNewData && lastReadings.ContainsKey(meter.MeterId))
+                                {
+                                    latestValue = lastReadings[meter.MeterId].Value;
+                                    hasNewData = true;
+                                }
+
+                                if (hasNewData)
+                                {
                                     await writer.StartRowAsync(stoppingToken);
                                     await writer.WriteAsync(meter.MeterId, NpgsqlDbType.Integer, stoppingToken);
-                                    await writer.WriteAsync(localTime, NpgsqlDbType.Timestamp, stoppingToken);
-                                    await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric, stoppingToken);
+                                    await writer.WriteAsync(endTime, NpgsqlDbType.Timestamp, stoppingToken);
+                                    await writer.WriteAsync(latestValue, NpgsqlDbType.Numeric, stoppingToken);
                                     await writer.WriteAsync(192, NpgsqlDbType.Integer, stoppingToken);
                                     await writer.WriteAsync(companyId, NpgsqlDbType.Integer, stoppingToken);
+                                    paddingAdded++;
                                 }
                             }
                             await writer.CompleteAsync(stoppingToken);
                         }
+
+                        _logger.LogInformation(">> Import terminé : {Points} nouveaux points PCVue, {Padding} points de padding générés.", pointsAdded, paddingAdded);
 
                         var insertCmd = new NpgsqlCommand(@"
                             INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
@@ -155,9 +194,25 @@ namespace PoWorks_Rework.Services
             }
             finally
             {
-               
                 ImportLock.Gate.Release();
             }
+        }
+
+        // 🟢 FIX 4 : Nouvelle méthode pour récupérer la Date ET la Valeur
+        private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
+        {
+            var dict = new Dictionary<int, (DateTime Timestamp, decimal Value)>();
+            using var cmd = new NpgsqlCommand(@"
+                SELECT DISTINCT ON (""MeterId"") ""MeterId"", ""Timestamp"", ""Value""
+                FROM ""MeterReadings""
+                ORDER BY ""MeterId"", ""Timestamp"" DESC", conn, tr);
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                dict[reader.GetInt32(0)] = (reader.GetDateTime(1), reader.GetDecimal(2));
+            }
+            return dict;
         }
 
         private async Task<List<int>> GetAllCompanyIdsAsync(DatabaseService dbService)
@@ -197,20 +252,6 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
-        private async Task<Dictionary<int, DateTime>> GetLastTimestampsAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
-        {
-            var dict = new Dictionary<int, DateTime>();
-            using var cmd = new NpgsqlCommand("SELECT \"MeterId\", MAX(\"Timestamp\") FROM \"MeterReadings\" GROUP BY \"MeterId\"", conn, tr);
-            using var reader = await cmd.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                dict[reader.GetInt32(0)] = reader.GetDateTime(1);
-            }
-            return dict;
-        }
-
-     
         private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService, int companyId)
         {
             try
@@ -219,10 +260,8 @@ namespace PoWorks_Rework.Services
                 {
                     string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
                                   ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
-                                  ""ProjectName"", ""IsDefault"", ""IsActive""
+                                  ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport""
                            FROM ""WebServiceConnections""
-                           WHERE ""IsDefault"" = true OR ""IsDefault"" = false
-                           ORDER BY ""IsDefault"" DESC
                            LIMIT 1";
 
                     using var cmd = new NpgsqlCommand(sql, conn, tr);
@@ -232,7 +271,8 @@ namespace PoWorks_Rework.Services
                     {
                         return new PCVueWebServiceSettings
                         {
-                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                            // On utilise GetValue().ToString() au lieu de GetString() au cas où l'ID serait un chiffre/GUID
+                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString(),
                             ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
                             ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
@@ -240,19 +280,24 @@ namespace PoWorks_Rework.Services
                             ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
                             Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
                             Password = reader.IsDBNull(7) ? "" : _encryptionService.Decrypt(reader.GetString(7)),
-                            AuthType = (AuthenticationType)reader.GetInt32(8),
-                            TimeoutSeconds = reader.GetInt32(9),
+                            AuthType = reader.IsDBNull(8) ? AuthenticationType.OAuth : (AuthenticationType)Convert.ToInt32(reader.GetValue(8)),
+                            TimeoutSeconds = reader.IsDBNull(9) ? 30 : Convert.ToInt32(reader.GetValue(9)),
                             ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
-                            IsDefault = reader.GetBoolean(11),
-                          
-                            EnableAutomaticImport = reader.IsDBNull(12) ? false : reader.GetBoolean(12)
+                            IsDefault = !reader.IsDBNull(11) && reader.GetBoolean(11),
+
+                            // Colonne 13 = EnableAutomaticImport
+                            EnableAutomaticImport = !reader.IsDBNull(13) && reader.GetBoolean(13)
                         };
                     }
+
+                    _logger.LogWarning(">> BDD : La requête SQL n'a retourné aucune ligne pour la compagnie {Id}.", companyId);
                     return null;
                 });
             }
-            catch
+            catch (Exception ex)
             {
+                // On logue la VRAIE erreur pour savoir ce qui coince !
+                _logger.LogError(ex, ">> ERREUR CRITIQUE lors de la lecture des paramètres API pour la compagnie {CompanyId}", companyId);
                 return null;
             }
         }

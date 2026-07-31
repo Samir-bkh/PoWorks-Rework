@@ -338,8 +338,8 @@ namespace PoWorks_Rework.Controllers
                     ProjectName = reader["ProjectName"] != DBNull.Value ? reader["ProjectName"].ToString() : "",
                     TimeoutSeconds = reader["TimeoutSeconds"] != DBNull.Value ? Convert.ToInt32(reader["TimeoutSeconds"]) : 30,
                     IsDefault = reader["IsDefault"] != DBNull.Value && Convert.ToBoolean(reader["IsDefault"]),
-                  
-                    EnableAutomaticImport = reader["IsActive"] != DBNull.Value && Convert.ToBoolean(reader["IsActive"])
+
+                    EnableAutomaticImport = reader["EnableAutomaticImport"] != DBNull.Value && Convert.ToBoolean(reader["EnableAutomaticImport"])
                 });
             }
             return connections;
@@ -397,8 +397,8 @@ namespace PoWorks_Rework.Controllers
                 foreach (var connData in request.Connections)
                 {
                     string insertSql = @"INSERT INTO ""WebServiceConnections"" 
-                               (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsDefault"", ""IsActive"", ""CompanyId"")
-                               VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isDefault, @isActive, 1)";
+           (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport"", ""CompanyId"")
+           VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isDefault, @isActive, @enableAutoImport, 1)";
 
                     using var cmd = new NpgsqlCommand(insertSql, conn);
                     cmd.Parameters.AddWithValue("id", connData.ContainsKey("ConnectionId") ? connData["ConnectionId"] : Guid.NewGuid().ToString());
@@ -415,7 +415,8 @@ namespace PoWorks_Rework.Controllers
                     cmd.Parameters.AddWithValue("projectName", connData.ContainsKey("ProjectName") ? connData["ProjectName"] : "");
 
                     cmd.Parameters.AddWithValue("isDefault", connData.ContainsKey("IsDefault") && connData["IsDefault"].ToLower() == "true");
-                    cmd.Parameters.AddWithValue("isActive", connData.ContainsKey("EnableAutomaticImport") && connData["EnableAutomaticImport"].ToLower() == "true");
+                    cmd.Parameters.AddWithValue("isActive", true); // la connexion elle-même reste active par défaut
+                    cmd.Parameters.AddWithValue("enableAutoImport", connData.ContainsKey("EnableAutomaticImport") && connData["EnableAutomaticImport"].ToLower() == "true");
 
                     await cmd.ExecuteNonQueryAsync();
                 }
