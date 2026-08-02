@@ -5,19 +5,31 @@ using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service for communicating with PCVue web service API.
+    /// Handles OAuth token management, trends data requests, and variable browsing.
+    /// Implements automatic token refresh with caching and retry logic.
+    /// </summary>
     public class PCVueWebService
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<PCVueWebService> _logger;
         private readonly SemaphoreSlim _tokenLock = new SemaphoreSlim(1, 1);
 
+        /// <summary>
+        /// Gets the underlying HTTP client for requests
+        /// </summary>
         public HttpClient HttpClient => _httpClient;
+
         private string? _accessToken;
         private string? _refreshToken;
         private DateTime _tokenExpiry;
-
         private DateTime _lastTokenRefreshTime = DateTime.MinValue;
 
+        /// <summary>
+        /// Initializes the PCVue web service with HTTP client and logging.
+        /// Configures SSL validation to accept self-signed certificates.
+        /// </summary>
         public PCVueWebService(HttpClient httpClient, ILogger<PCVueWebService> logger)
         {
             _logger = logger;
@@ -33,6 +45,11 @@ namespace PoWorks_Rework.Services
             };
         }
 
+        /// <summary>
+        /// Gets a valid OAuth access token for API requests.
+        /// Caches tokens and automatically refreshes when expired.
+        /// Can force refresh to handle token invalidation.
+        /// </summary>
         public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings, bool forceRefresh = false)
         {
             if (!forceRefresh && !string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)

@@ -11,12 +11,19 @@ using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for bill and invoice management.
+    /// Handles bill generation, search, filtering, PDF export, and payment tracking.
+    /// </summary>
     public class BillsController : BaseController
     {
         private readonly ILogger<BillsController> _logger;
         private readonly BillingService _billingService;
         private readonly ICompanyContext _companyContext;
 
+        /// <summary>
+        /// Initializes the bills controller with database, billing service, company context, and logging dependencies.
+        /// </summary>
         public BillsController(DatabaseService databaseService, BillingService billingService, ICompanyContext companyContext, ILogger<BillsController> logger)
             : base(databaseService)
         {
@@ -25,6 +32,10 @@ namespace PoWorks_Rework.Controllers
             _companyContext = companyContext;
         }
 
+        /// <summary>
+        /// Displays the bills management page with search results for available bills.
+        /// Filters bills by tenant or meter and supports pagination.
+        /// </summary>
         public IActionResult Index()
         {
             if (!_databaseService.IsInitialized)

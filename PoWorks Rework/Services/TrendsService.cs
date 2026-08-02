@@ -5,17 +5,29 @@ using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service for retrieving and processing historical trends data from PCVue web service.
+    /// Manages trend requests, data retrieval, and handles OAuth token management with retry logic.
+    /// </summary>
     public class TrendsService
     {
         private readonly PCVueWebService _pcvueWebService;
         private readonly ILogger<TrendsService> _logger;
 
+        /// <summary>
+        /// Initializes the trends service with web service and logging dependencies.
+        /// </summary>
         public TrendsService(PCVueWebService pcvueWebService, ILogger<TrendsService> logger)
         {
             _pcvueWebService = pcvueWebService;
             _logger = logger;
         }
 
+        /// <summary>
+        /// Creates a trends data request for a specific variable in PCVue.
+        /// Returns a request ID used to retrieve the actual data.
+        /// Handles authentication and retries if token expires.
+        /// </summary>
         public async Task<TrendRequestResult> CreateTrendRequestAsync(string variableName, PCVueWebServiceSettings settings)
         {
             try

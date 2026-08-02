@@ -8,17 +8,27 @@ using System.Security.Claims;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for user authentication and authorization.
+    /// Handles login, logout, registration, and user claim management for multi-tenancy.
+    /// </summary>
     public class AuthController : Controller
     {
         private readonly UserManager<IdentityUser> _userManager;
         private readonly SignInManager<IdentityUser> _signInManager;
 
+        /// <summary>
+        /// Initializes the auth controller with user and sign-in manager dependencies.
+        /// </summary>
         public AuthController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager)
         {
             _userManager = userManager;
             _signInManager = signInManager;
         }
 
+        /// <summary>
+        /// Displays the login page. Allows anonymous access.
+        /// </summary>
         [AllowAnonymous]
         [HttpGet]
         public IActionResult Login(string returnUrl = null)

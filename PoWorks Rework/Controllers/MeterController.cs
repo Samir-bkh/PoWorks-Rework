@@ -7,17 +7,29 @@ using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for meter management and configuration.
+    /// Handles CRUD operations for meters, meter hierarchies (parent/sub-meters), and meter search/filtering.
+    /// </summary>
     public class MeterController : BaseController
     {
         private readonly MeterRepository _meterRepository;
         private readonly ICompanyContext _companyContext; 
 
+        /// <summary>
+        /// Initializes the meter controller with database, repository, and company context dependencies.
+        /// </summary>
         public MeterController(DatabaseService databaseService, MeterRepository meterRepository, ICompanyContext companyContext)
             : base(databaseService)
         {
             _meterRepository = meterRepository;
             _companyContext = companyContext; 
         }
+
+        /// <summary>
+        /// Displays the meter management page with search results and details for a selected meter.
+        /// Supports pagination and optional meter selection by ID.
+        /// </summary>
         public async Task<IActionResult> Management(int? id = null, int page = 1, int pageSize = 10)
         {
             if (!_databaseService.IsInitialized)

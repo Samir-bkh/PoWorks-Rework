@@ -8,6 +8,10 @@ using System.Text;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for application settings and configuration management.
+    /// Handles database connection settings, SQL Server connections, web service configuration, and application settings.
+    /// </summary>
     public class SettingsController : Controller
     {
         private readonly IConfiguration _configuration;
@@ -16,6 +20,9 @@ namespace PoWorks_Rework.Controllers
         private readonly SqlServerService _sqlServerService;
         private readonly EncryptionService _encryptionService;
 
+        /// <summary>
+        /// Initializes the settings controller with configuration and service dependencies.
+        /// </summary>
         public SettingsController(
             IConfiguration configuration,
             IWebHostEnvironment webHostEnvironment,
@@ -30,6 +37,9 @@ namespace PoWorks_Rework.Controllers
             _encryptionService = encryptionService;
         }
 
+        /// <summary>
+        /// Displays the general settings page with database and connection configuration options.
+        /// </summary>
         public async Task<IActionResult> General()
         {
             var pgSettings = _databaseService.IsInitialized

@@ -4,11 +4,18 @@ using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// API controller providing dashboard data endpoints.
+    /// Serves meter readings, consumption statistics, and chart data for frontend visualization.
+    /// </summary>
     public class DashboardController : BaseController
     {
         private readonly ILogger<DashboardController> _logger;
         private readonly DashboardDataService _dashboardDataService;
 
+        /// <summary>
+        /// Initializes the dashboard controller with database, logging, and data service dependencies.
+        /// </summary>
         public DashboardController(
             DatabaseService databaseService,
             ILogger<DashboardController> logger,
@@ -18,6 +25,10 @@ namespace PoWorks_Rework.Controllers
             _logger = logger;
             _dashboardDataService = dashboardDataService;
         }
+
+        /// <summary>
+        /// Returns a list of all available tenants for selection in dashboard filters.
+        /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetTenants()
         {

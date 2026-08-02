@@ -4,12 +4,20 @@ using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Repositories
 {
+    /// <summary>
+    /// Data access repository for meter entities.
+    /// Provides methods for querying, searching, and managing meters with multi-tenant isolation.
+    /// Implements company-level data isolation using PostgreSQL row-level security.
+    /// </summary>
     public class MeterRepository
     {
         private readonly DatabaseService _databaseService;
         private readonly ICompanyContext _companyContext;
         private readonly ILogger<MeterRepository> _logger;
 
+        /// <summary>
+        /// Initializes the meter repository with database, company context, and logging services.
+        /// </summary>
         public MeterRepository(DatabaseService databaseService, ICompanyContext companyContext, ILogger<MeterRepository> logger)
         {
             _databaseService = databaseService;
@@ -17,6 +25,10 @@ namespace PoWorks_Rework.Repositories
             _logger = logger;
         }
 
+        /// <summary>
+        /// Retrieves a paginated list of meters for the current company.
+        /// Supports searching by name, type, or tenant with case-insensitive matching.
+        /// </summary>
         public async Task<List<Meter>> GetMetersAsync(MeterSearchCriteria criteria, int page = 1, int pageSize = 10)
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;

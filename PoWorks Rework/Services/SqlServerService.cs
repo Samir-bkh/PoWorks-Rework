@@ -4,6 +4,11 @@ using Npgsql;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service for managing SQL Server database connections.
+    /// Supports multiple SQL Server connections with configuration persistence and connection pooling.
+    /// Primarily used for HDS data import operations.
+    /// </summary>
     public class SqlServerService
     {
         private readonly IConfiguration _configuration;
@@ -13,6 +18,10 @@ namespace PoWorks_Rework.Services
         private bool _isInitialized = false;
         private SqlServerConnectionCollection _connectionCollection;
 
+        /// <summary>
+        /// Initializes the SQL Server service with configuration, logging, and encryption dependencies.
+        /// Automatically loads saved connection settings from database.
+        /// </summary>
         public SqlServerService(IConfiguration configuration, ILogger<SqlServerService> logger, EncryptionService encryptionService)
         {
             _configuration = configuration;
@@ -20,13 +29,23 @@ namespace PoWorks_Rework.Services
             _encryptionService = encryptionService;
             _connectionCollection = new SqlServerConnectionCollection();
 
-       
             LoadSettingsFromDatabase();
         }
 
+        /// <summary>
+        /// Gets the current SQL Server configuration settings
+        /// </summary>
         public SqlServerSettings CurrentSettings => _currentSettings;
+
+        /// <summary>
+        /// Gets whether SQL Server connection has been successfully initialized
+        /// </summary>
         public bool IsInitialized => _isInitialized;
 
+        /// <summary>
+        /// Gets a SQL Server connection instance using the specified connection ID or default connection.
+        /// Throws InvalidOperationException if not initialized or connection not found.
+        /// </summary>
         public SqlConnection GetConnection(string connectionId = null)
         {
             if (!_isInitialized)

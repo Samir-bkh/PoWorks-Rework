@@ -5,12 +5,20 @@ using System.Data;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service providing aggregated data for dashboard displays.
+    /// Retrieves consumption statistics, meter summaries, and availability checks for UI presentation.
+    /// Implements multi-tenant isolation with company-level data filtering.
+    /// </summary>
     public class DashboardDataService
     {
         private readonly DatabaseService _databaseService;
         private readonly ICompanyContext _companyContext;
         private readonly ILogger<DashboardDataService> _logger;
 
+        /// <summary>
+        /// Initializes the dashboard data service with database, company, and logging services.
+        /// </summary>
         public DashboardDataService(DatabaseService databaseService, ICompanyContext companyContext, ILogger<DashboardDataService> logger)
         {
             _databaseService = databaseService;
@@ -18,6 +26,10 @@ namespace PoWorks_Rework.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Checks data availability for specified filters.
+        /// Determines if meters and readings exist for the given criteria.
+        /// </summary>
         public async Task<DataAvailabilityResult> CheckDataAvailabilityAsync(MeterReadingFilters filters)
         {
             var result = new DataAvailabilityResult();

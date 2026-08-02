@@ -7,18 +7,33 @@ using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service for billing calculations and invoice generation.
+    /// Handles consumption-based bill calculation with tiered pricing and tax application.
+    /// Supports multiple meters per tenant with flexible rate structures.
+    /// </summary>
     public class BillingService
     {
         private readonly DatabaseService _databaseService;
         private readonly ILogger<BillingService> _logger;
+        /// <summary>
+        /// Malaysia Service and Sales Tax (SST) rate (8%)
+        /// </summary>
         private const decimal MALAYSIA_SST_RATE = 0.08m;
 
+        /// <summary>
+        /// Initializes the billing service with database and logging dependencies.
+        /// </summary>
         public BillingService(DatabaseService databaseService, ILogger<BillingService> logger)
         {
             _databaseService = databaseService;
             _logger = logger;
         }
 
+        /// <summary>
+        /// Calculates a complete bill for a tenant over a specified date range.
+        /// Queries all active meters, calculates consumption, applies rates, and computes tax.
+        /// </summary>
         public async Task<BillEntity> CalculateBillAsync(int tenantId, DateTime startDate, DateTime endDate)
         {
       

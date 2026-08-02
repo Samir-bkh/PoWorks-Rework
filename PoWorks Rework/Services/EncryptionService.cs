@@ -6,11 +6,18 @@ using Microsoft.Extensions.Configuration;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Handles AES encryption and decryption of sensitive data like passwords.
+    /// Supports migration from legacy encryption keys to new keys.
+    /// </summary>
     public class EncryptionService
     {
         private readonly byte[] _newKey;
         private readonly string _legacyKeyText;
 
+        /// <summary>
+        /// Initializes the encryption service with master keys from configuration.
+        /// </summary>
         public EncryptionService(IConfiguration configuration)
         {
             string configKey = configuration["EncryptionKey"] ?? "PoWorks_SuperSecret_MasterKey_2026!";
@@ -22,6 +29,10 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Encrypts plain text using AES encryption with a random initialization vector.
+        /// Returns Base64-encoded ciphertext with IV prepended.
+        /// </summary>
         public string Encrypt(string plainText)
         {
             if (string.IsNullOrEmpty(plainText)) return plainText;
@@ -48,6 +59,10 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Decrypts ciphertext using the current key, with fallback to legacy key.
+        /// Returns the plain text, or the original value if decryption fails.
+        /// </summary>
         public string Decrypt(string cipherText)
         {
             if (string.IsNullOrEmpty(cipherText)) return cipherText;
@@ -69,6 +84,10 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Checks if a ciphertext was encrypted with the legacy key rather than the current key.
+        /// Used to identify values needing re-encryption.
+        /// </summary>
         public bool WasEncryptedWithLegacyKey(string cipherText)
         {
             if (string.IsNullOrEmpty(cipherText)) return false;
@@ -83,6 +102,10 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Internal method to decrypt ciphertext using a specific key.
+        /// Extracts IV from the beginning of the ciphertext.
+        /// </summary>
         private string DecryptWithKey(string cipherText, byte[] key)
         {
             byte[] fullCipher = Convert.FromBase64String(cipherText);

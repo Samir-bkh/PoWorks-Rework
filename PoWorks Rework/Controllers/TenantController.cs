@@ -8,11 +8,18 @@ using System.Collections.Generic;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for tenant (customer) management and configuration.
+    /// Handles CRUD operations, search, filtering, and consumption data display for tenants.
+    /// </summary>
     public class TenantController : BaseController
     {
         private readonly ILogger<TenantController> _logger;
         private readonly ICompanyContext _companyContext;
 
+        /// <summary>
+        /// Initializes the tenant controller with database, company context, and logging dependencies.
+        /// </summary>
         public TenantController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<TenantController> logger)
             : base(databaseService)
         {
@@ -20,6 +27,10 @@ namespace PoWorks_Rework.Controllers
             _companyContext = companyContext;
         }
 
+        /// <summary>
+        /// Displays the tenant management page with search results and consumption data for a selected tenant.
+        /// Optionally loads a specific tenant by ID.
+        /// </summary>
         public IActionResult Management(int? id = null)
         {
             if (!_databaseService.IsInitialized)
