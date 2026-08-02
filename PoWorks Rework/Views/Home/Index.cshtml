@@ -20,7 +20,7 @@
         border-radius: 0;
     }
 
-   
+
 
         .chart-fullscreen .card-body {
             height: calc(100vh - 70px) !important;
@@ -28,7 +28,7 @@
             flex-direction: column;
         }
 
-        
+
         .chart-fullscreen #chartdiv {
             max-height: none !important;
             height: 100% !important;
@@ -116,7 +116,8 @@
                             <div class="form-group">
                                 <label for="chartType">Chart Type</label>
                                 <select id="chartType" class="form-control">
-                                    <option value="line" selected>Area / Line Chart</option>
+                                    <option value="area" selected>Area Chart</option>
+                                    <option value="line">Line Chart</option>
                                     <option value="bar">Bar Chart</option>
                                 </select>
                             </div>
@@ -136,7 +137,7 @@
                     </div>
 
                     <div class="row mt-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
                                 <label for="dateRange">Date Range</label>
                                 <div class="input-group">
@@ -146,9 +147,49 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- NEW: Max curves displayed at once (avoids unreadable spaghetti charts) -->
+                        <div class="col-md-2">
+                            <div class="form-group">
+                                <label for="maxCurves" title="Au-delà de ce nombre, les meters restants sont regroupés dans une courbe 'Autres'">
+                                    Max courbes <i class="bi bi-info-circle text-muted"></i>
+                                </label>
+                                <select id="maxCurves" class="form-control">
+                                    <option value="3">3</option>
+                                    <option value="5">5</option>
+                                    <option value="10" selected>10</option>
+                                    <option value="20">20</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="col-md-6 d-flex align-items-end">
                             <button id="applyFilters" class="btn btn-primary mr-2">Apply Filters</button>
                             <button id="resetFilters" class="btn btn-secondary">Reset</button>
+                        </div>
+                    </div>
+
+                    <!-- NEW: Comparison mode options - only visible when "Comparison" is selected above -->
+                    <div class="row mt-3 d-none" id="comparisonOptions">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="comparePreset">Comparer à</label>
+                                <select id="comparePreset" class="form-control">
+                                    <option value="previous" selected>Période précédente (même durée)</option>
+                                    <option value="lastYear">Même période l'an dernier</option>
+                                    <option value="custom">Période personnalisée</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4 d-none" id="compareCustomDates">
+                            <div class="form-group">
+                                <label for="compareDateRange">Dates de comparaison</label>
+                                <div class="input-group">
+                                    <input type="date" id="compareStartDate" class="form-control" />
+                                    <div class="input-group-text">to</div>
+                                    <input type="date" id="compareEndDate" class="form-control" />
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -209,6 +250,12 @@
                         </div>
                     </div>
 
+                    <!-- NEW: shown when the selection exceeds "Max courbes" -->
+                    <div id="curveLimitWarning" class="alert alert-warning d-none mb-3">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <span id="curveLimitWarningText"></span>
+                    </div>
+
                     <div id="loadingSpinner" class="text-center d-none">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -216,7 +263,7 @@
                         <p class="mt-2 text-muted">Loading chart data...</p>
                     </div>
 
-            
+
                     <div id="chartdiv" style="width: 100%; height: 450px;"></div>
                 </div>
             </div>

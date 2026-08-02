@@ -96,20 +96,20 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                
+
                 DateTime? adjustedEndDate = request.EndDate.HasValue ? request.EndDate.Value.Date.AddDays(1).AddTicks(-1) : null;
 
                 var filters = new MeterReadingFilters
                 {
                     StartDate = request.StartDate,
-                    EndDate = adjustedEndDate, 
+                    EndDate = adjustedEndDate,
                     TenantId = request.TenantId,
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
                     Offset = Math.Max(0, request.Offset ?? 0),
                     IncludeNullTenants = request.IncludeNullTenants ?? true,
                     ActiveOnly = true
                 };
-               
+
 
                 var meters = await _dashboardDataService.GetActiveMetersWithDataAsync(filters);
 
@@ -233,7 +233,9 @@ namespace PoWorks_Rework.Controllers
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
                     ActiveOnly = true,
                     IncludeNullTenants = true,
-                    IsComparisonMode = request.IsComparisonMode,
+                    // NOTE: the old weekday-grouping "IsComparisonMode" query path is no longer
+                    // driven by the frontend - period-vs-period comparison (below) replaces it.
+                    IsComparisonMode = false,
                     GroupBy = request.GroupBy
                 };
 
@@ -263,10 +265,46 @@ namespace PoWorks_Rework.Controllers
                 var summary = _dashboardDataService.CalculateSummary(consumptionData);
                 summary.TotalMeters = availability.ActiveMeterCount;
 
+                // NEW: period-vs-period comparison. Re-run the exact same query (same meters,
+                // same granularity) on the comparison date range provided by the frontend, so
+                // both periods are directly comparable meter-by-meter.
+                object compareChartDataResponse = null;
+                object compareSummaryResponse = null;
+
+                if (request.CompareStartDate.HasValue && request.CompareEndDate.HasValue)
+                {
+                    DateTime compareAdjustedEndDate = request.CompareEndDate.Value.Date.AddDays(1).AddTicks(-1);
+
+                    var compareFilters = new MeterReadingFilters
+                    {
+                        DateFilter = filters.DateFilter,
+                        TenantId = filters.TenantId,
+                        MeterIds = filters.MeterIds, // identical meter selection as the current period
+                        StartDate = request.CompareStartDate,
+                        EndDate = compareAdjustedEndDate,
+                        Limit = filters.Limit,
+                        ActiveOnly = true,
+                        IncludeNullTenants = true,
+                        IsComparisonMode = false,
+                        GroupBy = filters.GroupBy
+                    };
+
+                    var compareData = await _dashboardDataService.GetMeterReadingsAsync(compareFilters);
+                    if (compareData.Any())
+                    {
+                        var compareChartData = _dashboardDataService.ProcessChartData(compareData);
+                        var compareSummary = _dashboardDataService.CalculateSummary(compareData);
+                        compareChartDataResponse = compareChartData.ToApiResponse();
+                        compareSummaryResponse = compareSummary.ToDisplayObject();
+                    }
+                }
+
                 return Json(new
                 {
                     chartData = chartData.ToApiResponse(),
+                    compareChartData = compareChartDataResponse,
                     summary = summary.ToDisplayObject(),
+                    compareSummary = compareSummaryResponse,
                     message = $"Showing data for {summary.ActiveMeters} meters.",
                     dataInfo = new
                     {
@@ -288,7 +326,7 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-              
+
                 DateTime? adjustedEndDate = endDate.HasValue ? endDate.Value.Date.AddDays(1).AddTicks(-1) : null;
 
                 var filters = new MeterReadingFilters
@@ -296,9 +334,9 @@ namespace PoWorks_Rework.Controllers
                     Limit = 1,
                     IncludeNullTenants = true,
                     StartDate = startDate,
-                    EndDate = adjustedEndDate 
+                    EndDate = adjustedEndDate
                 };
-                
+
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
                 var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync();
@@ -346,6 +384,11 @@ namespace PoWorks_Rework.Controllers
         public int? Limit { get; set; } = 5;
         public bool IsComparisonMode { get; set; }
         public string GroupBy { get; set; } = "meter";
+
+        // NEW: period-vs-period comparison range. When both are set, GetConsumptionData
+        // runs a second identical query on this range and returns it as compareChartData.
+        public DateTime? CompareStartDate { get; set; }
+        public DateTime? CompareEndDate { get; set; }
     }
     public class GetMetersRequest
     {
