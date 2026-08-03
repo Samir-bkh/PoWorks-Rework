@@ -4,13 +4,20 @@ using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Background service that periodically imports meter readings from PCVue web services.
+    /// Runs automatic import cycles for all companies with auto-import enabled.
+    /// </summary>
     public class AutoImportWorker : BackgroundService
     {
         private readonly ILogger<AutoImportWorker> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly EncryptionService _encryptionService;
-        private readonly int _cycleDelayMinutes = 1;
+        private const int DefaultCycleDelayMinutes = 1;
 
+        /// <summary>
+        /// Initializes the auto import worker with logging, service provider, and encryption dependencies.
+        /// </summary>
         public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider, EncryptionService encryptionService)
         {
             _logger = logger;
@@ -18,13 +25,27 @@ namespace PoWorks_Rework.Services
             _encryptionService = encryptionService;
         }
 
+        /// <summary>
+        /// Runs the background import loop, executing import cycles at the configured interval.
+        /// </summary>
+        /// <param name="stoppingToken">The cancellation token to stop the background service.</param>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("PILOT START - Le service d'importation est lancé.");
+            _logger.LogInformation("PILOT START - The import service has started.");
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                _logger.LogInformation("--- DEBUT D'UN CYCLE D'IMPORT ({Delay} min) ---", _cycleDelayMinutes);
+                int cycleDelayMinutes = DefaultCycleDelayMinutes;
+                try
+                {
+                    cycleDelayMinutes = await GetMinimumAutoImportIntervalMinutesAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Unable to read auto-import interval from database, using default ({Default} min).", DefaultCycleDelayMinutes);
+                }
+
+                _logger.LogInformation("--- START OF AN IMPORT CYCLE ({Delay} min) ---", cycleDelayMinutes);
                 try
                 {
                     await RunImportCycleAsync(stoppingToken);
@@ -34,11 +55,15 @@ namespace PoWorks_Rework.Services
                     _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message} | StackTrace: {Stack}", ex.Message, ex.StackTrace);
                 }
 
-                _logger.LogInformation("--- FIN DU CYCLE, MISE EN VEILLE ---");
-                await Task.Delay(TimeSpan.FromMinutes(_cycleDelayMinutes), stoppingToken);
+                _logger.LogInformation("--- END OF CYCLE, GOING TO SLEEP ({Delay} min) ---", cycleDelayMinutes);
+                await Task.Delay(TimeSpan.FromMinutes(cycleDelayMinutes), stoppingToken);
             }
         }
 
+        /// <summary>
+        /// Executes a single import cycle for all companies with auto-import enabled.
+        /// </summary>
+        /// <param name="stoppingToken">The cancellation token.</param>
         private async Task RunImportCycleAsync(CancellationToken stoppingToken)
         {
             if (!await ImportLock.Gate.WaitAsync(0, stoppingToken))
@@ -55,36 +80,36 @@ namespace PoWorks_Rework.Services
                 var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
 
                 var companyIds = await GetAllCompanyIdsAsync(dbService);
-                _logger.LogInformation(">> Trouvé {Count} compagnie(s) dans la base.", companyIds.Count);
+                _logger.LogInformation(">> Found {Count} compan(y/ies) in the database.", companyIds.Count);
 
                 foreach (var companyId in companyIds)
                 {
-                    _logger.LogInformation(">> Traitement de la compagnie ID: {CompanyId}", companyId);
+                    _logger.LogInformation(">> Processing company ID: {CompanyId}", companyId);
 
                     var apiSettings = await GetApiSettingsAsync(dbService, companyId);
                     if (apiSettings == null)
                     {
-                        _logger.LogWarning(">> ERREUR: Aucun paramètre WebService trouvé pour la compagnie {Id}. On passe à la suivante.", companyId);
+                        _logger.LogWarning(">> ERROR: No WebService settings found for company {Id}. Moving to the next one.", companyId);
                         continue;
                     }
 
                     if (!apiSettings.EnableAutomaticImport)
                     {
-                        _logger.LogInformation(">> Import automatique désactivé pour la compagnie {Id}. On passe à la suivante.", companyId);
+                        _logger.LogInformation(">> Auto-import disabled for company {Id}. Moving to the next one.", companyId);
                         continue;
                     }
 
                     var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
                     if (string.IsNullOrEmpty(testToken))
                     {
-                        _logger.LogWarning(">> ERREUR: Impossible de récupérer le token PCVue pour la compagnie {Id}.", companyId);
+                        _logger.LogWarning(">> ERROR: Unable to retrieve the PCVue token for company {Id}.", companyId);
                         continue;
                     }
 
                     await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                     {
                         var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
-                        _logger.LogInformation(">> Trouvé {Count} compteur(s) actif(s) à importer pour la compagnie {Id}.", metersToImport.Count, companyId);
+                        _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
 
                         if (!metersToImport.Any()) return;
 
@@ -103,7 +128,7 @@ namespace PoWorks_Rework.Services
                             if (groupStartTime >= endTime) continue;
 
                             var variableNames = group.Select(m => m.OriginalVariableName).ToList();
-                            _logger.LogInformation(">> Appel PCVue pour {Count} variable(s) depuis {Time}", variableNames.Count, groupStartTime);
+                            _logger.LogInformation(">> Calling PCVue for {Count} variable(s) since {Time}", variableNames.Count, groupStartTime);
 
                             var groupResults = await trendsService.ProcessVariablesTrendsAsync(
                                 variableNames,
@@ -178,7 +203,7 @@ namespace PoWorks_Rework.Services
                             await writer.CompleteAsync(stoppingToken);
                         }
 
-                        _logger.LogInformation(">> Import terminé : {Points} nouveaux points PCVue, {Padding} points de padding générés.", pointsAdded, paddingAdded);
+                        _logger.LogInformation(">> Import completed: {Points} new PCVue points, {Padding} padding points generated.", pointsAdded, paddingAdded);
 
                         var insertCmd = new NpgsqlCommand(@"
                             INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
@@ -198,7 +223,12 @@ namespace PoWorks_Rework.Services
             }
         }
 
-        // 🟢 FIX 4 : Nouvelle méthode pour récupérer la Date ET la Valeur
+        /// <summary>
+        /// Retrieves the most recent reading timestamp and value for each meter.
+        /// </summary>
+        /// <param name="conn">The database connection to use.</param>
+        /// <param name="tr">The transaction to use.</param>
+        /// <returns>A dictionary mapping meter IDs to their last known reading.</returns>
         private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
         {
             var dict = new Dictionary<int, (DateTime Timestamp, decimal Value)>();
@@ -215,6 +245,44 @@ namespace PoWorks_Rework.Services
             return dict;
         }
 
+        /// <summary>
+        /// Reads the minimum auto-import interval from the database across all active connections.
+        /// </summary>
+        /// <param name="stoppingToken">The cancellation token.</param>
+        /// <returns>The minimum interval in minutes, clamped between 1 and 1440.</returns>
+        private async Task<int> GetMinimumAutoImportIntervalMinutesAsync(CancellationToken stoppingToken)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+
+            if (!dbService.IsInitialized)
+            {
+                return DefaultCycleDelayMinutes;
+            }
+
+            using var conn = dbService.CreateNewConnection();
+            await conn.OpenAsync(stoppingToken);
+
+            using var cmd = new NpgsqlCommand(@"
+                SELECT MIN(""AutoImportIntervalMinutes"")
+                FROM ""WebServiceConnections""
+                WHERE ""EnableAutomaticImport"" = TRUE
+                  AND ""IsActive"" = TRUE", conn);
+
+            var result = await cmd.ExecuteScalarAsync(stoppingToken);
+            if (result == null || result == DBNull.Value)
+            {
+                return DefaultCycleDelayMinutes;
+            }
+
+            return Math.Clamp(Convert.ToInt32(result), 1, 1440);
+        }
+
+        /// <summary>
+        /// Retrieves the list of all company IDs from the database.
+        /// </summary>
+        /// <param name="dbService">The database service to use.</param>
+        /// <returns>A list of company IDs.</returns>
         private async Task<List<int>> GetAllCompanyIdsAsync(DatabaseService dbService)
         {
             var ids = new List<int>();
@@ -234,6 +302,12 @@ namespace PoWorks_Rework.Services
             return ids;
         }
 
+        /// <summary>
+        /// Retrieves the active meters to import for the current company.
+        /// </summary>
+        /// <param name="conn">The database connection to use.</param>
+        /// <param name="tr">The transaction to use.</param>
+        /// <returns>A list of meters for trends analysis.</returns>
         private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
         {
             var meters = new List<MeterForTrendsAnalysis>();
@@ -252,6 +326,12 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
+        /// <summary>
+        /// Retrieves the web service API settings for a specific company.
+        /// </summary>
+        /// <param name="dbService">The database service to use.</param>
+        /// <param name="companyId">The company ID to retrieve settings for.</param>
+        /// <returns>The web service settings, or null if not found.</returns>
         private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService, int companyId)
         {
             try
@@ -271,7 +351,7 @@ namespace PoWorks_Rework.Services
                     {
                         return new PCVueWebServiceSettings
                         {
-                            // On utilise GetValue().ToString() au lieu de GetString() au cas où l'ID serait un chiffre/GUID
+                            // Use GetValue().ToString() instead of GetString() in case the ID is a number/GUID
                             ConnectionId = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString(),
                             ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
@@ -285,19 +365,18 @@ namespace PoWorks_Rework.Services
                             ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
                             IsDefault = !reader.IsDBNull(11) && reader.GetBoolean(11),
 
-                            // Colonne 13 = EnableAutomaticImport
+                            // Column 13 = EnableAutomaticImport
                             EnableAutomaticImport = !reader.IsDBNull(13) && reader.GetBoolean(13)
                         };
                     }
 
-                    _logger.LogWarning(">> BDD : La requête SQL n'a retourné aucune ligne pour la compagnie {Id}.", companyId);
+                    _logger.LogWarning(">> DB: The SQL query returned no rows for company {Id}.", companyId);
                     return null;
                 });
             }
             catch (Exception ex)
             {
-                // On logue la VRAIE erreur pour savoir ce qui coince !
-                _logger.LogError(ex, ">> ERREUR CRITIQUE lors de la lecture des paramètres API pour la compagnie {CompanyId}", companyId);
+                _logger.LogError(ex, ">> CRITICAL ERROR while reading the API settings for company {CompanyId}", companyId);
                 return null;
             }
         }

@@ -2,32 +2,90 @@ using System.Text.Json;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service for parsing PCVue web service variable browse responses.
+    /// Extracts variable paths, branches, types, and filters system variables.
+    /// </summary>
     public class VariableBrowseParsingService
     {
         private readonly ILogger<VariableBrowseParsingService> _logger;
 
+        /// <summary>
+        /// Initializes the variable browse parsing service with a logger.
+        /// </summary>
         public VariableBrowseParsingService(ILogger<VariableBrowseParsingService> logger)
         {
             _logger = logger;
         }
 
+        /// <summary>
+        /// Represents a parsed variable from a PCVue browse response.
+        /// </summary>
         public class ParsedVariable
         {
+            /// <summary>
+            /// The full dotted path of the variable including branches.
+            /// </summary>
             public string FullPath { get; set; } = "";
+
+            /// <summary>
+            /// The list of branch names in the variable's path.
+            /// </summary>
             public List<string> Branches { get; set; } = new List<string>();
+
+            /// <summary>
+            /// The variable name.
+            /// </summary>
             public string VariableName { get; set; } = "";
+
+            /// <summary>
+            /// The variable type as reported by PCVue.
+            /// </summary>
             public string VariableType { get; set; } = "";
+
+            /// <summary>
+            /// Whether the variable is read-only.
+            /// </summary>
             public bool IsReadOnly { get; set; }
+
+            /// <summary>
+            /// Whether the variable is a leaf node.
+            /// </summary>
             public bool IsLeaf { get; set; }
         }
 
+        /// <summary>
+        /// Represents the result of parsing a PCVue browse response.
+        /// </summary>
         public class ParseResult
         {
+            /// <summary>
+            /// Whether the parsing succeeded.
+            /// </summary>
             public bool Success { get; set; }
+
+            /// <summary>
+            /// The list of parsed variables.
+            /// </summary>
             public List<ParsedVariable> Variables { get; set; } = new List<ParsedVariable>();
+
+            /// <summary>
+            /// The total number of parsed variables.
+            /// </summary>
             public int TotalCount { get; set; }
+
+            /// <summary>
+            /// The error message if parsing failed.
+            /// </summary>
             public string ErrorMessage { get; set; } = "";
         }
+
+        /// <summary>
+        /// Parses a PCVue browse variables response into a structured result.
+        /// </summary>
+        /// <param name="responseData">The raw response data to parse.</param>
+        /// <param name="includeSystemVariables">Whether to include variables under the System branch.</param>
+        /// <returns>A ParseResult with the parsed variables.</returns>
         public ParseResult ParseBrowseVariablesResponse(object responseData, bool includeSystemVariables = false)
         {
             var result = new ParseResult();
@@ -104,6 +162,12 @@ namespace PoWorks_Rework.Services
 
             return result;
         }
+        /// <summary>
+        /// Prints the parsed variables to the console for debugging purposes.
+        /// </summary>
+        /// <param name="parseResult">The parsing result to print.</param>
+        /// <param name="connectionInfo">The connection information to display.</param>
+        /// <param name="includeSystemVariables">Whether system variables were included.</param>
         public void PrintParsedVariablesToConsole(ParseResult parseResult, string connectionInfo, bool includeSystemVariables = false)
         {
             Console.WriteLine("\n=====================================================");
@@ -133,10 +197,10 @@ namespace PoWorks_Rework.Services
 
                     if (variable.Branches.Any())
                     {
-                        Console.WriteLine($"   ├─ Branches: {string.Join(" → ", variable.Branches)}");
+                        Console.WriteLine($"   |- Branches: {string.Join(" -> ", variable.Branches)}");
                     }
-                    Console.WriteLine($"   ├─ Variable: {variable.VariableName}");
-                    Console.WriteLine($"   └─ Type: {variable.VariableType}, ReadOnly: {variable.IsReadOnly}");
+                    Console.WriteLine($"   |- Variable: {variable.VariableName}");
+                    Console.WriteLine($"   |- Type: {variable.VariableType}, ReadOnly: {variable.IsReadOnly}");
                     if ((i + 1) % 5 == 0 && i < parseResult.Variables.Count - 1)
                     {
                         Console.WriteLine();

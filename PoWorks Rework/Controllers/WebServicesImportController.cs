@@ -8,6 +8,10 @@ using System.Text.Json;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for importing meters and trends data from PCVue web services.
+    /// Handles variable browsing, meter import, and background trends data retrieval.
+    /// </summary>
     public class WebServicesImportController : Controller
     {
         #region Dependencies
@@ -21,9 +25,12 @@ namespace PoWorks_Rework.Controllers
         private readonly ICompanyContext _companyContext;
         private readonly EncryptionService _encryptionService;
 
-        // 🟢 NOUVEAU : L'usine pour créer des services en arrière-plan sans qu'ils soient détruits
+        // Factory for creating background services without them being destroyed
         private readonly IServiceScopeFactory _scopeFactory;
 
+        /// <summary>
+        /// Initializes the web services import controller with its dependencies.
+        /// </summary>
         public WebServicesImportController(
             ILogger<WebServicesImportController> logger,
             DatabaseService databaseService,
@@ -33,7 +40,7 @@ namespace PoWorks_Rework.Controllers
             PCVueWebService pcvueWebService,
             ICompanyContext companyContext,
             EncryptionService encryptionService,
-            IServiceScopeFactory scopeFactory) // 🟢 Injection ici
+            IServiceScopeFactory scopeFactory) // Injection here
         {
             _logger = logger;
             _databaseService = databaseService;
@@ -50,6 +57,11 @@ namespace PoWorks_Rework.Controllers
 
         #region WebServices Functions
 
+        /// <summary>
+        /// Prints the selected web service meters.
+        /// </summary>
+        /// <param name="request">The request containing the selected variables.</param>
+        /// <returns>JSON with the count of selected variables.</returns>
         [HttpPost]
         public IActionResult PrintWebServiceMeters([FromBody] PrintWebServiceMetersRequest request)
         {
@@ -63,6 +75,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Imports web service variables as meters and optionally starts a background trends data import.
+        /// </summary>
+        /// <param name="request">The import request containing variables, connection, and trends options.</param>
+        /// <returns>JSON with import counts and a message about background processing.</returns>
         [HttpPost("/Import/ImportWebServiceVariablesWithTrends")]
         public async Task<IActionResult> ImportWebServiceMeters([FromBody] ImportWebServiceVariablesWithTrendsRequest request)
         {
@@ -91,7 +108,7 @@ namespace PoWorks_Rework.Controllers
                 int importedCount = 0, updatedCount = 0, skippedCount = 0, errorCount = 0;
                 var meterIdsMap = new Dictionary<string, int>();
 
-                // 1. IMPORTATION DES NOMS DES COMPTEURS (Rapide, bloque l'UI max 1 seconde)
+                // 1. IMPORT METER NAMES (Fast, blocks the UI for max 1 second)
                 using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
                 {
                     await connection.OpenAsync();
@@ -146,10 +163,10 @@ namespace PoWorks_Rework.Controllers
                     catch (Exception) { await transaction.RollbackAsync(); throw; }
                 }
 
-                // 2. LANCEMENT DE L'HISTORIQUE EN ARRIÈRE-PLAN (Fire-and-Forget)
+                // 2. LAUNCH THE HISTORY IMPORT IN BACKGROUND (Fire-and-Forget)
                 if (processTrends && meterIdsMap.Any())
                 {
-                    // On copie les variables pour le Thread en arrière-plan
+                    // Copy the variables for the background thread
                     var bgVariableNamesList = meterIdsMap.Keys.ToList();
                     var bgStartDate = request.TrendsStartDate.Value;
                     var bgEndDate = request.TrendsEndDate.Value;
@@ -157,21 +174,21 @@ namespace PoWorks_Rework.Controllers
                     var bgMeterIdsMap = new Dictionary<string, int>(meterIdsMap);
                     var bgCompanyId = companyId;
 
-                    // 🚀 Lancement de la tâche magique qui tourne toute seule
+                    // Launch the background task that runs independently
                     _ = Task.Run(async () =>
                     {
-                        // On crée un "Scope" protégé qui ne sera pas détruit par la page Web
+                        // Create a protected "Scope" that will not be destroyed by the web page
                         using var scope = _scopeFactory.CreateScope();
                         var bgTrendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
                         var bgDbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
                         var bgLogger = scope.ServiceProvider.GetRequiredService<ILogger<WebServicesImportController>>();
 
-                        await ImportLock.Gate.WaitAsync(); // Protège la base de données
+                        await ImportLock.Gate.WaitAsync(); // Protects the database
                         try
                         {
                             bgLogger.LogInformation("Background Trends Import Started for {Count} variables...", bgVariableNamesList.Count);
 
-                            // L'appel qui prend 5 minutes se fait ici, en silence !
+                            // The call that takes 5 minutes happens here, silently!
                             var trendsResults = await bgTrendsService.ProcessVariablesTrendsAsync(bgVariableNamesList, bgStartDate, bgEndDate, bgSettings);
 
                             using var conn = new NpgsqlConnection(bgDbService.GetConnectionString());
@@ -239,7 +256,7 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
-                // 3. RÉPONSE INSTANTANÉE À L'INTERFACE WEB
+                // 3. INSTANT RESPONSE TO THE WEB INTERFACE
                 return Json(new
                 {
                     success = true,
@@ -247,7 +264,7 @@ namespace PoWorks_Rework.Controllers
                     updatedCount,
                     skippedCount,
                     errorCount,
-                    message = processTrends ? "Les compteurs ont été importés. L'historique (Trends) est en cours de téléchargement en arrière-plan !" : "Importation terminée sans historique."
+                    message = processTrends ? "The meters have been imported. The history (Trends) is being downloaded in the background!" : "Import completed without history."
                 });
             }
             catch (Exception ex)
@@ -256,6 +273,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Returns the list of web service connections for the current company.
+        /// </summary>
+        /// <returns>JSON with the available web service connections.</returns>
         [HttpGet]
         public async Task<IActionResult> GetWebServiceConnections()
         {
@@ -289,6 +310,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Browses the variables available on a PCVue web service connection.
+        /// </summary>
+        /// <param name="request">The browse request containing connection ID and filter options.</param>
+        /// <returns>JSON with the browsed variables and total count.</returns>
         [HttpPost]
         public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
         {
@@ -336,6 +362,11 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region Helper Methods
+        /// <summary>
+        /// Retrieves a web service connection by its ID from the database.
+        /// </summary>
+        /// <param name="connectionId">The connection ID to look up.</param>
+        /// <returns>The matching settings, or null if not found.</returns>
         private async Task<PCVueWebServiceSettings?> GetWebServiceConnectionById(string connectionId)
         {
             try

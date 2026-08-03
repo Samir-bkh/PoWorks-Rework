@@ -5,11 +5,18 @@ using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for tenant creation and editing operations.
+    /// Handles tenant form display, tenant/tenant-details persistence, and validation.
+    /// </summary>
     public class TenantManagementController : BaseController
     {
         private readonly ILogger<TenantManagementController> _logger;
         private readonly ICompanyContext _companyContext;
 
+        /// <summary>
+        /// Initializes the tenant management controller with database, company context, and logging dependencies.
+        /// </summary>
         public TenantManagementController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<TenantManagementController> logger)
             : base(databaseService)
         {
@@ -17,12 +24,20 @@ namespace PoWorks_Rework.Controllers
             _companyContext = companyContext;
         }
 
+        /// <summary>
+        /// Retrieves the current user ID from the authenticated user's claims.
+        /// </summary>
+        /// <returns>The user ID, or 1 if the claim cannot be parsed.</returns>
         private int GetCurrentUserId()
         {
             var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
             return claim != null && int.TryParse(claim.Value, out int userId) ? userId : 1;
         }
 
+        /// <summary>
+        /// Displays the tenant creation form with default tenant values.
+        /// </summary>
+        /// <returns>The tenant management view with a blank tenant model.</returns>
         [HttpGet]
         public IActionResult Create()
         {
@@ -51,6 +66,12 @@ namespace PoWorks_Rework.Controllers
             return View("~/Views/Tenant/Management.cshtml", viewModel);
         }
 
+        /// <summary>
+        /// Saves a new or existing tenant along with its detailed information.
+        /// </summary>
+        /// <param name="tenant">The tenant model containing the data to save.</param>
+        /// <param name="form">The form collection used to read checkbox values.</param>
+        /// <returns>A redirect to the tenant management page, or the form view on validation errors.</returns>
         [HttpPost]
         public IActionResult SaveTenant(Tenant tenant, IFormCollection form)
         {
@@ -143,6 +164,13 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Creates a new tenant record and its associated details in the database.
+        /// </summary>
+        /// <param name="tenant">The tenant data to insert.</param>
+        /// <param name="connection">The database connection to use.</param>
+        /// <param name="transaction">The transaction to use.</param>
+        /// <returns>The newly created tenant ID.</returns>
         private int CreateNewTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation("Creating new tenant");
@@ -184,6 +212,13 @@ namespace PoWorks_Rework.Controllers
             return tenantId;
         }
 
+        /// <summary>
+        /// Updates an existing tenant record and inserts or updates its associated details.
+        /// </summary>
+        /// <param name="tenant">The tenant data to update.</param>
+        /// <param name="connection">The database connection to use.</param>
+        /// <param name="transaction">The transaction to use.</param>
+        /// <returns>The updated tenant ID.</returns>
         private int UpdateExistingTenant(Tenant tenant, NpgsqlConnection connection, NpgsqlTransaction transaction)
         {
             _logger.LogInformation($"Updating existing tenant with ID: {tenant.Id}");
@@ -246,6 +281,12 @@ namespace PoWorks_Rework.Controllers
             return tenantId;
         }
 
+        /// <summary>
+        /// Binds the tenant details parameters onto the given command for insert or update.
+        /// </summary>
+        /// <param name="command">The command to bind parameters to.</param>
+        /// <param name="tenant">The tenant data source.</param>
+        /// <param name="tenantId">The tenant ID.</param>
         private void SetTenantDetailsParameters(NpgsqlCommand command, Tenant tenant, int tenantId)
         {
             command.Parameters.AddWithValue("@tenantId", tenantId);

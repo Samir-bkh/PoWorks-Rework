@@ -87,6 +87,13 @@ namespace PoWorks_Rework.Models
         public bool EnableAutomaticImport { get; set; } = false;
 
         /// <summary>
+        /// Interval in minutes between automatic import cycles
+        /// </summary>
+        [Display(Name = "Auto Import Interval (minutes)")]
+        [Range(1, 1440)]
+        public int AutoImportIntervalMinutes { get; set; } = 1;
+
+        /// <summary>
         /// Generates the appropriate HTTP Authorization header value based on auth type.
         /// Returns formatted header suitable for HTTP requests.
         /// </summary>

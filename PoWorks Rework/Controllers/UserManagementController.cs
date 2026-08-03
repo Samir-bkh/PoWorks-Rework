@@ -12,44 +12,98 @@ using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// View model representing a user in the user management list.
+    /// </summary>
     public class UserViewModel
     {
+        /// <summary>
+        /// The user's unique identifier.
+        /// </summary>
         public string Id { get; set; }
+
+        /// <summary>
+        /// The user's username.
+        /// </summary>
         public string UserName { get; set; }
+
+        /// <summary>
+        /// The company ID assigned to the user.
+        /// </summary>
         public string CompanyId { get; set; }
+
+        /// <summary>
+        /// The display name of the assigned company.
+        /// </summary>
         public string CompanyName { get; set; }
     }
 
-    
+    /// <summary>
+    /// View model for creating a new user.
+    /// </summary>
     public class CreateUserViewModel
     {
+        /// <summary>
+        /// The username for the new user.
+        /// </summary>
         [Required(ErrorMessage = "Username is required")]
         public string Username { get; set; }
 
+        /// <summary>
+        /// The password for the new user.
+        /// </summary>
         [Required(ErrorMessage = "Password is required")]
         public string Password { get; set; }
 
+        /// <summary>
+        /// The company ID to assign, or "NEW" to create a new company.
+        /// </summary>
         public string? CompanyId { get; set; }
+
+        /// <summary>
+        /// The name of the new company when CompanyId is "NEW".
+        /// </summary>
         public string? NewCompanyName { get; set; }
 
-      
+        /// <summary>
+        /// Whether the user can view the PCVue configuration page.
+        /// </summary>
         public bool CanViewPcVueConfig { get; set; }
+
+        /// <summary>
+        /// Whether the user can view the import/export page.
+        /// </summary>
         public bool CanViewImportExport { get; set; }
+
+        /// <summary>
+        /// Whether the user can view the general settings page.
+        /// </summary>
         public bool CanViewGeneralSettings { get; set; }
     }
 
+    /// <summary>
+    /// Controller for managing application users and their company assignments.
+    /// Restricted to administrators only.
+    /// </summary>
     [Authorize(Policy = "AdminOnly")]
     public class UserManagementController : Controller
     {
         private readonly UserManager<IdentityUser> _userManager;
         private readonly DatabaseService _databaseService;
 
+        /// <summary>
+        /// Initializes the user management controller with user manager and database service dependencies.
+        /// </summary>
         public UserManagementController(UserManager<IdentityUser> userManager, DatabaseService databaseService)
         {
             _userManager = userManager;
             _databaseService = databaseService;
         }
 
+        /// <summary>
+        /// Displays the list of all users with their assigned companies.
+        /// </summary>
+        /// <returns>The user management index view.</returns>
         public async Task<IActionResult> Index()
         {
             var users = _userManager.Users.ToList();
@@ -74,6 +128,10 @@ namespace PoWorks_Rework.Controllers
             return View(model);
         }
 
+        /// <summary>
+        /// Displays the user creation form.
+        /// </summary>
+        /// <returns>The user creation view.</returns>
         [HttpGet]
         public IActionResult Create()
         {
@@ -81,6 +139,11 @@ namespace PoWorks_Rework.Controllers
             return View(new CreateUserViewModel());
         }
 
+        /// <summary>
+        /// Creates a new user with the selected company assignment and permission claims.
+        /// </summary>
+        /// <param name="model">The create user view model containing the user data.</param>
+        /// <returns>A redirect to the user list, or the creation view on validation errors.</returns>
         [HttpPost]
         public async Task<IActionResult> Create(CreateUserViewModel model)
         {
@@ -129,6 +192,11 @@ namespace PoWorks_Rework.Controllers
             return View(model);
         }
 
+        /// <summary>
+        /// Deletes a user, except for the built-in admin account.
+        /// </summary>
+        /// <param name="id">The ID of the user to delete.</param>
+        /// <returns>A redirect to the user list.</returns>
         [HttpPost]
         public async Task<IActionResult> Delete(string id)
         {
@@ -140,6 +208,10 @@ namespace PoWorks_Rework.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        /// <summary>
+        /// Retrieves the list of companies as dropdown options, plus an option to create a new company.
+        /// </summary>
+        /// <returns>A list of select list items for company selection.</returns>
         private List<SelectListItem> GetCompaniesSelectList()
         {
             var items = new List<SelectListItem>();
@@ -162,6 +234,10 @@ namespace PoWorks_Rework.Controllers
             return items;
         }
 
+        /// <summary>
+        /// Builds a dictionary mapping company IDs to company names.
+        /// </summary>
+        /// <returns>A dictionary of company ID to company name.</returns>
         private Dictionary<string, string> GetCompanyNamesDictionary()
         {
             var dict = new Dictionary<string, string>();
@@ -178,6 +254,11 @@ namespace PoWorks_Rework.Controllers
             return dict;
         }
 
+        /// <summary>
+        /// Creates a new company record and returns its ID.
+        /// </summary>
+        /// <param name="companyName">The name of the company to create.</param>
+        /// <returns>The newly created company ID.</returns>
         private int CreateNewCompany(string companyName)
         {
             using var connection = _databaseService.CreateNewConnection();

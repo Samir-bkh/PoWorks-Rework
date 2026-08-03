@@ -1,24 +1,39 @@
-﻿@model PoWorks_Rework.Models.CompanyInfo
+﻿@*
+    Company Information View (PoWorks)
+
+Provides a structured management form for maintaining organization profile data.
+    Organized into collapsible-style sections: General information (address, registration),
+    Tax details (GST ID & rates), Contact information (phone, fax, email), and Logo
+    management (preview and file upload).
+*@
+
+@model PoWorks_Rework.Models.CompanyInfo
 @{
     ViewData["Title"] = "Company Info";
 }
 
 <div class="card">
+    @* Top Header: Actions & Form Controls *@
     <div class="card-header d-flex justify-content-between align-items-center">
         <h4>Company Info</h4>
         <div>
+            @* Submits the main company information form *@
             <button type="submit" form="companyInfoForm" class="btn btn-primary me-2">Save</button>
             <button type="button" class="btn btn-secondary">Cancel</button>
         </div>
     </div>
+
     <div class="card-body">
+        @* Main Information Form *@
         <form id="companyInfoForm" asp-action="SaveInfo" asp-controller="Company" method="post">
-            <!-- General Section -->
+
+            @* SECTION 1: General Company Details *@
             <div class="card mb-3">
                 <div class="card-header bg-light">
                     <h5 class="mb-0">General</h5>
                 </div>
                 <div class="card-body">
+                    @* Company Name *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="CompanyName" class="form-label">Company Name</label>
@@ -27,6 +42,8 @@
                             <input type="text" class="form-control" id="CompanyName" asp-for="CompanyName">
                         </div>
                     </div>
+
+                    @* Business Registration Number *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="RegistrationNumber" class="form-label">Registration Number</label>
@@ -35,6 +52,8 @@
                             <input type="text" class="form-control" id="RegistrationNumber" asp-for="RegistrationNumber">
                         </div>
                     </div>
+
+                    @* Address Line 1 *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="Address1" class="form-label">Address 1</label>
@@ -43,6 +62,8 @@
                             <input type="text" class="form-control" id="Address1" asp-for="Address1">
                         </div>
                     </div>
+
+                    @* Address Line 2 *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="Address2" class="form-label">Address 2</label>
@@ -51,6 +72,8 @@
                             <input type="text" class="form-control" id="Address2" asp-for="Address2">
                         </div>
                     </div>
+
+                    @* Postal Code and Country Selection *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="PostCode" class="form-label">Post Code</label>
@@ -71,6 +94,8 @@
                             </div>
                         </div>
                     </div>
+
+                    @* City *@
                     <div class="row">
                         <div class="col-md-3">
                             <label for="City" class="form-label">City</label>
@@ -82,12 +107,13 @@
                 </div>
             </div>
 
-            <!-- Tax Section -->
+            @* SECTION 2: Tax Identification & Rates *@
             <div class="card mb-3">
                 <div class="card-header bg-light">
                     <h5 class="mb-0">Tax</h5>
                 </div>
                 <div class="card-body">
+                    @* GST/Tax ID Number *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="GstId" class="form-label">GST ID</label>
@@ -96,6 +122,8 @@
                             <input type="text" class="form-control" id="GstId" asp-for="GstId">
                         </div>
                     </div>
+
+                    @* GST Percentage Rate *@
                     <div class="row">
                         <div class="col-md-3">
                             <label for="GstPercentage" class="form-label">GST Percentage</label>
@@ -110,12 +138,13 @@
                 </div>
             </div>
 
-            <!-- Contacts Section -->
+            @* SECTION 3: Communication & Contact Channels *@
             <div class="card mb-3">
                 <div class="card-header bg-light">
                     <h5 class="mb-0">Contacts</h5>
                 </div>
                 <div class="card-body">
+                    @* Phone Number *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="Phone" class="form-label">Phone</label>
@@ -127,6 +156,8 @@
                             </div>
                         </div>
                     </div>
+
+                    @* Fax Number *@
                     <div class="row mb-3">
                         <div class="col-md-3">
                             <label for="Fax" class="form-label">Fax</label>
@@ -138,6 +169,8 @@
                             </div>
                         </div>
                     </div>
+
+                    @* Primary Contact Email *@
                     <div class="row">
                         <div class="col-md-3">
                             <label for="Email" class="form-label">Email</label>
@@ -149,7 +182,7 @@
                 </div>
             </div>
 
-            <!-- Logo Section -->
+            @* SECTION 4: Organization Branding / Logo *@
             <div class="card">
                 <div class="card-header bg-light">
                     <h5 class="mb-0">Logo</h5>
@@ -160,6 +193,7 @@
                             <label class="form-label">Logo</label>
                         </div>
                         <div class="col-md-9">
+                            @* Active Logo Preview Window *@
                             <div class="logo-preview border p-2 text-center mb-3" style="max-width: 400px; min-height: 100px;">
                                 @if (!string.IsNullOrEmpty(Model.LogoPath))
                                 {
@@ -170,6 +204,8 @@
                                     <p class="text-muted">(No logo uploaded)</p>
                                 }
                             </div>
+
+                            @* Logo Image Upload Input *@
                             <div class="mb-3">
                                 <label for="logoUpload" class="form-label">Upload</label>
                                 <input class="form-control" type="file" id="logoUpload">
@@ -179,6 +215,7 @@
                 </div>
             </div>
 
+            @* Success Alert Notification *@
             @if (TempData["SuccessMessage"] != null)
             {
                 <div class="alert alert-success mt-3">

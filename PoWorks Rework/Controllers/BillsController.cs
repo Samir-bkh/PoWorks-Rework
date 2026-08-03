@@ -72,6 +72,13 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Searches bills by the given criteria and term with pagination.
+        /// </summary>
+        /// <param name="searchCriteria">The search field to filter by (e.g. Tenant).</param>
+        /// <param name="searchTerm">The term to look for in the selected search field.</param>
+        /// <param name="page">The page number to display (1-based).</param>
+        /// <returns>The bills index view with the filtered results.</returns>
         [HttpPost]
         public IActionResult Search(string searchCriteria, string searchTerm, int page = 1)
         {
@@ -110,6 +117,13 @@ namespace PoWorks_Rework.Controllers
             return View("Index", viewModel);
         }
 
+        /// <summary>
+        /// Calculates and saves a bill for the given tenant and billing period.
+        /// </summary>
+        /// <param name="tenantId">The ID of the tenant to bill.</param>
+        /// <param name="startDate">The start of the billing period.</param>
+        /// <param name="endDate">The end of the billing period.</param>
+        /// <returns>A redirect to the bills index with a success or error message.</returns>
         [HttpPost]
         public async Task<IActionResult> GenerateBillTest(int tenantId, DateTime startDate, DateTime endDate)
         {
@@ -128,6 +142,11 @@ namespace PoWorks_Rework.Controllers
             return RedirectToAction("Index");
         }
 
+        /// <summary>
+        /// Displays the details of a specific bill, including its line items.
+        /// </summary>
+        /// <param name="id">The bill ID to display.</param>
+        /// <returns>The bill details view, or a redirect if not found or access is denied.</returns>
         [HttpGet]
         public IActionResult Details(int id)
         {
@@ -202,6 +221,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Retrieves the active meters belonging to the current company for dropdown options.
+        /// </summary>
+        /// <returns>A list of dropdown options containing meter IDs and names.</returns>
         private List<DropdownOption> GetMeters()
         {
             var options = new List<DropdownOption>();
@@ -224,6 +247,10 @@ namespace PoWorks_Rework.Controllers
             return options;
         }
 
+        /// <summary>
+        /// Retrieves the tenants belonging to the current company for dropdown options.
+        /// </summary>
+        /// <returns>A list of dropdown options containing tenant IDs and company names.</returns>
         private List<DropdownOption> GetTenants()
         {
             var options = new List<DropdownOption>();
@@ -256,13 +283,35 @@ namespace PoWorks_Rework.Controllers
             return options;
         }
 
+        /// <summary>
+        /// Holds the paginated results of a bill search.
+        /// </summary>
         private class SearchResult
         {
+            /// <summary>
+            /// The list of bills on the current page.
+            /// </summary>
             public List<Bill> Items { get; set; } = new List<Bill>();
+
+            /// <summary>
+            /// The total number of bills matching the search criteria.
+            /// </summary>
             public int TotalCount { get; set; }
+
+            /// <summary>
+            /// The total number of pages available.
+            /// </summary>
             public int TotalPages { get; set; }
         }
 
+        /// <summary>
+        /// Searches the database for bills matching the given criteria, with pagination.
+        /// </summary>
+        /// <param name="searchCriteria">The search field to filter by.</param>
+        /// <param name="searchTerm">The term to look for in the selected search field.</param>
+        /// <param name="page">The page number to retrieve.</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <returns>A SearchResult containing the matching bills and pagination information.</returns>
         private SearchResult SearchBills(string searchCriteria, string searchTerm, int page, int pageSize)
         {
             var result = new SearchResult();
@@ -320,6 +369,12 @@ namespace PoWorks_Rework.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Deletes a draft invoice along with its line items.
+        /// Bills that are not in Draft status cannot be deleted.
+        /// </summary>
+        /// <param name="id">The ID of the invoice to delete.</param>
+        /// <returns>A redirect to the bills index or details view with a result message.</returns>
         [HttpPost]
         public IActionResult Delete(int id)
         {
@@ -382,6 +437,12 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Updates the status of a bill (Validated or Paid) and optionally records a payment.
+        /// </summary>
+        /// <param name="id">The ID of the bill to update.</param>
+        /// <param name="newStatus">The new status to apply (Validated or Paid).</param>
+        /// <returns>A redirect to the bill details with a result message.</returns>
         [HttpPost]
         public IActionResult UpdateStatus(int id, string newStatus)
         {
@@ -474,6 +535,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Generates and downloads a PDF document for the specified bill.
+        /// </summary>
+        /// <param name="id">The ID of the bill to export as PDF.</param>
+        /// <returns>The PDF file, or a redirect with an error message on failure.</returns>
         [HttpGet]
         public IActionResult DownloadPdf(int id)
         {

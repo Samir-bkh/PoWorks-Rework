@@ -8,11 +8,18 @@ using System.Collections.Generic;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for managing payments and the financial dashboard.
+    /// Handles payment recording, invoice lookup, and payment tracking for bills.
+    /// </summary>
     public class PaymentsController : BaseController
     {
         private readonly ILogger<PaymentsController> _logger;
         private readonly ICompanyContext _companyContext;
 
+        /// <summary>
+        /// Initializes the payments controller with database, company context, and logging dependencies.
+        /// </summary>
         public PaymentsController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<PaymentsController> logger)
             : base(databaseService)
         {
@@ -20,6 +27,10 @@ namespace PoWorks_Rework.Controllers
             _companyContext = companyContext;
         }
 
+        /// <summary>
+        /// Displays the payments dashboard with recent payments, totals, pending/overdue bills, and active invoices.
+        /// </summary>
+        /// <returns>The payments dashboard view.</returns>
         public IActionResult Index()
         {
             var viewModel = new PaymentDashboardViewModel();
@@ -140,6 +151,15 @@ namespace PoWorks_Rework.Controllers
             return View(viewModel);
         }
 
+        /// <summary>
+        /// Records a payment against a bill and automatically marks the bill as Paid when fully settled.
+        /// </summary>
+        /// <param name="billId">The ID of the bill being paid.</param>
+        /// <param name="amountPaid">The amount paid.</param>
+        /// <param name="paymentMethod">The payment method used.</param>
+        /// <param name="reference">Optional payment reference.</param>
+        /// <param name="notes">Optional payment notes.</param>
+        /// <returns>A redirect to the payments dashboard with a result message.</returns>
         [HttpPost]
         public IActionResult RecordPayment(int billId, decimal amountPaid, string paymentMethod, string reference, string notes)
         {

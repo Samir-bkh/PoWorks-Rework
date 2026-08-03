@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS "Meters" (
     "Type" VARCHAR(10) CHECK ("Type" IN ('main', 'sub')) NOT NULL,
     "Active" BOOLEAN DEFAULT TRUE,
     "TenantID" INTEGER REFERENCES "Tenants"("TenantID"),
-    "CompanyId" INTEGER -- Ajout pour la sécurité
+    "CompanyId" INTEGER 
 );
 -- Create index for faster meter queries
 CREATE INDEX IF NOT EXISTS idx_meters_tenantid ON "Meters"("TenantID");
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS "MeterReadings" (
   "Timestamp" TIMESTAMP NOT NULL,
   "Value" NUMERIC NOT NULL,
   "Quality" INTEGER,
-  "CompanyId" INTEGER NOT NULL -- ✅ CORRECTION ICI
+  "CompanyId" INTEGER NOT NULL 
 );
 
 -- Add indices for better performance
@@ -300,17 +300,12 @@ CREATE TABLE IF NOT EXISTS "BillLineItems" (
     "LineTotalHT" NUMERIC(10,2)
 );
 
--- Index pour accélérer les recherches de factures
+
 CREATE INDEX IF NOT EXISTS idx_bills_tenantid ON "Bills"("TenantID");
 CREATE INDEX IF NOT EXISTS idx_bills_status ON "Bills"("Status");
 
 
--- ##########################################################
--- MIGRATIONS AUTOMATIQUES POUR LES NOUVEAUX CLIENTS
--- (Ajout des tables et colonnes manquantes)
--- ##########################################################
 
--- 1. Création des tables systèmes manquantes
 CREATE TABLE IF NOT EXISTS "Companies" (
     "CompanyId" SERIAL PRIMARY KEY,
     "Name" VARCHAR(255) NOT NULL DEFAULT 'Default Company'
@@ -339,6 +334,7 @@ CREATE TABLE IF NOT EXISTS "WebServiceConnections" (
 );
 
 ALTER TABLE "WebServiceConnections" ADD COLUMN IF NOT EXISTS "EnableAutomaticImport" BOOLEAN DEFAULT FALSE;
+ALTER TABLE "WebServiceConnections" ADD COLUMN IF NOT EXISTS "AutoImportIntervalMinutes" INTEGER DEFAULT 1;
 
 
 CREATE TABLE IF NOT EXISTS "SqlServerConnections" (
@@ -366,7 +362,7 @@ CREATE TABLE IF NOT EXISTS "Payments" (
     "CompanyId" INTEGER DEFAULT 1
 );
 
--- 2. Ajout des colonnes manquantes (CompanyId, UserId, etc.)
+
 ALTER TABLE "Meters" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
 ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
 ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "UserId" TEXT; 
@@ -382,5 +378,4 @@ ALTER TABLE "MeterReadingsYearly" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER D
 
 
 
--- On recale le compteur de la table Companies sur l'ID le plus élevé actuel
 SELECT setval(pg_get_serial_sequence('"Companies"', 'CompanyId'), coalesce(max("CompanyId"), 1), max("CompanyId") IS NOT null) FROM "Companies";

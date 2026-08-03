@@ -1,9 +1,20 @@
-﻿@model PoWorks_Rework.Models.MeterReadingsViewModel
+﻿@*
+    Meter Readings Table Partial View (PoWorks)
 
-<!-- Readings Table -->
+Renders an asynchronous table listing meter readings with dynamic column configurations
+    based on the current view mode (Raw, Daily, Monthly, Yearly).
+    Supports pagination controls, quick-jump page navigation, empty state handling,
+    and details modal triggers.
+*@
+
+@model PoWorks_Rework.Models.MeterReadingsViewModel
+
+@* Readings Table Card Wrapper *@
 <div class="card">
+    @* Card Header: View Title, Meter Name Context, Loading Indicator, and Pagination Summary *@
     <div class="card-header bg-light">
         <div class="d-flex justify-content-between align-items-center">
+            @* Display View Name & Active Meter Name *@
             <h6 class="mb-0">
                 @Model.ViewTypeDisplayName
                 @if (Model.SelectedMeterId.HasValue)
@@ -11,6 +22,8 @@
                     <span class="text-muted">- @Model.SelectedMeterName</span>
                 }
             </h6>
+
+            @* Asynchronous Loading Spinner & Items Range Counter *@
             <div class="d-flex align-items-center">
                 <span class="me-3" id="loadingIndicator" style="display: none;">
                     <div class="spinner-border spinner-border-sm text-primary" role="status">
@@ -23,11 +36,14 @@
             </div>
         </div>
     </div>
+
+    @* Card Body: Data Table Rendering *@
     <div class="card-body p-0">
         @if (Model.Readings.Any())
         {
             <div class="table-responsive">
                 <table class="table table-hover mb-0" id="readingsTable">
+                    @* Dynamic Header Row based on View Mode (Raw vs Aggregated Views) *@
                     <thead class="table-light">
                         <tr>
                             <th>Meter</th>
@@ -35,10 +51,12 @@
                             <th class="text-end">Value</th>
                             @if (Model.ViewType == "raw")
                             {
+                                @* Raw Data Quality Flag *@
                                 <th class="text-center">Quality</th>
                             }
                             else
                             {
+                                @* Aggregated Metrics Columns *@
                                 <th class="text-end">Min</th>
                                 <th class="text-end">Max</th>
                                 <th class="text-end">Count</th>
@@ -50,23 +68,32 @@
                             <th class="text-center">Actions</th>
                         </tr>
                     </thead>
+
+                    @* Table Data Rows *@
                     <tbody>
                         @foreach (var reading in Model.Readings)
                         {
                             <tr data-reading-id="@reading.ReadingId" data-meter-id="@reading.MeterId">
+                                @* Meter Name *@
                                 <td>
                                     <div class="d-flex align-items-center">
                                         <span class="fw-medium">@reading.MeterName</span>
                                     </div>
                                 </td>
+
+                                @* Formatted Reading Timestamp *@
                                 <td>
                                     <span class="font-monospace">@reading.GetDateDisplay(Model.ViewType)</span>
                                 </td>
+
+                                @* Reading Value *@
                                 <td class="text-end">
                                     <span class="fw-bold">@reading.FormattedValue</span>
                                 </td>
+
                                 @if (Model.ViewType == "raw")
                                 {
+                                    @* Raw Quality Badge *@
                                     <td class="text-center">
                                         @if (reading.Quality.HasValue)
                                         {
@@ -80,6 +107,7 @@
                                 }
                                 else
                                 {
+                                    @* Aggregated Minimum Value *@
                                     <td class="text-end">
                                         @if (reading.MinValue.HasValue)
                                         {
@@ -90,6 +118,8 @@
                                             <span class="text-muted">-</span>
                                         }
                                     </td>
+
+                                    @* Aggregated Maximum Value *@
                                     <td class="text-end">
                                         @if (reading.MaxValue.HasValue)
                                         {
@@ -100,6 +130,8 @@
                                             <span class="text-muted">-</span>
                                         }
                                     </td>
+
+                                    @* Aggregated Readings Count *@
                                     <td class="text-end">
                                         @if (reading.ReadingCount.HasValue)
                                         {
@@ -110,8 +142,10 @@
                                             <span class="text-muted">-</span>
                                         }
                                     </td>
+
                                     @if (Model.ViewType != "yearly")
                                     {
+                                        @* Aggregated Total Sum Value *@
                                         <td class="text-end">
                                             @if (reading.SumValue.HasValue)
                                             {
@@ -124,12 +158,17 @@
                                         </td>
                                     }
                                 }
+
+                                @* Row Action Buttons *@
                                 <td class="text-center">
                                     <div class="btn-group btn-group-sm" role="group">
+                                        @* View Reading Details Modal Trigger *@
                                         <button type="button" class="btn btn-outline-primary btn-sm"
                                                 title="View Details" onclick="viewReadingDetails(@reading.ReadingId)">
                                             <i class="bi bi-eye"></i>
                                         </button>
+
+                                        @* Drill Down to Raw Data View *@
                                         @if (Model.ViewType != "raw")
                                         {
                                             <button type="button" class="btn btn-outline-info btn-sm"
@@ -147,6 +186,7 @@
         }
         else
         {
+            @* Empty State View when no readings match query criteria *@
             <div class="text-center p-5">
                 <div class="mb-3">
                     <i class="bi bi-graph-up-arrow display-1 text-muted"></i>
@@ -169,37 +209,39 @@
         }
     </div>
 
-    <!-- Pagination Footer -->
+    @* Pagination Footer Section *@
     @if (Model.TotalPages > 1)
     {
         <div class="card-footer">
             <div class="d-flex justify-content-between align-items-center">
+                @* Pagination Controls *@
                 <div>
                     <nav aria-label="Readings pagination">
                         <ul class="pagination mb-0">
-                            <!-- First Page -->
+                            @* First Page Link *@
                             <li class="page-item @(Model.CurrentPage == 1 ? "disabled" : "")">
                                 <button class="page-link" onclick="MeterReadings.goToPage(1)"
-                                @(Model.CurrentPage == 1 ? "disabled" : "") aria-label="First">
+                                    @(Model.CurrentPage == 1 ? "disabled" : "") aria-label="First">
                                     <span aria-hidden="true">&laquo;</span>
                                 </button>
                             </li>
 
-                            <!-- Previous Page -->
+                            @* Previous Page Link *@
                             <li class="page-item @(Model.HasPreviousPage ? "" : "disabled")">
                                 <button class="page-link" onclick="MeterReadings.goToPage(@(Model.CurrentPage - 1))"
-                                @(Model.HasPreviousPage ? "" : "disabled") aria-label="Previous">
+                                    @(Model.HasPreviousPage ? "" : "disabled") aria-label="Previous">
                                     <span aria-hidden="true">&lsaquo;</span>
                                 </button>
                             </li>
 
+                            @* Calculate Page Number Window *@
                             @{
                                 int startPage = Math.Max(1, Model.CurrentPage - 2);
                                 int endPage = Math.Min(Model.TotalPages, startPage + 4);
                                 startPage = Math.Max(1, endPage - 4);
                             }
 
-                            <!-- Page Numbers -->
+                            @* Numeric Page Buttons *@
                             @for (int i = startPage; i <= endPage; i++)
                             {
                                 <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
@@ -207,18 +249,18 @@
                                 </li>
                             }
 
-                            <!-- Next Page -->
+                            @* Next Page Link *@
                             <li class="page-item @(Model.HasNextPage ? "" : "disabled")">
                                 <button class="page-link" onclick="MeterReadings.goToPage(@(Model.CurrentPage + 1))"
-                                @(Model.HasNextPage ? "" : "disabled") aria-label="Next">
+                                    @(Model.HasNextPage ? "" : "disabled") aria-label="Next">
                                     <span aria-hidden="true">&rsaquo;</span>
                                 </button>
                             </li>
 
-                            <!-- Last Page -->
+                            @* Last Page Link *@
                             <li class="page-item @(Model.CurrentPage == Model.TotalPages ? "disabled" : "")">
                                 <button class="page-link" onclick="MeterReadings.goToPage(@Model.TotalPages)"
-                                @(Model.CurrentPage == Model.TotalPages ? "disabled" : "") aria-label="Last">
+                                    @(Model.CurrentPage == Model.TotalPages ? "disabled" : "") aria-label="Last">
                                     <span aria-hidden="true">&raquo;</span>
                                 </button>
                             </li>
@@ -226,7 +268,7 @@
                     </nav>
                 </div>
 
-                <!-- Page Info and Quick Jump -->
+                @* Page Summary & Quick-Jump Input *@
                 <div class="d-flex align-items-center">
                     <span class="me-3 text-muted">
                         Page @Model.CurrentPage of @Model.TotalPages
@@ -245,6 +287,7 @@
     }
     else if (Model.Readings.Any())
     {
+        @* Single Page Total Summary Footer *@
         <div class="card-footer">
             <div class="text-center text-muted">
                 <small>Showing all @Model.TotalItems readings</small>
@@ -253,7 +296,7 @@
     }
 </div>
 
-<!-- Reading Details Modal -->
+@* Reading Details Modal Container *@
 <div class="modal fade" id="readingDetailsModal" tabindex="-1" aria-labelledby="readingDetailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -261,14 +304,16 @@
                 <h5 class="modal-title" id="readingDetailsModalLabel">Reading Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+
+            @* Dynamic AJAX Modal Content *@
             <div class="modal-body" id="readingDetailsContent">
-                <!-- Content will be loaded dynamically -->
                 <div class="text-center">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
             </div>
+
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>

@@ -2,12 +2,15 @@
 @{
     ViewData["Title"] = "Database Connection Settings";
 }
+
 <div class="card">
     <div class="card-header">
         <h4>Database Connection Settings</h4>
     </div>
     <div class="card-body">
-        <!-- Database Type Tabs -->
+        <!-- ========================================== -->
+        <!-- Navigation Tabs (PostgreSQL / SQL Server / Web Services) -->
+        <!-- ========================================== -->
         <ul class="nav nav-tabs mb-4" id="databaseTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="postgresql-tab" data-bs-toggle="tab" data-bs-target="#postgresql" type="button" role="tab" aria-controls="postgresql" aria-selected="true">PostgreSQL</button>
@@ -21,7 +24,10 @@
         </ul>
 
         <div class="tab-content" id="databaseTabsContent">
-            <!-- PostgreSQL Tab -->
+            
+            <!-- ========================================== -->
+            <!-- 1. PostgreSQL Configuration Tab            -->
+            <!-- ========================================== -->
             <div class="tab-pane fade show active" id="postgresql" role="tabpanel" aria-labelledby="postgresql-tab">
                 <form asp-action="SaveGeneralSettings" asp-controller="Settings" method="post">
                     <div class="accordion" id="settingsAccordion">
@@ -34,6 +40,7 @@
                             </h2>
                             <div id="collapseDatabase" class="accordion-collapse collapse show" aria-labelledby="headingDatabase">
                                 <div class="accordion-body">
+                                    <!-- Host Field -->
                                     <div class="mb-3 row">
                                         <label for="PostgreSql_Host" class="col-sm-2 col-form-label">Host</label>
                                         <div class="col-sm-10">
@@ -41,6 +48,7 @@
                                             <div class="form-text">Database server hostname or IP address</div>
                                         </div>
                                     </div>
+                                    <!-- Port Field -->
                                     <div class="mb-3 row">
                                         <label for="PostgreSql_Port" class="col-sm-2 col-form-label">Port</label>
                                         <div class="col-sm-10">
@@ -48,6 +56,7 @@
                                             <div class="form-text">PostgreSQL default port is 5432</div>
                                         </div>
                                     </div>
+                                    <!-- Database Name Field -->
                                     <div class="mb-3 row">
                                         <label for="PostgreSql_Database" class="col-sm-2 col-form-label">Database</label>
                                         <div class="col-sm-10">
@@ -55,18 +64,21 @@
                                             <div class="form-text">Name of the PostgreSQL database (existing or to be created)</div>
                                         </div>
                                     </div>
+                                    <!-- Username Field -->
                                     <div class="mb-3 row">
                                         <label for="PostgreSql_Username" class="col-sm-2 col-form-label">Username</label>
                                         <div class="col-sm-10">
                                             <input type="text" class="form-control" id="PostgreSql_Username" asp-for="PostgreSql.Username" placeholder="postgres">
                                         </div>
                                     </div>
+                                    <!-- Password Field -->
                                     <div class="mb-3 row">
                                         <label for="PostgreSql_Password" class="col-sm-2 col-form-label">Password</label>
                                         <div class="col-sm-10">
                                             <input type="password" class="form-control" id="PostgreSql_Password" asp-for="PostgreSql.Password">
                                         </div>
                                     </div>
+                                    <!-- SSL Mode Select -->
                                     <div class="mb-3 row">
                                         <label for="PostgreSql_SSLMode" class="col-sm-2 col-form-label">SSL Mode</label>
                                         <div class="col-sm-10">
@@ -78,6 +90,7 @@
                                             <div class="form-text">Controls PostgreSQL SSL connection behavior</div>
                                         </div>
                                     </div>
+                                    <!-- Action Buttons -->
                                     <div class="mb-3 row">
                                         <div class="col-sm-10 offset-sm-2">
                                             <button type="button" class="btn btn-outline-primary me-2" id="testConnection">Test Connection</button>
@@ -91,7 +104,9 @@
                 </form>
             </div>
 
-            <!-- SQL Server Tab -->
+            <!-- ========================================== -->
+            <!-- 2. SQL Server Connections Tab             -->
+            <!-- ========================================== -->
             <div class="tab-pane fade" id="sqlserver" role="tabpanel" aria-labelledby="sqlserver-tab">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5>SQL Server Connections</h5>
@@ -100,8 +115,9 @@
                     </button>
                 </div>
 
+                <!-- Dynamic Pills for SQL Connections -->
                 <ul class="nav nav-pills mb-3" id="sqlServerConnectionTabs" role="tablist">
-                    @if (Model.SqlServerConnections.Any())
+                    @if (Model.SqlServerConnections != null && Model.SqlServerConnections.Any())
                     {
                         @for (int i = 0; i < Model.SqlServerConnections.Count; i++)
                         {
@@ -153,8 +169,9 @@
                     }
                 </ul>
 
+                <!-- Content Forms for SQL Connections -->
                 <div class="tab-content" id="sqlServerConnectionContent">
-                    @if (Model.SqlServerConnections.Any())
+                    @if (Model.SqlServerConnections != null && Model.SqlServerConnections.Any())
                     {
                         @for (int i = 0; i < Model.SqlServerConnections.Count; i++)
                         {
@@ -168,18 +185,12 @@
                                     <div class="row mb-3">
                                         <div class="col-md-8">
                                             <label class="form-label">Connection Name *</label>
-                                            <input type="text" class="form-control" name="ConnectionName"
-                                                   value="@connection.ConnectionName"
-                                                   placeholder="Enter a name for this connection" required />
+                                            <input type="text" class="form-control" name="ConnectionName" value="@connection.ConnectionName" placeholder="Enter a name for this connection" required />
                                         </div>
                                         <div class="col-md-4">
                                             <div class="form-check mt-4">
-                                                <input class="form-check-input" type="checkbox" name="IsDefault"
-                                                       value="true" @(connection.IsDefault ? "checked" : "")
-                                                       id="isDefault-@connection.ConnectionId" />
-                                                <label class="form-check-label" for="isDefault-@connection.ConnectionId">
-                                                    Set as Default Connection
-                                                </label>
+                                                <input class="form-check-input" type="checkbox" name="IsDefault" value="true" @(connection.IsDefault ? "checked" : "") id="isDefault-@connection.ConnectionId" />
+                                                <label class="form-check-label" for="isDefault-@connection.ConnectionId">Set as Default Connection</label>
                                             </div>
                                         </div>
                                     </div>
@@ -187,44 +198,33 @@
                                     <div class="row mb-3">
                                         <div class="col-md-8">
                                             <label class="form-label">Host/Server *</label>
-                                            <input type="text" class="form-control" name="Host"
-                                                   value="@connection.Host"
-                                                   placeholder="localhost or server IP" required />
+                                            <input type="text" class="form-control" name="Host" value="@connection.Host" placeholder="localhost or server IP" required />
                                         </div>
                                         <div class="col-md-4">
                                             <label class="form-label">Port</label>
-                                            <input type="text" class="form-control" name="Port"
-                                                   value="@connection.Port" placeholder="1433" />
+                                            <input type="text" class="form-control" name="Port" value="@connection.Port" placeholder="1433" />
                                         </div>
                                     </div>
 
                                     <div class="row mb-3">
                                         <div class="col-md-6">
                                             <label class="form-label">Database *</label>
-                                            <input type="text" class="form-control" name="Database"
-                                                   value="@connection.Database"
-                                                   placeholder="Database name" required />
+                                            <input type="text" class="form-control" name="Database" value="@connection.Database" placeholder="Database name" required />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Project Name</label>
-                                            <input type="text" class="form-control" name="ProjectName"
-                                                   value="@connection.ProjectName"
-                                                   placeholder="Optional project association" />
+                                            <input type="text" class="form-control" name="ProjectName" value="@connection.ProjectName" placeholder="Optional project association" />
                                         </div>
                                     </div>
 
                                     <div class="row mb-3">
                                         <div class="col-md-6">
                                             <label class="form-label">Username *</label>
-                                            <input type="text" class="form-control" name="Username"
-                                                   value="@connection.Username"
-                                                   placeholder="SQL Server username" required />
+                                            <input type="text" class="form-control" name="Username" value="@connection.Username" placeholder="SQL Server username" required />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Password *</label>
-                                            <input type="password" class="form-control" name="Password"
-                                                   value="@connection.Password"
-                                                   placeholder="SQL Server password" required />
+                                            <input type="password" class="form-control" name="Password" value="@connection.Password" placeholder="SQL Server password" required />
                                         </div>
                                     </div>
 
@@ -233,9 +233,7 @@
                                             <div id="connectionResult-@connection.ConnectionId" class="mt-2" style="display: none;"></div>
                                         </div>
                                         <div class="col-md-4 text-end">
-                                            <button type="button" class="btn btn-outline-primary"
-                                                    onclick="testConnection('@connection.ConnectionId')"
-                                                    title="Test this connection">
+                                            <button type="button" class="btn btn-outline-primary" onclick="testConnection('@connection.ConnectionId')" title="Test this connection">
                                                 <i class="bi bi-wifi"></i> Test Connection
                                             </button>
                                         </div>
@@ -259,7 +257,9 @@
                 </div>
             </div>
 
-            <!-- Web Services Tab -->
+            <!-- ========================================== -->
+            <!-- 3. Web Services Tab                        -->
+            <!-- ========================================== -->
             <div class="tab-pane fade" id="webservices" role="tabpanel" aria-labelledby="webservices-tab">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5>PCVue Web Services Connections</h5>
@@ -268,6 +268,7 @@
                     </button>
                 </div>
 
+                <!-- Dynamic Pills for Web Service Connections -->
                 <ul class="nav nav-pills mb-3" id="webServiceConnectionTabs" role="tablist">
                     @if (Model.WebServiceConnections != null && Model.WebServiceConnections.Any())
                     {
@@ -321,6 +322,7 @@
                     }
                 </ul>
 
+                <!-- Content Forms for Web Service Connections -->
                 <div class="tab-content" id="webServiceConnectionContent">
                     @if (Model.WebServiceConnections != null && Model.WebServiceConnections.Any())
                     {
@@ -336,26 +338,20 @@
                                     <div class="row mb-3">
                                         <div class="col-md-8">
                                             <label class="form-label">Connection Name *</label>
-                                            <input type="text" class="form-control" name="ConnectionName"
-                                                   value="@connection.ConnectionName"
-                                                   placeholder="Enter connection name" required />
+                                            <input type="text" class="form-control" name="ConnectionName" value="@connection.ConnectionName" placeholder="Enter connection name" required />
                                         </div>
                                         <div class="col-md-4">
                                             <div class="form-check mt-1">
-                                                <input class="form-check-input" type="checkbox" name="IsDefault"
-                                                       value="true" @(connection.IsDefault ? "checked" : "")
-                                                       id="isDefaultWebService-@connection.ConnectionId" />
-                                                <label class="form-check-label" for="isDefaultWebService-@connection.ConnectionId">
-                                                    Set as default connection
-                                                </label>
+                                                <input class="form-check-input" type="checkbox" name="IsDefault" value="true" @(connection.IsDefault ? "checked" : "") id="isDefaultWebService-@connection.ConnectionId" />
+                                                <label class="form-check-label" for="isDefaultWebService-@connection.ConnectionId">Set as default connection</label>
                                             </div>
                                             <div class="form-check form-switch mt-2">
-                                                <input class="form-check-input" type="checkbox" name="EnableAutomaticImport" role="switch"
-                                                       value="true" @(connection.EnableAutomaticImport ? "checked" : "")
-                                                       id="autoImport-@connection.ConnectionId" />
-                                                <label class="form-check-label" for="autoImport-@connection.ConnectionId">
-                                                    Enable Automatic Data Import
-                                                </label>
+                                                <input class="form-check-input" type="checkbox" name="EnableAutomaticImport" role="switch" value="true" @(connection.EnableAutomaticImport ? "checked" : "") id="autoImport-@connection.ConnectionId" />
+                                                <label class="form-check-label" for="autoImport-@connection.ConnectionId">Enable Automatic Data Import</label>
+                                            </div>
+                                            <div class="mt-2">
+                                                <label class="form-label" for="autoImportInterval-@connection.ConnectionId">Import interval (minutes)</label>
+                                                <input type="number" class="form-control form-control-sm" name="AutoImportIntervalMinutes" id="autoImportInterval-@connection.ConnectionId" value="@connection.AutoImportIntervalMinutes" min="1" max="1440" />
                                             </div>
                                         </div>
                                     </div>
@@ -363,23 +359,18 @@
                                     <div class="row mb-3">
                                         <div class="col-md-6">
                                             <label class="form-label">PCVue Project Name</label>
-                                            <input type="text" class="form-control" name="ProjectName"
-                                                   value="@connection.ProjectName"
-                                                   placeholder="Enter project name" />
+                                            <input type="text" class="form-control" name="ProjectName" value="@connection.ProjectName" placeholder="Enter project name" />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Timeout (seconds)</label>
-                                            <input type="number" class="form-control" name="TimeoutSeconds"
-                                                   value="@connection.TimeoutSeconds" min="5" max="300" />
+                                            <input type="number" class="form-control" name="TimeoutSeconds" value="@connection.TimeoutSeconds" min="5" max="300" />
                                         </div>
                                     </div>
 
                                     <div class="row mb-3">
                                         <div class="col-md-12">
                                             <label class="form-label">Base URL *</label>
-                                            <input type="url" class="form-control" name="BaseUrl"
-                                                   value="@connection.BaseUrl"
-                                                   placeholder="https://pcvue-server:8080/api" required />
+                                            <input type="url" class="form-control" name="BaseUrl" value="@connection.BaseUrl" placeholder="https://pcvue-server:8080/api" required />
                                             <small class="form-text text-muted">Full URL to the PCVue Web Services API endpoint</small>
                                         </div>
                                     </div>
@@ -387,30 +378,22 @@
                                     <div class="row mb-3">
                                         <div class="col-md-6">
                                             <label class="form-label">Client ID</label>
-                                            <input type="text" class="form-control" name="ClientId"
-                                                   value="@connection.ClientId"
-                                                   placeholder="Enter OAuth Client ID" />
+                                            <input type="text" class="form-control" name="ClientId" value="@connection.ClientId" placeholder="Enter OAuth Client ID" />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Client Secret</label>
-                                            <input type="password" class="form-control" name="ClientSecret"
-                                                   value="@connection.ClientSecret"
-                                                   placeholder="Enter OAuth Client Secret" />
+                                            <input type="password" class="form-control" name="ClientSecret" value="@connection.ClientSecret" placeholder="Enter OAuth Client Secret" />
                                         </div>
                                     </div>
 
                                     <div class="row mb-3">
                                         <div class="col-md-6">
                                             <label class="form-label">Username</label>
-                                            <input type="text" class="form-control" name="Username"
-                                                   value="@connection.Username"
-                                                   placeholder="Enter username" />
+                                            <input type="text" class="form-control" name="Username" value="@connection.Username" placeholder="Enter username" />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Password</label>
-                                            <input type="password" class="form-control" name="Password"
-                                                   value="@connection.Password"
-                                                   placeholder="Enter password" />
+                                            <input type="password" class="form-control" name="Password" value="@connection.Password" placeholder="Enter password" />
                                         </div>
                                     </div>
 
@@ -445,34 +428,34 @@
                     </button>
                 </div>
             </div>
-
         </div>
 
+        <!-- System Alerts / Notifications Container -->
         <div id="connectionResult" class="alert mt-3" style="display: none;"></div>
+
         @if (TempData["SuccessMessage"] != null)
         {
-            <div class="alert alert-success mt-3">
-                @TempData["SuccessMessage"]
-            </div>
+            <div class="alert alert-success mt-3">@TempData["SuccessMessage"]</div>
         }
-
         @if (TempData["WarningMessage"] != null)
         {
-            <div class="alert alert-warning mt-3">
-                @TempData["WarningMessage"]
-            </div>
+            <div class="alert alert-warning mt-3">@TempData["WarningMessage"]</div>
         }
-
         @if (TempData["ErrorMessage"] != null)
         {
-            <div class="alert alert-danger mt-3">
-                @TempData["ErrorMessage"]
-            </div>
+            <div class="alert alert-danger mt-3">@TempData["ErrorMessage"]</div>
         }
     </div>
 </div>
 
 <script>
+    // =========================================================================
+    // HELPER FUNCTIONS (UI Notifications, Badge Updates, GUID Generator)
+    // =========================================================================
+
+    /**
+     * Displays a dynamic alert message inside the currently active tab pane.
+     */
     function showMessage(message, type) {
         document.querySelectorAll('.alert-dismissible').forEach(alert => {
             if (alert.textContent.includes('deleted') || alert.textContent.includes('Error')) {
@@ -501,8 +484,12 @@
         }
     }
 
+    /**
+     * Updates the 'Default' badge display on tab buttons when defaults change.
+     */
     function updateDefaultBadge(newDefaultConnectionId, tabPrefix = 'sqlconn') {
-        document.querySelectorAll(`#${tabPrefix === 'sqlconn' ? 'sqlServerConnectionTabs' : 'webServiceConnectionTabs'} .badge`).forEach(badge => {
+        const containerId = tabPrefix === 'sqlconn' ? 'sqlServerConnectionTabs' : 'webServiceConnectionTabs';
+        document.querySelectorAll(`#${containerId} .badge`).forEach(badge => {
             if (badge.textContent === 'Default') {
                 badge.remove();
             }
@@ -517,23 +504,30 @@
         }
     }
 
+    /**
+     * Generates a unique Identifier (UUID v4) for new dynamically created connections.
+     */
     function generateGuid() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
     }
 
-    // ================================
-    // SQL SERVER CONNECTION FUNCTIONS
-    // ================================
+    // =========================================================================
+    // SQL SERVER CONNECTION MANAGEMENT
+    // =========================================================================
+
+    let connectionCounter = @(Model.SqlServerConnections != null && Model.SqlServerConnections.Count > 0 ? Model.SqlServerConnections.Count : 1);
 
     document.getElementById('addNewConnection').addEventListener('click', function() {
         addNewConnection();
     });
 
-    let connectionCounter = @(Model.SqlServerConnections.Count > 0 ? Model.SqlServerConnections.Count : 1);
-
+    /**
+     * Dynamically adds a new SQL Server tab and form pane.
+     */
     function addNewConnection() {
         connectionCounter++;
         const newConnectionId = generateGuid();
@@ -568,6 +562,9 @@
         newTabInstance.show();
     }
 
+    /**
+     * Returns HTML template string for a new SQL Server connection form.
+     */
     function createConnectionFormHtml(connectionId, index) {
         return `
             <div class="tab-pane fade" id="sqlconn-${connectionId}" role="tabpanel">
@@ -638,6 +635,9 @@
             </div>`;
     }
 
+    /**
+     * Removes an existing SQL Server connection from UI and sends delete request to backend.
+     */
     window.removeConnection = function(connectionId) {
         const connectionTabs = document.querySelectorAll('#sqlServerConnectionTabs .nav-item');
         if (connectionTabs.length <= 1) {
@@ -649,11 +649,6 @@
         const connectionName = tabButton ? tabButton.textContent.replace('×', '').trim() : 'this connection';
 
         if (confirm(`Are you sure you want to delete "${connectionName}"? This action cannot be undone.`)) {
-            const resultDiv = document.createElement('div');
-            resultDiv.className = 'alert alert-info';
-            resultDiv.textContent = 'Deleting connection...';
-            document.querySelector('.card-body').appendChild(resultDiv);
-
             fetch('/Settings/DeleteSqlServerConnection', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -661,7 +656,6 @@
             })
             .then(response => response.json())
             .then(data => {
-                resultDiv.remove();
                 if (data.success) {
                     const tabElement = document.getElementById(`sqlconn-${connectionId}-tab`);
                     const contentElement = document.getElementById(`sqlconn-${connectionId}`);
@@ -685,19 +679,18 @@
                 }
             })
             .catch(error => {
-                resultDiv.remove();
                 console.error('Error deleting connection:', error);
                 showMessage('Error deleting connection: ' + error.message, 'danger');
             });
         }
     };
 
+    /**
+     * Sends an AJAX request to test SQL Server connectivity.
+     */
     window.testConnection = function(connectionId) {
         const form = document.querySelector(`#sqlconn-${connectionId} form`);
-        if (!form) {
-            showConnectionResult(connectionId, 'danger', 'Error: Could not find form for this connection');
-            return;
-        }
+        if (!form) return;
 
         const formData = new FormData(form);
         const connectionData = {
@@ -720,10 +713,7 @@
 
         fetch('/Settings/TestSqlServerConnection', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(connectionData)
         })
         .then(response => response.json())
@@ -752,6 +742,9 @@
         }
     }
 
+    /**
+     * Saves all SQL Server connections via single POST request.
+     */
     document.getElementById('saveAllSqlConnections').addEventListener('click', function() {
         const forms = document.querySelectorAll('.sql-connection-form');
         const connections = [];
@@ -778,9 +771,9 @@
         .catch(error => { alert('Error saving connections: ' + error); });
     });
 
-    // ================================
-    // WEB SERVICES CONNECTION FUNCTIONS
-    // ================================
+    // =========================================================================
+    // WEB SERVICES CONNECTION MANAGEMENT
+    // =========================================================================
 
     let webServiceConnectionCounter = @(Model.WebServiceConnections != null && Model.WebServiceConnections.Count > 0 ? Model.WebServiceConnections.Count : 1);
 
@@ -788,6 +781,9 @@
         addNewWebServiceConnection();
     });
 
+    /**
+     * Adds a new Web Service connection dynamically.
+     */
     function addNewWebServiceConnection() {
         webServiceConnectionCounter++;
         const newConnectionId = generateGuid();
@@ -822,6 +818,9 @@
         newTabInstance.show();
     }
 
+    /**
+     * HTML template generator for Web Service forms.
+     */
     function createWebServiceConnectionFormHtml(connectionId) {
         return `
             <div class="tab-pane fade" id="webservice-${connectionId}" role="tabpanel">
@@ -841,6 +840,11 @@
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" name="EnableAutomaticImport" role="switch" value="true" id="autoImport-${connectionId}" />
                                 <label class="form-check-label" for="autoImport-${connectionId}">Enable Automatic Data Import</label>
+                            </div>
+                            <div class="mt-2">
+                                <label class="form-label" for="autoImportInterval-${connectionId}">Import interval (minutes)</label>
+                                <input type="number" class="form-control form-control-sm" name="AutoImportIntervalMinutes"
+                                       id="autoImportInterval-${connectionId}" value="1" min="1" max="1440" />
                             </div>
                         </div>
                     </div>
@@ -900,43 +904,9 @@
             </div>`;
     }
 
-    window.testWebServiceConnection = function(connectionId) {
-        const form = document.querySelector(`#webservice-${connectionId} form`);
-        if (!form) {
-            showWebServiceConnectionResult(connectionId, 'danger', 'Error: Could not find form');
-            return;
-        }
-
-        const formData = new FormData(form);
-        const connectionData = {
-            connectionId: connectionId,
-            baseUrl: formData.get('BaseUrl') || '',
-            clientId: formData.get('ClientId') || '',
-            clientSecret: formData.get('ClientSecret') || '',
-            username: formData.get('Username') || '',
-            password: formData.get('Password') || ''
-        };
-
-        showWebServiceConnectionResult(connectionId, 'info', 'Testing connection... (Requesting Token)');
-
-        fetch('/Settings/GetWebServiceToken', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(connectionData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showWebServiceConnectionResult(connectionId, 'success', 'Connection successful! ✓');
-            } else {
-                showWebServiceConnectionResult(connectionId, 'danger', 'Connection failed: ' + (data.errorMessage || data.error));
-            }
-        })
-        .catch(error => {
-            showWebServiceConnectionResult(connectionId, 'danger', 'Network error: ' + error.message);
-        });
-    };
-
+    /**
+     * Obtains an initial Web Service OAuth Token.
+     */
     function getWebServiceToken(connectionId) {
         const form = document.querySelector(`#webservice-${connectionId} form`);
         if (!form) return;
@@ -970,8 +940,7 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showWebServiceConnectionResult(connectionId, 'success',
-                    `Token acquired successfully! Check server terminal for tokens. Expires in: ${data.expiresIn} seconds`);
+                showWebServiceConnectionResult(connectionId, 'success', `Token acquired successfully! Expires in: ${data.expiresIn} seconds`);
             } else {
                 showWebServiceConnectionResult(connectionId, 'danger', 'Failed to get token: ' + data.errorMessage);
             }
@@ -981,6 +950,9 @@
         });
     }
 
+    /**
+     * Refreshes an existing OAuth token.
+     */
     function refreshWebServiceToken(connectionId) {
         const form = document.querySelector(`#webservice-${connectionId} form`);
         if (!form) return;
@@ -1008,8 +980,7 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showWebServiceConnectionResult(connectionId, 'success',
-                    `Token refreshed successfully! Check server terminal for new tokens. Expires in: ${data.expiresIn} seconds`);
+                showWebServiceConnectionResult(connectionId, 'success', `Token refreshed successfully! Expires in: ${data.expiresIn} seconds`);
             } else {
                 showWebServiceConnectionResult(connectionId, 'danger', 'Failed to refresh token: ' + data.errorMessage);
             }
@@ -1032,6 +1003,9 @@
         }
     }
 
+    /**
+     * Removes a Web Service connection tab and form.
+     */
     function removeWebServiceConnection(connectionId) {
         const connectionTabs = document.querySelectorAll('#webServiceConnectionTabs .nav-item');
         if (connectionTabs.length <= 1) {
@@ -1043,8 +1017,6 @@
         const connectionName = tabButton ? tabButton.textContent.replace('×', '').trim() : 'this connection';
 
         if (confirm(`Are you sure you want to delete "${connectionName}"? This action cannot be undone.`)) {
-            showMessage('Deleting Web Service connection...', 'info');
-
             fetch('/Settings/DeleteWebServiceConnection', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1081,6 +1053,9 @@
         }
     }
 
+    /**
+     * Saves all Web Service configurations.
+     */
     document.getElementById('saveAllWebServiceConnections').addEventListener('click', function() {
         const forms = document.querySelectorAll('.webservice-connection-form');
         const connections = [];
@@ -1098,7 +1073,8 @@
                 TimeoutSeconds: formData.get('TimeoutSeconds') || '30',
                 ProjectName: formData.get('ProjectName') || '',
                 IsDefault: formData.get('IsDefault') ? 'true' : 'false',
-                EnableAutomaticImport: formData.get('EnableAutomaticImport') ? 'true' : 'false'
+                EnableAutomaticImport: formData.get('EnableAutomaticImport') ? 'true' : 'false',
+                AutoImportIntervalMinutes: formData.get('AutoImportIntervalMinutes') || '1'
             };
             connections.push(connectionData);
         });
@@ -1117,16 +1093,15 @@
                 alert('Error saving Web Service connections: ' + data.error);
             }
         })
-        .catch(error => {
-            alert('Error saving Web Service connections: ' + error);
-        });
+        .catch(error => { alert('Error saving Web Service connections: ' + error); });
     });
 
-    // ================================
-    // POSTGRESQL CONNECTION FUNCTIONS
-    // ================================
+    // =========================================================================
+    // POSTGRESQL EVENT LISTENERS
+    // =========================================================================
 
     document.addEventListener('DOMContentLoaded', function() {
+        // Test PostgreSQL Connection
         document.getElementById('testConnection').addEventListener('click', function() {
             const connectionData = {
                 host: document.getElementById('PostgreSql_Host').value,
@@ -1163,6 +1138,7 @@
             });
         });
 
+        // Connect & Create Database
         document.getElementById('connectDatabase').addEventListener('click', function() {
             const connectionData = {
                 host: document.getElementById('PostgreSql_Host').value,

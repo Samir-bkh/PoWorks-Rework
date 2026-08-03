@@ -104,6 +104,10 @@ namespace PoWorks_Rework.Services
             return result;
         }
 
+        /// <summary>
+        /// Retrieves the overall available date range and data statistics from meter readings.
+        /// </summary>
+        /// <returns>A DateRangeInfo with the earliest/latest reading dates and data counts.</returns>
         public async Task<DateRangeInfo> GetAvailableDateRangesAsync()
         {
             var result = new DateRangeInfo();
@@ -153,6 +157,10 @@ namespace PoWorks_Rework.Services
             return result;
         }
 
+        /// <summary>
+        /// Generates suggested date ranges for the dashboard based on available reading data.
+        /// </summary>
+        /// <returns>A DateRangeSuggestions with a default range and alternative options.</returns>
         public async Task<DateRangeSuggestions> GetDateRangeSuggestionsAsync()
         {
             var suggestions = new DateRangeSuggestions();
@@ -208,6 +216,11 @@ namespace PoWorks_Rework.Services
             return suggestions;
         }
 
+        /// <summary>
+        /// Retrieves active meters that have readings within the requested date range.
+        /// </summary>
+        /// <param name="filters">The filters to apply (date range, tenant, pagination).</param>
+        /// <returns>A list of meters with their reading statistics.</returns>
         public async Task<List<MeterQueryResult>> GetActiveMetersWithDataAsync(MeterReadingFilters filters)
         {
             var meters = new List<MeterQueryResult>();
@@ -298,6 +311,11 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
+        /// <summary>
+        /// Retrieves active meters for the current company with optional filters.
+        /// </summary>
+        /// <param name="filters">The filters to apply (active only, tenant, pagination).</param>
+        /// <returns>A list of meters.</returns>
         public async Task<List<MeterQueryResult>> GetActiveMetersAsync(MeterReadingFilters filters)
         {
             var meters = new List<MeterQueryResult>();
@@ -371,6 +389,12 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
+        /// <summary>
+        /// Retrieves consumption data from meter readings with aggregation and filtering.
+        /// Supports comparison mode and various date grouping levels.
+        /// </summary>
+        /// <param name="filters">The filters to apply (date range, meters, grouping).</param>
+        /// <returns>A list of consumption query results.</returns>
         public async Task<List<ConsumptionQueryResult>> GetMeterReadingsAsync(MeterReadingFilters filters)
         {
             var data = new List<ConsumptionQueryResult>();
@@ -526,6 +550,11 @@ namespace PoWorks_Rework.Services
             return data;
         }
 
+        /// <summary>
+        /// Processes consumption data into chart-ready datasets grouped by meter.
+        /// </summary>
+        /// <param name="data">The consumption data to process.</param>
+        /// <returns>A ChartDataResult with labels and datasets.</returns>
         public ChartDataResult ProcessChartData(List<ConsumptionQueryResult> data)
         {
             var result = new ChartDataResult();
@@ -554,6 +583,11 @@ namespace PoWorks_Rework.Services
             return result;
         }
 
+        /// <summary>
+        /// Calculates summary statistics from the consumption data.
+        /// </summary>
+        /// <param name="data">The consumption data to summarize.</param>
+        /// <returns>A DashboardSummary with totals and averages.</returns>
         public DashboardSummary CalculateSummary(List<ConsumptionQueryResult> data)
         {
             var summary = new DashboardSummary();
@@ -568,6 +602,11 @@ namespace PoWorks_Rework.Services
             return summary;
         }
 
+        /// <summary>
+        /// Generates sample chart data for demonstration purposes when no real data is available.
+        /// </summary>
+        /// <param name="message">The message to display with the demo data.</param>
+        /// <returns>An object containing demo chart data and summary.</returns>
         public object GenerateDemoChartData(string message = "This is sample data to demonstrate the chart functionality.")
         {
             var labels = new List<string>();
@@ -607,6 +646,10 @@ namespace PoWorks_Rework.Services
             return new { chartData = chartData, summary = summary.ToDisplayObject(), message = message, isDemoData = true };
         }
 
+        /// <summary>
+        /// Retrieves the list of active tenants for the current company.
+        /// </summary>
+        /// <returns>A list of tenant objects with ID and name.</returns>
         public async Task<List<object>> GetTenantsAsync()
         {
             var tenants = new List<object>();
@@ -646,6 +689,12 @@ namespace PoWorks_Rework.Services
             return tenants;
         }
 
+        /// <summary>
+        /// Retrieves the active meters belonging to a specific tenant.
+        /// </summary>
+        /// <param name="tenantId">The tenant ID to filter meters by.</param>
+        /// <param name="limit">The maximum number of meters to return.</param>
+        /// <returns>A list of meter objects.</returns>
         public async Task<List<object>> GetMetersByTenantAsync(int tenantId, int limit = 100)
         {
             var meters = new List<object>();
@@ -696,6 +745,13 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
+        /// <summary>
+        /// Builds a display label for a meter including unit and tenant information.
+        /// </summary>
+        /// <param name="meterName">The meter name.</param>
+        /// <param name="unit">The meter unit.</param>
+        /// <param name="tenantName">The tenant name.</param>
+        /// <returns>The formatted meter label.</returns>
         private string BuildMeterLabel(string meterName, string unit, string tenantName)
         {
             var label = meterName;

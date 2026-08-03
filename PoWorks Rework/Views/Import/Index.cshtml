@@ -1,14 +1,27 @@
-﻿@model PoWorks_Rework.Models.ImportExportViewModel
+﻿@*
+    Import/Export Management View (PoWorks)
+
+Provides a comprehensive tabbed interface for importing meter structures and historical
+    trends, as well as exporting configured system data.
+    Supports three distinct import pipelines: PCVue HDS (SQL Server databases), VAREXP.DAT
+    legacy flat files, and PCVue Web Services (REST/SOAP API with trend extraction).
+    Features interactive meter selection grids, date range filtering, print controls,
+    and multi-format export tools (CSV/JSON).
+*@
+
+@model PoWorks_Rework.Models.ImportExportViewModel
 @{
     ViewData["Title"] = "Import/Export";
 }
 
 <div class="card">
+    @* Page Header *@
     <div class="card-header d-flex justify-content-between align-items-center">
         <h4>Import/Export</h4>
     </div>
+
     <div class="card-body">
-        <!-- Tabs -->
+        @* Primary Navigation Tabs (Import vs Export) *@
         <ul class="nav nav-tabs mb-4" id="importExportTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="import-tab" data-bs-toggle="tab" data-bs-target="#import-tab-pane" type="button" role="tab" aria-controls="import-tab-pane" aria-selected="true">Import</button>
@@ -19,15 +32,20 @@
         </ul>
 
         <div class="tab-content" id="importExportTabContent">
-            <!-- Import Tab -->
+
+            @* TAB 1: DATA IMPORT WORKFLOWS *@
             <div class="tab-pane fade show active" id="import-tab-pane" role="tabpanel" aria-labelledby="import-tab" tabindex="0">
+
+                @* Import Source Cards Container *@
                 <div class="row mb-4">
+
+                    @* SOURCE 1: PCVue HDS (SQL Server Import) *@
                     <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title mb-3">Import from PCVue HDS</h5>
 
-                                <!-- SQL Server Connection Selection -->
+                                @* SQL Server Database Connection Selector *@
                                 <div class="mb-3">
                                     <label for="hdsConnection" class="form-label">SQL Server Connection</label>
                                     <select class="form-select" id="hdsConnection">
@@ -40,7 +58,7 @@
                                     </div>
                                 </div>
 
-                                <!-- Table Selection -->
+                                @* HDS Table Selection *@
                                 <div class="mb-3">
                                     <label for="hdsTable" class="form-label">HDS Table</label>
                                     <select class="form-select" id="hdsTable" disabled>
@@ -49,7 +67,7 @@
                                     <div class="form-text">Available when connected</div>
                                 </div>
 
-                                <!-- NOUVEAU : Sélection de dates HDS -->
+                                @* HDS Date Range Filtering *@
                                 <div class="mb-3">
                                     <label class="form-label">
                                         <i class="bi bi-calendar-range"></i> Plage de dates HDS
@@ -67,9 +85,7 @@
                                     <div class="form-text">Optionnel : Laissez vide pour tout importer</div>
                                 </div>
 
-                                <!-- Load Meters Button -->
-
-                                <!-- Load Meters Button -->
+                                @* Load HDS Meters Action *@
                                 <button type="button" class="btn btn-primary" id="loadMetersBtn" disabled>
                                     <i class="bi bi-search"></i> Load Meters
                                 </button>
@@ -77,12 +93,13 @@
                         </div>
                     </div>
 
+                    @* SOURCE 2: VAREXP.DAT (Flat File Parsing) *@
                     <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title mb-3">VAREXP.DAT</h5>
 
-                                <!-- VAREXP Section -->
+                                @* File Upload Input *@
                                 <div class="mb-3">
                                     <label for="varexpFileInput" class="form-label">VAREXP.DAT File</label>
                                     <input class="form-control" type="file" id="varexpFileInput" accept=".dat">
@@ -94,7 +111,7 @@
                         </div>
                     </div>
 
-                    <!-- Web Services Card -->
+                    @* SOURCE 3: PCVue Web Services (REST / SOAP API) *@
                     <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-body">
@@ -102,7 +119,7 @@
                                     <i class="bi bi-cloud-download"></i> PCVue Variables Browse
                                 </h5>
 
-                                <!-- Web Service Connection Selection -->
+                                @* Web Service Endpoint Selector *@
                                 <div class="mb-3">
                                     <label for="webServiceConnection" class="form-label">Web Service Connection</label>
                                     <select class="form-select" id="webServiceConnection">
@@ -115,21 +132,21 @@
                                     </div>
                                 </div>
 
-                                <!-- Max Variables Input -->
+                                @* Query Limits & Filter Options *@
                                 <div class="mb-3">
                                     <label for="maxVariables" class="form-label">Max Variables</label>
                                     <input type="number" class="form-control" id="maxVariables" value="100000" min="1" max="1000000">
                                     <div class="form-text">Maximum variables to retrieve (default: 100,000)</div>
                                 </div>
 
-                                <!-- Branch Filter Input -->
+                                @* Branch Path Filter *@
                                 <div class="mb-3">
                                     <label for="branchFilter" class="form-label">Branch Filter (Optional)</label>
                                     <input type="text" class="form-control" id="branchFilter" placeholder="e.g., Production.Line1">
                                     <div class="form-text">Filter by specific branch/area</div>
                                 </div>
 
-                                <!-- Include System Variables Checkbox -->
+                                @* Include System Variables Flag *@
                                 <div class="form-check mb-3">
                                     <input class="form-check-input" type="checkbox" id="includeSystemVariables" value="true">
                                     <label class="form-check-label" for="includeSystemVariables">
@@ -138,6 +155,7 @@
                                     </label>
                                 </div>
 
+                                @* Trends Extraction Date Range *@
                                 <div class="mb-3">
                                     <label class="form-label">
                                         <i class="bi bi-calendar-range"></i> Trends Data Range
@@ -155,7 +173,7 @@
                                     <div class="form-text">Select date range for trends data extraction</div>
                                 </div>
 
-                                <!-- Quick Date Range Buttons for WebServices -->
+                                @* Web Services Preset Timeframe Controls *@
                                 <div class="mb-3">
                                     <label class="form-label small">Quick Range:</label>
                                     <div class="btn-group btn-group-sm w-100" role="group">
@@ -165,16 +183,12 @@
                                     </div>
                                 </div>
 
-                                <!-- Browse Variables Button -->
+                                @* Execute Variable Browsing *@
                                 <div class="d-grid gap-2">
                                     <button type="button" class="btn btn-primary" id="browseVariablesBtn" disabled>
                                         <i class="bi bi-search"></i> Browse Variables
                                     </button>
                                 </div>
-
-                              
-
-                            
 
                                 <div class="alert alert-info mt-3 mb-0">
                                     <i class="bi bi-info-circle"></i>
@@ -185,15 +199,16 @@
                     </div>
                 </div>
 
-                <!-- Status Display for Web Services -->
+                @* Asynchronous Status Container *@
                 <div id="webServiceStatus" class="mt-3" style="display: none;"></div>
 
-                <!-- Placeholder for the meter-selection table -->
+                @* VAREXP Parse Records Container *@
                 <div id="varexpRecordsContainer" class="mt-4"></div>
 
-                <!-- Meter Selection Table (initially hidden) -->
+                @* DYNAMIC METER SELECTION GRID (Revealed dynamically after loading source data) *@
                 <div id="meterSelectionSection" class="mt-4 d-none">
                     <div class="card">
+                        @* Grid Controls Header *@
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">
                                 <i class="bi bi-speedometer2"></i> Select Meters to Import
@@ -209,7 +224,7 @@
                         </div>
 
                         <div class="card-body">
-                            <!-- Filter Input -->
+                            @* Table Live Search Filter *@
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <div class="input-group">
@@ -226,7 +241,7 @@
                                 </div>
                             </div>
 
-                            <!-- Meters Table Container -->
+                            @* Scrollable Meter Selection Table *@
                             <div class="table-responsive" style="max-height: 400px;">
                                 <table class="table table-hover table-sm">
                                     <thead class="table-light sticky-top">
@@ -240,21 +255,23 @@
                                         </tr>
                                     </thead>
                                     <tbody id="metersTableBody">
-                                        <!-- Will be populated by JavaScript -->
+                                        @* Populated via JavaScript dynamically *@
                                     </tbody>
                                 </table>
                             </div>
                         </div>
+
+                        @* Selection Actions & Process Launch Footer *@
                         <div class="card-footer">
                             <div class="d-flex justify-content-between align-items-center">
-                                <!-- Print Button -->
+                                @* Print Selected Items *@
                                 <div>
                                     <button type="button" class="btn btn-info" id="printSelectedBtn">
                                         <i class="bi bi-printer"></i> Print Selected
                                     </button>
                                 </div>
 
-                                <!-- Import Options -->
+                                @* Historical Readings Import Flag *@
                                 <div class="form-check mb-2">
                                     <input class="form-check-input" type="checkbox" id="importReadings">
                                     <label class="form-check-label" for="importReadings">
@@ -262,7 +279,7 @@
                                     </label>
                                 </div>
 
-                                <!-- Import Button - THIS WILL NOW ALSO PROCESS TRENDS -->
+                                @* Import Execution Button *@
                                 <button type="button" class="btn btn-primary" id="importSelectedBtn">
                                     <i class="bi bi-cloud-upload"></i> Import Selected Variables
                                 </button>
@@ -270,7 +287,7 @@
                         </div>
                     </div>
 
-                    <!-- Import Result Modal - UPDATED to show trends results -->
+                    @* Import & Trends Execution Results Modal *@
                     <div class="modal fade" id="importResultModal" tabindex="-1" aria-labelledby="importResultModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content">
@@ -290,29 +307,30 @@
                 </div>
             </div>
 
-            <!-- Export Tab -->
+            @* TAB 2: DATA EXPORT WORKFLOWS *@
             <div class="tab-pane fade" id="export-tab-pane" role="tabpanel" aria-labelledby="export-tab" tabindex="0">
                 <div class="card mb-4">
                     <div class="card-body">
                         <h5 class="card-title mb-3">Export Meters</h5>
 
+                        @* Output Format Options *@
                         <div class="mb-3">
-    <label class="form-label">Export Format</label>
-    <div class="form-check mb-2">
-        <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
-        <label class="form-check-label" for="exportFormatCsv">
-            CSV
-        </label>
-    </div>
-    <div class="form-check">
-        <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
-        <label class="form-check-label" for="exportFormatJson">
-            JSON
-        </label>
-    </div>
-</div>
+                            <label class="form-label">Export Format</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatCsv" value="csv" checked>
+                                <label class="form-check-label" for="exportFormatCsv">
+                                    CSV
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormatJson" value="json">
+                                <label class="form-check-label" for="exportFormatJson">
+                                    JSON
+                                </label>
+                            </div>
+                        </div>
 
-                        <!-- Export Filters -->
+                        @* Export Filter Options *@
                         <div class="mb-3">
                             <label class="form-label">Export Filters</label>
                             <div class="form-check mb-2">
@@ -329,21 +347,22 @@
                             </div>
                         </div>
 
-                        <!-- Export Button -->
+                        @* Export Execution Action *@
                         <button type="button" class="btn btn-success" id="exportBtn">
                             <i class="bi bi-download"></i> Export Meters
                         </button>
                     </div>
                 </div>
             </div>
+
         </div>
     </div>
 </div>
 
+@* Client-Side Import/Export Handlers *@
 @section Scripts {
- <script src="~/js/import/hds_import.js"></script>
-	<script src="~/js/import/varexp_import.js"></script>
-	<script src="~/js/import/webservices_import.js"></script>
+    <script src="~/js/import/hds_import.js"></script>
+    <script src="~/js/import/varexp_import.js"></script>
+    <script src="~/js/import/webservices_import.js"></script>
     <script src="~/js/import/common.js"></script>
-   
 }

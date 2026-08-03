@@ -2,7 +2,6 @@
 @inject PoWorks_Rework.Services.DatabaseService DbService
 @inject PoWorks_Rework.Services.ICompanyContext CompanyContext
 
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,93 +9,118 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - PoWorks</title>
 
-	<script>
-        (function () {
-            const basePath = '@Context.Request.PathBase.Value';
-            const originalFetch = window.fetch;
+    <!-- ========================================== -->
+    <!-- Script pour intercepter et préfixer 'fetch' -->
+    <!-- avec le PathBase de l'application (Sub-Path) -->
+    <!-- ========================================== -->
+    <script>
+            (function() {
+                const basePath = '@Context.Request.PathBase.Value';
+                const originalFetch = window.fetch;
 
-            window.fetch = function (url, options) {
-                if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(basePath + '/')) {
-                    url = basePath + url;
-                }
-                return originalFetch.call(this, url, options);
-            };
-        })();
+                window.fetch = function(url, options) {
+                    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(basePath + '/')) {
+                        url = basePath + url;
+                    }
+                    return originalFetch.call(this, url, options);
+                };
+            })();
     </script>
 
+    <!-- Stylesheets (Bootstrap, Bootstrap Icons, Custom Site/Sidebar) -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/sidebar.css" asp-append-version="true" />
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
 </head>
 <body>
     <div class="container-fluid p-0">
         <div class="row g-0">
-            <!-- Sidebar -->
+
+            <!-- ========================================== -->
+            <!-- Navigation Latérale (Sidebar Component)    -->
+            <!-- ========================================== -->
             <div class="col-auto sidebar">
                 <partial name="_Sidebar" />
             </div>
 
-            <!-- Main Content -->
+            <!-- ========================================== -->
+            <!-- Zone de Contenu Principal (Main Content)   -->
+            <!-- ========================================== -->
             <div class="col main-content">
-				<div class="admin-header d-flex justify-content-between align-items-center p-3 border-bottom">
-					<span class="fw-bold">PoWorks Analytics</span>
-					<div class="d-flex align-items-center">
 
-				
-						@if (User.Identity?.Name?.ToLower() == "admin")
-						{
-						<form asp-controller="Company" asp-action="SwitchCompany" method="post" class="me-4 d-flex align-items-center m-0">
-							<input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
-							<i class="bi bi-buildings-fill me-2 text-primary fs-5"></i>
-							<select name="companyId" class="form-select form-select-sm shadow-sm" onchange="this.form.submit()" style="width: auto; min-width: 180px; cursor: pointer;">
-								@{
-								// On charge la liste des compagnies depuis la base de données
-								using var conn = DbService.CreateNewConnection();
-								conn.Open();
-								using var cmd = new NpgsqlCommand("SELECT \"CompanyId\", \"Name\" FROM \"Companies\" ORDER BY \"Name\"", conn);
-								using var reader = cmd.ExecuteReader();
-								int currentId = CompanyContext.CurrentCompanyId;
+                <!-- En-tête Administrateur (Top Navigation / Header Bar) -->
+                <div class="admin-header d-flex justify-content-between align-items-center p-3 border-bottom">
+                    <span class="fw-bold">PoWorks Analytics</span>
 
-								while (reader.Read())
-								{
-								int cId = reader.GetInt32(0);
-								string cName = reader.GetString(1);
-								if (cId == currentId)
-								{
-								<option value="@cId" selected="">🏢 @cName</option>
-								}
-								else
-								{
-								<option value="@cId">@cName</option>
-								}
-								}
-								}
-							</select>
-						</form>
-						}
+                    <div class="d-flex align-items-center">
 
-						
-						<span class="me-3 fw-bold">
-							<i class="bi bi-person-circle"></i> @User.Identity?.Name
-						</span>
-						<form asp-controller="Auth" asp-action="Logout" method="post" class="m-0">
-							<button type="submit" class="btn btn-sm btn-outline-danger shadow-sm">
-								<i class="bi bi-box-arrow-right"></i> Logout
-							</button>
-						</form>
-					</div>
-				</div>
+                        <!-- Sélecteur de compagnie (Visible uniquement pour le rôle 'admin') -->
+                        @if (User.Identity?.Name?.ToLower() == "admin")
+                        {
+                            <form asp-controller="Company" asp-action="SwitchCompany" method="post" class="me-4 d-flex align-items-center m-0">
+                                <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+                                <i class="bi bi-buildings-fill me-2 text-primary fs-5"></i>
+
+                                <select name="companyId" class="form-select form-select-sm shadow-sm" onchange="this.form.submit()" style="width: auto; min-width: 180px; cursor: pointer;">
+                                    @{
+                                        // Chargement dynamique de la liste des entreprises depuis PostgreSQL
+                                        using var conn = DbService.CreateNewConnection();
+                                        conn.Open();
+                                        using var cmd = new NpgsqlCommand("SELECT \"CompanyId\", \"Name\" FROM \"Companies\" ORDER BY \"Name\"", conn);
+                                        using var reader = cmd.ExecuteReader();
+                                        int currentId = CompanyContext.CurrentCompanyId;
+
+                                        while (reader.Read())
+                                        {
+                                            int cId = reader.GetInt32(0);
+                                            string cName = reader.GetString(1);
+
+                                            if (cId == currentId)
+                                            {
+                                                <option value="@cId" selected>🏢 @cName</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@cId">@cName</option>
+                                            }
+                                        }
+                                    }
+                                </select>
+                            </form>
+                        }
+
+                        <!-- Informations sur l'utilisateur connecté -->
+                        <span class="me-3 fw-bold">
+                            <i class="bi bi-person-circle"></i> @User.Identity?.Name
+                        </span>
+
+                        <!-- Bouton de Déconnexion -->
+                        <form asp-controller="Auth" asp-action="Logout" method="post" class="m-0">
+                            <button type="submit" class="btn btn-sm btn-outline-danger shadow-sm">
+                                <i class="bi bi-box-arrow-right"></i> Logout
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Injection dynamique de la vue principale -->
                 <div class="content-body">
                     @RenderBody()
                 </div>
+
             </div>
         </div>
     </div>
 
-	<script src="~/lib/jquery/dist/jquery.min.js"></script>
-	<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-	<script src="~/js/site.js" asp-append-version="true"></script>
-	@await RenderSectionAsync("Scripts", required: false)
+    <!-- ========================================== -->
+    <!-- Scripts JavaScript (jQuery, Bootstrap, Site) -->
+    <!-- ========================================== -->
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    <!-- Injection dynamique des scripts spécifiques aux vues -->
+    @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

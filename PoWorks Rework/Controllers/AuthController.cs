@@ -37,11 +37,21 @@ namespace PoWorks_Rework.Controllers
             return View();
         }
 
+        /// <summary>
+        /// Handles the login form submission. Authenticates the user credentials,
+        /// ensures a CompanyId claim exists for multi-tenancy, and redirects
+        /// the user to the return URL or the home page upon success.
+        /// </summary>
+        /// <param name="username">The username entered by the user.</param>
+        /// <param name="password">The password entered by the user.</param>
+        /// <param name="rememberMe">Whether the authentication cookie should persist across browser sessions.</param>
+        /// <param name="returnUrl">Optional local URL to redirect to after a successful login.</param>
+        /// <returns>The login view on failure, or a redirect result on success.</returns>
         [AllowAnonymous]
         [HttpPost]
         public async Task<IActionResult> Login(string username, string password, bool rememberMe, string returnUrl = null)
         {
-            Console.WriteLine($"\n--- TENTATIVE DE CONNEXION ---");
+            Console.WriteLine($"\n--- LOGIN ATTEMPT ---");
 
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
@@ -62,7 +72,7 @@ namespace PoWorks_Rework.Controllers
                
                     if (!claims.Any(c => c.Type == "CompanyId"))
                     {
-                        Console.WriteLine("Aucun CompanyId trouvé, assignation à la Company 1 par défaut.");
+                        Console.WriteLine("No CompanyId found, assigning to Company 1 by default.");
                         claims.Add(new Claim("CompanyId", "1"));
 
                 
@@ -73,7 +83,7 @@ namespace PoWorks_Rework.Controllers
                     await _signInManager.SignInWithClaimsAsync(user, rememberMe, claims);
                 }
 
-                Console.WriteLine("CONNEXION RÉUSSIE !");
+                Console.WriteLine("LOGIN SUCCESSFUL!");
 
                 if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                 {
@@ -86,12 +96,20 @@ namespace PoWorks_Rework.Controllers
             return View();
         }
 
+        /// <summary>
+        /// Signs out the current user and redirects to the home page.
+        /// </summary>
+        /// <returns>A redirect result to the home page.</returns>
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();
             return LocalRedirect("~/");
         }
 
+        /// <summary>
+        /// Displays the access denied page when a user lacks the required permissions.
+        /// </summary>
+        /// <returns>The access denied view.</returns>
         [HttpGet]
         public IActionResult AccessDenied()
         {

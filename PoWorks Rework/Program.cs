@@ -124,7 +124,7 @@ using (var scope = app.Services.CreateScope())
                 command.CommandText = sqlScript;
                 command.ExecuteNonQuery();
 
-                Console.WriteLine("Script initial_schema.sql exécuté avec succès !");
+                Console.WriteLine("initial_schema.sql script executed successfully!");
             }
         }
         dbConnection.Close();
@@ -155,7 +155,7 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Création de la DB / Admin ignorée au démarrage : {ex.Message}");
+        Console.WriteLine($"DB / Admin creation skipped at startup: {ex.Message}");
     }
 
     try
@@ -165,7 +165,7 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Migration Service ignoré : {ex.Message}");
+        Console.WriteLine($"Migration Service skipped: {ex.Message}");
     }
 }
 

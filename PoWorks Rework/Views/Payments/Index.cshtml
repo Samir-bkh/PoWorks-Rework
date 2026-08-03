@@ -1,9 +1,19 @@
-﻿@model PoWorks_Rework.Models.PaymentDashboardViewModel
+﻿@*
+    Financial & Payments Dashboard View (PoWorks)
+
+Provides a comprehensive financial overview showing total collected revenue,
+    pending invoice counts, and overdue bill warnings.
+    Includes a detailed payment transaction history table and an interactive
+    modal dialog for recording manual payments against active outstanding invoices.
+*@
+
+@model PoWorks_Rework.Models.PaymentDashboardViewModel
 @{
     ViewData["Title"] = "Payment Dashboard";
 }
 
 <div class="container-fluid py-4">
+    @* Page Header & Record Payment Action Trigger *@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">Financial & Payments Dashboard</h2>
         <button type="button" class="btn btn-primary shadow-sm fw-medium" data-bs-toggle="modal" data-bs-target="#recordPaymentModal">
@@ -11,7 +21,9 @@
         </button>
     </div>
 
+    @* SECTION 1: Key Financial Metrics (KPI Cards) *@
     <div class="row mb-5">
+        @* Revenue Collected This Month *@
         <div class="col-md-4">
             <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
                 <div class="card-body p-4">
@@ -31,6 +43,7 @@
             </div>
         </div>
 
+        @* Pending Payments Count *@
         <div class="col-md-4">
             <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
                 <div class="card-body p-4">
@@ -50,6 +63,7 @@
             </div>
         </div>
 
+        @* Overdue Payments Count *@
         <div class="col-md-4">
             <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
                 <div class="card-body p-4">
@@ -70,6 +84,7 @@
         </div>
     </div>
 
+    @* SECTION 2: Payment Transaction History Table *@
     <div class="card border-0 shadow-sm" style="border-radius: 16px;">
         <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
             <h5 class="mb-0 fw-bold text-dark"><i class="bi bi-journal-check text-primary me-2"></i>Payment History</h5>
@@ -93,15 +108,26 @@
                             foreach (var payment in Model.RecentPayments)
                             {
                                 <tr>
+                                    @* Formatted Payment ID *@
                                     <td><span class="fw-medium text-dark">#PAY-@payment.PaymentId.ToString("D4")</span></td>
+
+                                    @* Payment Timestamp *@
                                     <td><span class="text-muted">@(payment.PaymentDate?.ToString("dd MMM yyyy") ?? "-")</span></td>
+
+                                    @* Associated Bill Details Navigation Link *@
                                     <td>
                                         <a asp-controller="Bills" asp-action="Details" asp-route-id="@payment.BillId" class="text-decoration-none fw-medium">
                                             BILL-@payment.BillId.ToString("D4")
                                         </a>
                                     </td>
+
+                                    @* Tenant Name *@
                                     <td>@payment.TenantName</td>
+
+                                    @* Total Paid Amount *@
                                     <td class="text-end text-success fw-bold">RM @payment.AmountPaid.ToString("N2")</td>
+
+                                    @* Payment Method Badge *@
                                     <td class="text-center">
                                         <span class="badge bg-light text-dark border">@payment.PaymentMethod</span>
                                     </td>
@@ -110,6 +136,7 @@
                         }
                         else
                         {
+                            @* Empty State View *@
                             <tr>
                                 <td colspan="6" class="text-center py-5 text-muted">
                                     <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 64px; height: 64px;">
@@ -126,6 +153,7 @@
     </div>
 </div>
 
+@* SECTION 3: Modal Dialog - Record Manual Payment *@
 <div class="modal fade" id="recordPaymentModal" tabindex="-1" aria-labelledby="recordPaymentModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -133,10 +161,11 @@
                 <h5 class="modal-title fw-bold" id="recordPaymentModalLabel">Record Manual Payment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            
+
             <form asp-action="RecordPayment" asp-controller="Payments" method="post">
                 <div class="modal-body p-4">
-                    
+
+                    @* Pending Invoice Selector *@
                     <div class="mb-3">
                         <label for="billId" class="form-label fw-medium text-muted">Select Pending Invoice</label>
                         <select class="form-select" id="billId" name="billId" required>
@@ -150,12 +179,15 @@
                         </select>
                     </div>
 
+                    @* Amount & Method Row *@
                     <div class="row">
+                        @* Amount Paid Field *@
                         <div class="col-md-6 mb-3">
                             <label for="amountPaid" class="form-label fw-medium text-muted">Amount Received (RM)</label>
                             <input type="number" step="0.01" min="0.01" class="form-control" id="amountPaid" name="amountPaid" placeholder="0.00" required>
                         </div>
 
+                        @* Payment Method Selection *@
                         <div class="col-md-6 mb-3">
                             <label for="paymentMethod" class="form-label fw-medium text-muted">Payment Method</label>
                             <select class="form-select" id="paymentMethod" name="paymentMethod" required>
@@ -166,17 +198,21 @@
                         </div>
                     </div>
 
+                    @* Transaction Reference Field *@
                     <div class="mb-3">
                         <label for="reference" class="form-label fw-medium text-muted">Transaction Reference (Optional)</label>
                         <input type="text" class="form-control" id="reference" name="reference" placeholder="e.g., Check #12345 or TXN-9876">
                     </div>
 
+                    @* Internal Notes Textarea *@
                     <div class="mb-0">
                         <label for="notes" class="form-label fw-medium text-muted">Internal Notes</label>
                         <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Any details about this payment..."></textarea>
                     </div>
 
                 </div>
+
+                @* Modal Footer Actions *@
                 <div class="modal-footer bg-light border-top-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary px-4">Record Payment</button>

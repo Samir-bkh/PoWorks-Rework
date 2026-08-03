@@ -93,6 +93,13 @@ namespace PoWorks_Rework.Controllers
             return View(viewModel);
         }
 
+        /// <summary>
+        /// Searches tenants by the given criteria and term with pagination.
+        /// </summary>
+        /// <param name="searchCriteria">The field to search by (Company Name, Contact, Email, Phone).</param>
+        /// <param name="searchTerm">The term to look for.</param>
+        /// <param name="page">The page number to display (1-based).</param>
+        /// <returns>The tenant management view with the filtered results.</returns>
         [HttpPost]
         public IActionResult Search(string searchCriteria, string searchTerm, int page = 1)
         {
@@ -132,13 +139,35 @@ namespace PoWorks_Rework.Controllers
             return View("Management", viewModel);
         }
 
+        /// <summary>
+        /// Holds the paginated results of a tenant search.
+        /// </summary>
         private class SearchResult
         {
+            /// <summary>
+            /// The list of tenants on the current page.
+            /// </summary>
             public List<Tenant> Items { get; set; } = new List<Tenant>();
+
+            /// <summary>
+            /// The total number of tenants matching the search criteria.
+            /// </summary>
             public int TotalCount { get; set; }
+
+            /// <summary>
+            /// The total number of pages available.
+            /// </summary>
             public int TotalPages { get; set; }
         }
 
+        /// <summary>
+        /// Searches the database for tenants matching the given criteria, with pagination.
+        /// </summary>
+        /// <param name="searchCriteria">The field to search by.</param>
+        /// <param name="searchTerm">The term to look for.</param>
+        /// <param name="page">The page number to retrieve.</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <returns>A SearchResult containing the matching tenants and pagination information.</returns>
         private SearchResult GetTenants(string searchCriteria, string searchTerm, int page, int pageSize)
         {
             var result = new SearchResult();
@@ -247,6 +276,11 @@ namespace PoWorks_Rework.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Retrieves the detailed information for a specific tenant.
+        /// </summary>
+        /// <param name="id">The tenant ID to retrieve.</param>
+        /// <returns>The tenant details, or an empty tenant if not found.</returns>
         private Tenant GetTenantDetailsById(int id)
         {
             var tenant = new Tenant();

@@ -2,29 +2,64 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Exception thrown when an error occurs while parsing a VAREXP.DAT file.
+    /// Includes the line number where the parsing error occurred.
+    /// </summary>
     public class VarexpParseException : Exception
     {
+        /// <summary>
+        /// The line number in the file where the parsing error occurred.
+        /// </summary>
         public int LineNumber { get; }
 
+        /// <summary>
+        /// Initializes the parsing exception with a message and line number.
+        /// </summary>
         public VarexpParseException(string message, int lineNumber, Exception innerException = null)
             : base($"Error parsing VAREXP.DAT at line {lineNumber}: {message}", innerException)
         {
             LineNumber = lineNumber;
         }
     }
+
+    /// <summary>
+    /// Defines the supported VAREXP.DAT column configurations.
+    /// </summary>
     public enum VarexpConfiguration
     {
+        /// <summary>
+        /// Configuration with 6 name columns plus 1 additional column (n1-n6 + n7).
+        /// </summary>
         SixPlusOne,
+
+        /// <summary>
+        /// Configuration with 12 name columns (n1-n12).
+        /// </summary>
         Twelve
     }
+
+    /// <summary>
+    /// Service for parsing VAREXP.DAT files containing meter configuration data.
+    /// Detects the column configuration, combines name columns, and filters system rows.
+    /// </summary>
     public class VarexpParserService
     {
         private readonly ILogger<VarexpParserService> _logger;
 
+        /// <summary>
+        /// Initializes the VAREXP parser service with a logger.
+        /// </summary>
         public VarexpParserService(ILogger<VarexpParserService> logger)
         {
             _logger = logger;
         }
+
+        /// <summary>
+        /// Parses an uploaded VAREXP.DAT file and returns the processed records.
+        /// </summary>
+        /// <param name="file">The uploaded VAREXP.DAT file.</param>
+        /// <returns>A list of string arrays representing the parsed records.</returns>
         public async Task<List<string[]>> ParseVarexpAsync(IFormFile file)
         {
             var records = new List<string[]>();
@@ -102,6 +137,11 @@ namespace PoWorks_Rework.Services
 
             return records;
         }
+        /// <summary>
+        /// Finds the index of the 'Source' column in the class header row.
+        /// </summary>
+        /// <param name="fields">The header row fields.</param>
+        /// <returns>The column index, or null if not found.</returns>
         private int? FindSourceColumn(string[] fields)
         {
             for (int i = 0; i < fields.Length; i++)
@@ -113,6 +153,11 @@ namespace PoWorks_Rework.Services
             }
             return null;
         }
+        /// <summary>
+        /// Determines the VAREXP configuration based on the source column index.
+        /// </summary>
+        /// <param name="sourceColumnIndex">The index of the source column.</param>
+        /// <returns>The detected configuration.</returns>
         private VarexpConfiguration DetermineConfiguration(int? sourceColumnIndex)
         {
             if (sourceColumnIndex.HasValue && sourceColumnIndex.Value == 22)
@@ -124,6 +169,12 @@ namespace PoWorks_Rework.Services
                 return VarexpConfiguration.SixPlusOne;
             }
         }
+        /// <summary>
+        /// Logs the detected VAREXP configuration details for debugging.
+        /// </summary>
+        /// <param name="sourceColumnIndex">The detected source column index.</param>
+        /// <param name="configuration">The detected configuration.</param>
+        /// <param name="fields">The class header row fields.</param>
         private void LogConfigurationInfo(int? sourceColumnIndex, VarexpConfiguration? configuration, string[] fields)
         {
             string configName = configuration == VarexpConfiguration.Twelve ? "12-column (n1-n12)" : "6+1-column (n1-n6 + n7)";
@@ -140,6 +191,12 @@ namespace PoWorks_Rework.Services
             Console.WriteLine($"Class row content: [{string.Join(", ", fields)}]");
             Console.WriteLine("======================================\n");
         }
+        /// <summary>
+        /// Processes a class header row, keeping the class name and a CombinedName placeholder.
+        /// </summary>
+        /// <param name="fields">The class header row fields.</param>
+        /// <param name="configuration">The detected configuration.</param>
+        /// <returns>The processed row.</returns>
         private string[] ProcessClassRow(string[] fields, VarexpConfiguration configuration)
         {
             var result = new List<string>();
@@ -163,6 +220,12 @@ namespace PoWorks_Rework.Services
 
             return result.ToArray();
         }
+        /// <summary>
+        /// Processes a data row by combining name columns and keeping relevant fields.
+        /// </summary>
+        /// <param name="fields">The data row fields.</param>
+        /// <param name="configuration">The detected configuration.</param>
+        /// <returns>The processed row.</returns>
         private string[] ProcessDataRow(string[] fields, VarexpConfiguration configuration)
         {
             var result = new List<string>();
@@ -187,6 +250,12 @@ namespace PoWorks_Rework.Services
 
             return result.ToArray();
         }
+        /// <summary>
+        /// Combines the name columns into a single dotted name.
+        /// </summary>
+        /// <param name="fields">The data row fields.</param>
+        /// <param name="configuration">The detected configuration.</param>
+        /// <returns>The combined dotted name.</returns>
         private string CombineNameColumns(string[] fields, VarexpConfiguration configuration)
         {
             var nameParts = new List<string>();
@@ -218,6 +287,12 @@ namespace PoWorks_Rework.Services
 
             return string.Join(".", nameParts);
         }
+        /// <summary>
+        /// Determines whether a processed row should be filtered out.
+        /// Filters system rows and rows with excluded class prefixes.
+        /// </summary>
+        /// <param name="processedFields">The processed row fields.</param>
+        /// <returns>True if the row should be filtered out.</returns>
         private bool ShouldFilterRow(string[] processedFields)
         {
             if (processedFields == null || processedFields.Length < 2)
@@ -242,6 +317,12 @@ namespace PoWorks_Rework.Services
 
             return false;
         }
+        /// <summary>
+        /// Logs the final parsing summary with configuration and record count.
+        /// </summary>
+        /// <param name="sourceColumnIndex">The detected source column index.</param>
+        /// <param name="configuration">The detected configuration.</param>
+        /// <param name="recordCount">The total number of records parsed.</param>
         private void LogFinalSummary(int? sourceColumnIndex, VarexpConfiguration? configuration, int recordCount)
         {
             string configName = configuration == VarexpConfiguration.Twelve ? "12-column" : "6+1-column";
@@ -266,6 +347,11 @@ namespace PoWorks_Rework.Services
                 Console.WriteLine($"===============================================\n");
             }
         }
+        /// <summary>
+        /// Parses a VAREXP.DAT file from a file path and returns the raw records.
+        /// </summary>
+        /// <param name="filePath">The path to the VAREXP.DAT file.</param>
+        /// <returns>A list of string arrays representing the parsed records.</returns>
         public List<string[]> ParseVarexpFromPath(string filePath)
         {
             var records = new List<string[]>();

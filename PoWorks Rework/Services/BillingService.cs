@@ -120,6 +120,17 @@ namespace PoWorks_Rework.Services
             return bill;
         }
 
+        /// <summary>
+        /// Calculates the consumption for a single meter over the given period.
+        /// For kWh meters, uses the difference between max and min readings.
+        /// For other units, integrates the value over time using hour deltas.
+        /// </summary>
+        /// <param name="connection">The database connection to use.</param>
+        /// <param name="meterId">The meter ID to calculate consumption for.</param>
+        /// <param name="unit">The meter's unit of measurement.</param>
+        /// <param name="start">The start of the billing period.</param>
+        /// <param name="end">The end of the billing period.</param>
+        /// <returns>The calculated consumption value.</returns>
         private async Task<decimal> CalculateMeterConsumptionAsync(NpgsqlConnection connection, int meterId, string unit, DateTime start, DateTime end)
         {
             if (unit.Equals("kWh", StringComparison.OrdinalIgnoreCase))
@@ -160,6 +171,11 @@ namespace PoWorks_Rework.Services
         }
 
 
+        /// <summary>
+        /// Saves a calculated bill and its line items to the database in a transaction.
+        /// </summary>
+        /// <param name="bill">The bill entity to persist.</param>
+        /// <returns>The newly created bill ID.</returns>
         public async Task<int> SaveBillAsync(BillEntity bill)
         {
             var connection = _databaseService.GetConnection();

@@ -4,6 +4,10 @@ using Npgsql;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Service for migrating and re-encrypting stored credentials.
+    /// Re-encrypts web service connection secrets and passwords in the database and appsettings.json.
+    /// </summary>
     public class CredentialMigrationService
     {
         private readonly DatabaseService _databaseService;
@@ -11,6 +15,9 @@ namespace PoWorks_Rework.Services
         private readonly ILogger<CredentialMigrationService> _logger;
         private readonly IWebHostEnvironment _env;
 
+        /// <summary>
+        /// Initializes the credential migration service with its dependencies.
+        /// </summary>
         public CredentialMigrationService(
             DatabaseService databaseService,
             EncryptionService encryptionService,
@@ -23,6 +30,10 @@ namespace PoWorks_Rework.Services
             _env = env;
         }
 
+        /// <summary>
+        /// Migrates all stored credentials by decrypting and re-encrypting them.
+        /// Updates web service connections in the database and appsettings.json.
+        /// </summary>
         public async Task MigrateAllCredentialsAsync()
         {
           
@@ -35,7 +46,7 @@ namespace PoWorks_Rework.Services
                 var alreadyDone = Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0;
                 if (!alreadyDone)
                 {
-                    _logger.LogInformation("Démarrage de la migration automatique des credentials en base...");
+                    _logger.LogInformation("Starting automatic credential migration to database...");
                     int migratedCount = 0;
 
                     using (var selectCmd = new NpgsqlCommand(
@@ -75,7 +86,7 @@ namespace PoWorks_Rework.Services
                         await insertFlagCmd.ExecuteNonQueryAsync();
                     }
 
-                    _logger.LogInformation("Migration de la base terminée. {Count} connexions ré-encodées.", migratedCount);
+                    _logger.LogInformation("Database migration completed. {Count} connections re-encoded.", migratedCount);
                 }
             }
 
@@ -130,14 +141,14 @@ namespace PoWorks_Rework.Services
                         {
                             var options = new JsonSerializerOptions { WriteIndented = true };
                             await File.WriteAllTextAsync(jsonPath, jsonNode.ToJsonString(options));
-                            _logger.LogInformation("appsettings.json mis à jour avec les credentials re-chiffrés.");
+                            _logger.LogInformation("appsettings.json updated with re-encrypted credentials.");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erreur lors de la migration du fichier appsettings.json");
+                _logger.LogError(ex, "Error while migrating the appsettings.json file");
             }
         }
     }

@@ -1,5 +1,9 @@
 namespace PoWorks_Rework.Models
 {
+    /// <summary>
+    /// View model for the meter readings page.
+    /// Handles display settings, pagination, selected meters, and reading data.
+    /// </summary>
     public class MeterReadingsViewModel
     {
         public MeterReadingsViewModel()
@@ -86,6 +90,10 @@ namespace PoWorks_Rework.Models
         }
         public string SelectedMeterName => SelectedMeterNames;
     }
+
+    /// <summary>
+    /// Filter parameters for querying meter readings with validation.
+    /// </summary>
     public class MeterReadingsFilter
     {
         public List<int> MeterIds { get; set; } = new List<int>(); 
@@ -136,6 +144,10 @@ namespace PoWorks_Rework.Models
             return null;
         }
     }
+
+    /// <summary>
+    /// Represents a single meter reading, either raw or aggregated.
+    /// </summary>
     public class MeterReading
     {
         public int ReadingId { get; set; }
@@ -188,6 +200,9 @@ namespace PoWorks_Rework.Models
             return string.Join(" | ", parts);
         }
     }
+    /// <summary>
+    /// Represents a meter option for selection lists.
+    /// </summary>
     public class MeterOption
     {
         public int MeterId { get; set; }
@@ -197,6 +212,9 @@ namespace PoWorks_Rework.Models
         public string DisplayName => string.IsNullOrEmpty(Unit) ? Name : $"{Name} ({Unit})";
         public string FullDisplayName => $"{DisplayName} [{Type}]";
     }
+    /// <summary>
+    /// Aggregate statistics for a set of meter readings.
+    /// </summary>
     public class MeterStats
     {
         public int ReadingCount { get; set; }

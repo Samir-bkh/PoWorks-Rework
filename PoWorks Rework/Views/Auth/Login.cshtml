@@ -1,68 +1,91 @@
+@*
+    Login View (PoWorks)
+
+Provides a standalone user authentication interface. Disables client-side caching
+    to prevent unauthorized back-navigation after logout, and renders a secure form
+    for credential entry.
+*@
+
 @inject Microsoft.AspNetCore.Mvc.ViewFeatures.IHtmlGenerator HtmlGenerator
+
 @{
+    // Set HTTP response headers to disable browser caching for security
     Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
     Context.Response.Headers["Pragma"] = "no-cache";
     Context.Response.Headers["Expires"] = "0";
 }
 
 @{
+    // Disable the shared master layout for a clean, full-page login screen
     Layout = null;
 }
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PoWorks - Sign In</title>
+
+    @* Stylesheets *@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+
+    @* Page-Specific Custom Styling *@
     <style>
-        body {
-            background-color: #f4f6f9;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .login-wrapper {
-            width: 100%;
-            max-width: 420px;
-            padding: 15px;
-        }
-        .login-card {
-            border: none;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-            background: #ffffff;
-        }
-        .brand-logo {
-            font-size: 2.2rem;
-            font-weight: 800;
-            color: #0d6efd;
-            text-align: center;
-            margin-bottom: 0.5rem;
-            letter-spacing: -1px;
-        }
-        .form-control {
-            border-radius: 8px;
-            padding: 0.75rem 1rem;
-            border: 1px solid #dee2e6;
-        }
-        .btn-primary {
-            border-radius: 8px;
-            padding: 0.75rem 1rem;
-            font-weight: 600;
-        }
+            body {
+                background-color: #f4f6f9;
+                height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+
+            .login-wrapper {
+                width: 100%;
+                max-width: 420px;
+                padding: 15px;
+            }
+
+            .login-card {
+                border: none;
+                border-radius: 12px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+                background: #ffffff;
+            }
+
+            .brand-logo {
+                font-size: 2.2rem;
+                font-weight: 800;
+                color: #0d6efd;
+                text-align: center;
+                margin-bottom: 0.5rem;
+                letter-spacing: -1px;
+            }
+
+            .form-control {
+                border-radius: 8px;
+                padding: 0.75rem 1rem;
+                border: 1px solid #dee2e6;
+            }
+
+            .btn-primary {
+                border-radius: 8px;
+                padding: 0.75rem 1rem;
+                font-weight: 600;
+            }
     </style>
 </head>
 <body>
     <div class="login-wrapper">
         <div class="card login-card">
             <div class="card-body p-5">
-                
+
+                @* Branding Header *@
                 <div class="brand-logo">PoWorks</div>
                 <h6 class="text-center mb-4 fw-normal text-muted">Sign in to your workspace</h6>
 
+                @* Validation Error Alert *@
                 @if (!ViewData.ModelState.IsValid)
                 {
                     <div class="alert alert-danger py-2 small">
@@ -70,24 +93,30 @@
                     </div>
                 }
 
+                @* Authentication Form *@
                 <form asp-controller="Auth" asp-action="Login" method="post">
+                    @* Preserves the target redirect URL upon successful login *@
                     <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
-                    
+
+                    @* Username Field *@
                     <div class="mb-3">
                         <label class="form-label fw-semibold text-dark small">Username</label>
                         <input type="text" name="username" class="form-control" placeholder="Admin" required autofocus />
                     </div>
-                    
+
+                    @* Password Field *@
                     <div class="mb-3">
                         <label class="form-label fw-semibold text-dark small">Password</label>
                         <input type="password" name="password" class="form-control" placeholder="••••••••" required />
                     </div>
 
+                    @* Persistent Session Checkbox *@
                     <div class="mb-3 form-check">
                         <input type="checkbox" name="rememberMe" value="true" class="form-check-input" id="rememberMe" />
                         <label class="form-check-label text-muted small" for="rememberMe">Remember my session</label>
                     </div>
 
+                    @* Submit Action *@
                     <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary">Sign In</button>
                     </div>
@@ -95,6 +124,8 @@
 
             </div>
         </div>
+
+        @* Page Footer *@
         <div class="text-center mt-4">
             <p class="text-muted small">&copy; 2026 PoWorks Rework. All rights reserved.</p>
         </div>

@@ -7,11 +7,18 @@ using System.Data;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for managing company information and settings.
+    /// Handles company profile data, configuration settings, and company switching for multi-tenancy.
+    /// </summary>
     public class CompanyController : BaseController
     {
         private readonly ILogger<CompanyController> _logger;
         private readonly ICompanyContext _companyContext; 
 
+        /// <summary>
+        /// Initializes the company controller with database, company context, and logging dependencies.
+        /// </summary>
         public CompanyController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<CompanyController> logger)
             : base(databaseService)
         {
@@ -19,6 +26,10 @@ namespace PoWorks_Rework.Controllers
             _companyContext = companyContext; 
         }
 
+        /// <summary>
+        /// Displays the company information page for the current company.
+        /// </summary>
+        /// <returns>The company info view with the loaded company details.</returns>
         public IActionResult Info()
         {
             if (!_databaseService.IsInitialized)
@@ -56,6 +67,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Saves the company information submitted from the info form.
+        /// </summary>
+        /// <param name="companyInfo">The company information model containing the data to save.</param>
+        /// <returns>A redirect to the company info page with a success or error message.</returns>
         [HttpPost]
         public IActionResult SaveInfo(CompanyInfo companyInfo)
         {
@@ -86,6 +102,11 @@ namespace PoWorks_Rework.Controllers
             return RedirectToAction("Info");
         }
 
+        /// <summary>
+        /// Retrieves the company information for the current company from the database.
+        /// Returns a default placeholder object if no record exists.
+        /// </summary>
+        /// <returns>The company information for the current company.</returns>
         private CompanyInfo GetCompanyInfo()
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -136,6 +157,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Inserts or updates the company information record for the current company.
+        /// </summary>
+        /// <param name="companyInfo">The company information model containing the data to persist.</param>
         private void SaveCompanyInfo(CompanyInfo companyInfo)
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -204,6 +229,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Displays the company settings page with the current configuration values.
+        /// </summary>
+        /// <returns>The company settings view.</returns>
         public IActionResult Settings()
         {
             var companySettings = new CompanySettings
@@ -228,6 +257,12 @@ namespace PoWorks_Rework.Controllers
         }
 
 
+        /// <summary>
+        /// Switches the active company context. Admins can select a company via a cookie that persists for one day.
+        /// </summary>
+        /// <param name="companyId">The ID of the company to switch to.</param>
+        /// <param name="returnUrl">The local URL to redirect to after switching.</param>
+        /// <returns>A redirect to the return URL or the home page.</returns>
         [HttpPost]
         public IActionResult SwitchCompany(int companyId, string returnUrl)
         {
@@ -243,6 +278,11 @@ namespace PoWorks_Rework.Controllers
             return LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
         }
 
+        /// <summary>
+        /// Saves the company settings submitted from the settings form.
+        /// </summary>
+        /// <param name="companySettings">The company settings model containing the data to save.</param>
+        /// <returns>A redirect to the settings page, or the settings view if validation fails.</returns>
         [HttpPost]
         public IActionResult SaveSettings(CompanySettings companySettings)
         {

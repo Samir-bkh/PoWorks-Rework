@@ -67,6 +67,11 @@ namespace PoWorks_Rework.Controllers
             return View(viewModel);
         }
 
+        /// <summary>
+        /// Saves the general PostgreSQL database settings after validating the connection.
+        /// </summary>
+        /// <param name="model">The general settings view model containing the PostgreSQL connection settings.</param>
+        /// <returns>A redirect to the general settings page, or the general view if validation fails.</returns>
         [HttpPost]
         public IActionResult SaveGeneralSettings(GeneralSettingsViewModel model)
         {
@@ -93,6 +98,10 @@ namespace PoWorks_Rework.Controllers
             return View("General", model);
         }
 
+        /// <summary>
+        /// Loads the SQL Server connections stored in the database.
+        /// </summary>
+        /// <returns>A list of SQL Server connection settings.</returns>
         private async Task<List<SqlServerSettings>> LoadSqlServerConnectionsFromDb()
         {
             var connections = new List<SqlServerSettings>();
@@ -137,6 +146,11 @@ namespace PoWorks_Rework.Controllers
             return connections;
         }
 
+        /// <summary>
+        /// Saves the list of SQL Server connections to the database.
+        /// </summary>
+        /// <param name="request">The request containing the connections to save.</param>
+        /// <returns>JSON indicating success or failure.</returns>
         [HttpPost]
         public async Task<IActionResult> SaveSqlServerConnections([FromBody] SaveConnectionsRequest request)
         {
@@ -180,6 +194,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Deletes a SQL Server connection from the database.
+        /// </summary>
+        /// <param name="request">The request containing the connection ID to delete.</param>
+        /// <returns>JSON indicating success or failure.</returns>
         [HttpPost]
         public async Task<IActionResult> DeleteSqlServerConnection([FromBody] DeleteConnectionRequest request)
         {
@@ -203,6 +222,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Tests a SQL Server connection with the provided settings.
+        /// </summary>
+        /// <param name="request">The connection test request containing host, database, and credentials.</param>
+        /// <returns>JSON indicating whether the connection succeeded.</returns>
         [HttpPost]
         public IActionResult TestSqlServerConnection([FromBody] SqlServerConnectionTestRequest request)
         {
@@ -234,6 +258,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Tests a PostgreSQL database connection with the provided settings.
+        /// </summary>
+        /// <param name="settings">The database settings to test.</param>
+        /// <returns>JSON indicating whether the connection succeeded.</returns>
         [HttpPost]
         public IActionResult TestConnection([FromBody] DatabaseSettings settings)
         {
@@ -251,6 +280,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Connects to a PostgreSQL database, creating it and applying the schema if missing.
+        /// </summary>
+        /// <param name="settings">The database settings to connect with.</param>
+        /// <returns>JSON indicating success or failure.</returns>
         [HttpPost]
         public IActionResult Connect([FromBody] DatabaseSettings settings)
         {
@@ -303,6 +337,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Checks whether the tenants table exists in the connected database.
+        /// </summary>
+        /// <param name="connection">The open database connection to check.</param>
+        /// <returns>True if the tenants table exists, otherwise false.</returns>
         private bool TablesExist(NpgsqlConnection connection)
         {
             using (var cmd = new NpgsqlCommand(
@@ -312,6 +351,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Executes the initial schema script from wwwroot/sql on the connected database.
+        /// </summary>
+        /// <param name="connection">The open database connection to apply the schema to.</param>
         private void ExecuteSchemaScript(NpgsqlConnection connection)
         {
             string sqlFilePath = Path.Combine(_webHostEnvironment.WebRootPath, "sql", "initial_schema.sql");
@@ -322,6 +365,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Loads the PCVue web service connections stored in the database.
+        /// </summary>
+        /// <returns>A list of web service connection settings.</returns>
         private async Task<List<PCVueWebServiceSettings>> LoadWebServiceConnectionsFromDb()
         {
             var connections = new List<PCVueWebServiceSettings>();
@@ -349,11 +396,16 @@ namespace PoWorks_Rework.Controllers
                     TimeoutSeconds = reader["TimeoutSeconds"] != DBNull.Value ? Convert.ToInt32(reader["TimeoutSeconds"]) : 30,
                     IsDefault = reader["IsDefault"] != DBNull.Value && Convert.ToBoolean(reader["IsDefault"]),
 
-                    EnableAutomaticImport = reader["EnableAutomaticImport"] != DBNull.Value && Convert.ToBoolean(reader["EnableAutomaticImport"])
+                    EnableAutomaticImport = reader["EnableAutomaticImport"] != DBNull.Value && Convert.ToBoolean(reader["EnableAutomaticImport"]),
+                    AutoImportIntervalMinutes = reader["AutoImportIntervalMinutes"] != DBNull.Value ? Convert.ToInt32(reader["AutoImportIntervalMinutes"]) : 1
                 });
             }
             return connections;
         }
+        /// <summary>
+        /// Updates the PostgreSQL database settings in appsettings.json with the given settings.
+        /// </summary>
+        /// <param name="settings">The database settings to persist.</param>
         private void UpdatePostgresAppSettings(DatabaseSettings settings)
         {
             var appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
@@ -389,6 +441,11 @@ namespace PoWorks_Rework.Controllers
         // WEB SERVICES CONNECTIONS METHODS
         // ==========================================
 
+        /// <summary>
+        /// Saves the list of PCVue web service connections to the database.
+        /// </summary>
+        /// <param name="request">The request containing the connections to save.</param>
+        /// <returns>JSON indicating success or failure.</returns>
         [HttpPost]
         public async Task<IActionResult> SaveWebServiceConnections([FromBody] SaveConnectionsRequest request)
         {
@@ -406,9 +463,15 @@ namespace PoWorks_Rework.Controllers
             
                 foreach (var connData in request.Connections)
                 {
+                    int autoImportInterval = 1;
+                    if (connData.ContainsKey("AutoImportIntervalMinutes") && int.TryParse(connData["AutoImportIntervalMinutes"], out int parsedInterval))
+                    {
+                        autoImportInterval = Math.Clamp(parsedInterval, 1, 1440);
+                    }
+
                     string insertSql = @"INSERT INTO ""WebServiceConnections"" 
-           (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport"", ""CompanyId"")
-           VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isDefault, @isActive, @enableAutoImport, 1)";
+           (""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"", ""Username"", ""Password"", ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport"", ""AutoImportIntervalMinutes"", ""CompanyId"")
+           VALUES (@id, @name, @baseUrl, @clientId, @clientSecret, @username, @password, @projectName, @isDefault, @isActive, @enableAutoImport, @autoImportInterval, 1)";
 
                     using var cmd = new NpgsqlCommand(insertSql, conn);
                     cmd.Parameters.AddWithValue("id", connData.ContainsKey("ConnectionId") ? connData["ConnectionId"] : Guid.NewGuid().ToString());
@@ -427,6 +490,7 @@ namespace PoWorks_Rework.Controllers
                     cmd.Parameters.AddWithValue("isDefault", connData.ContainsKey("IsDefault") && connData["IsDefault"].ToLower() == "true");
                     cmd.Parameters.AddWithValue("isActive", true); // la connexion elle-même reste active par défaut
                     cmd.Parameters.AddWithValue("enableAutoImport", connData.ContainsKey("EnableAutomaticImport") && connData["EnableAutomaticImport"].ToLower() == "true");
+                    cmd.Parameters.AddWithValue("autoImportInterval", autoImportInterval);
 
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -439,6 +503,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Deletes a PCVue web service connection from the database.
+        /// </summary>
+        /// <param name="request">The request containing the connection ID to delete.</param>
+        /// <returns>JSON indicating success or failure.</returns>
         [HttpPost]
         public async Task<IActionResult> DeleteWebServiceConnection([FromBody] DeleteConnectionRequest request)
         {
@@ -460,6 +529,12 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Retrieves an authentication token for a PCVue web service connection.
+        /// Currently simulates a successful response.
+        /// </summary>
+        /// <param name="request">The token request containing connection details.</param>
+        /// <returns>JSON with token expiration information.</returns>
         [HttpPost]
         public IActionResult GetWebServiceToken([FromBody] WebServiceTokenRequest request)
         {
@@ -477,6 +552,12 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Refreshes an authentication token for a PCVue web service connection.
+        /// Currently simulates a successful response.
+        /// </summary>
+        /// <param name="request">The token request containing connection details.</param>
+        /// <returns>JSON with token expiration information.</returns>
         [HttpPost]
         public IActionResult RefreshWebServiceToken([FromBody] WebServiceTokenRequest request)
         {
@@ -496,35 +577,107 @@ namespace PoWorks_Rework.Controllers
     // CLASSES DE REQUÊTES (DTOs)
     // ==========================================
 
+    /// <summary>
+    /// Request model for testing a SQL Server connection.
+    /// </summary>
     public class SqlServerConnectionTestRequest
     {
+        /// <summary>
+        /// The unique identifier of the connection.
+        /// </summary>
         public string ConnectionId { get; set; } = "";
+
+        /// <summary>
+        /// The display name of the connection.
+        /// </summary>
         public string ConnectionName { get; set; } = "";
+
+        /// <summary>
+        /// The SQL Server host address.
+        /// </summary>
         public string Host { get; set; } = "";
+
+        /// <summary>
+        /// The SQL Server port number.
+        /// </summary>
         public string Port { get; set; } = "1433";
+
+        /// <summary>
+        /// The SQL Server database name.
+        /// </summary>
         public string Database { get; set; } = "";
+
+        /// <summary>
+        /// The SQL Server username.
+        /// </summary>
         public string Username { get; set; } = "";
+
+        /// <summary>
+        /// The SQL Server password.
+        /// </summary>
         public string Password { get; set; } = "";
+
+        /// <summary>
+        /// The project name associated with the connection.
+        /// </summary>
         public string ProjectName { get; set; } = "";
     }
 
+    /// <summary>
+    /// Request model for saving a list of connections.
+    /// </summary>
     public class SaveConnectionsRequest
     {
+        /// <summary>
+        /// The list of connections, each represented as a dictionary of key-value pairs.
+        /// </summary>
         public List<Dictionary<string, string>> Connections { get; set; } = new List<Dictionary<string, string>>();
     }
 
+    /// <summary>
+    /// Request model for deleting a connection.
+    /// </summary>
     public class DeleteConnectionRequest
     {
+        /// <summary>
+        /// The unique identifier of the connection to delete.
+        /// </summary>
         public string ConnectionId { get; set; } = "";
     }
 
+    /// <summary>
+    /// Request model for retrieving or refreshing a web service authentication token.
+    /// </summary>
     public class WebServiceTokenRequest
     {
+        /// <summary>
+        /// The unique identifier of the connection.
+        /// </summary>
         public string ConnectionId { get; set; } = "";
+
+        /// <summary>
+        /// The base URL of the web service.
+        /// </summary>
         public string BaseUrl { get; set; } = "";
+
+        /// <summary>
+        /// The client ID used for authentication.
+        /// </summary>
         public string ClientId { get; set; } = "";
+
+        /// <summary>
+        /// The client secret used for authentication.
+        /// </summary>
         public string ClientSecret { get; set; } = "";
+
+        /// <summary>
+        /// The username used for authentication.
+        /// </summary>
         public string Username { get; set; } = "";
+
+        /// <summary>
+        /// The password used for authentication.
+        /// </summary>
         public string Password { get; set; } = "";
     }
 }

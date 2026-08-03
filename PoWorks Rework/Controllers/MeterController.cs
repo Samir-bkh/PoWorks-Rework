@@ -90,6 +90,13 @@ namespace PoWorks_Rework.Controllers
                 return View(viewModel);
             }
         }
+        /// <summary>
+        /// Searches meters by the given criteria with pagination.
+        /// </summary>
+        /// <param name="searchCriteria">The search criteria containing the search field and term.</param>
+        /// <param name="page">The page number to display (1-based).</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <returns>The meter management view with the filtered results.</returns>
         [HttpPost]
         public async Task<IActionResult> Search(MeterSearchCriteria searchCriteria, int page = 1, int pageSize = 10)
         {
@@ -125,6 +132,12 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Creates a new meter in the database for the current company.
+        /// </summary>
+        /// <param name="meter">The meter model containing the data to insert.</param>
+        /// <param name="logger">The logger used to record creation details.</param>
+        /// <returns>A redirect to the meter management page with the created meter selected.</returns>
         [HttpPost]
         public async Task<IActionResult> Create(Meter meter, [FromServices] ILogger<MeterController> logger)
         {
@@ -285,6 +298,10 @@ LIMIT 10";
 
             return View("Management", viewModel);
         }
+        /// <summary>
+        /// Debug endpoint that logs all received form fields for troubleshooting.
+        /// </summary>
+        /// <returns>A redirect to the meter management page.</returns>
         [HttpPost]
         public async Task<IActionResult> Debug()
         {
@@ -298,6 +315,11 @@ LIMIT 10";
             return RedirectToAction("Management");
         }
 
+        /// <summary>
+        /// Updates an existing meter's details in the database.
+        /// </summary>
+        /// <param name="meter">The meter model containing the updated data.</param>
+        /// <returns>A redirect to the meter management page with the updated meter selected.</returns>
         [HttpPost]
         public async Task<IActionResult> Update(Meter meter)
         {
@@ -441,6 +463,10 @@ LIMIT 10";
         }
 
 
+        /// <summary>
+        /// Displays the meter readings page with the list of available meters.
+        /// </summary>
+        /// <returns>The meter readings view.</returns>
         public async Task<IActionResult> Readings()
         {
             if (!_databaseService.IsInitialized)
@@ -479,6 +505,10 @@ LIMIT 10";
                 return View(new MeterReadingsViewModel());
             }
         }
+        /// <summary>
+        /// Retrieves the tenants belonging to the current company as dropdown options.
+        /// </summary>
+        /// <returns>A list of select list items for tenant selection.</returns>
         private List<SelectListItem> GetTenantOptions()
         {
             var options = new List<SelectListItem>
@@ -524,6 +554,11 @@ ORDER BY td.""CompanyName""";
             return options;
         }
 
+        /// <summary>
+        /// Deletes multiple meters and their associated readings for the current company.
+        /// </summary>
+        /// <param name="meterIds">The list of meter IDs to delete.</param>
+        /// <returns>JSON indicating the number of meters successfully deleted.</returns>
         [HttpPost]
         public async Task<IActionResult> BulkDeleteMeters([FromBody] List<int> meterIds)
         {
@@ -559,6 +594,10 @@ ORDER BY td.""CompanyName""";
             }
         }
 
+        /// <summary>
+        /// Deletes "ghost" meters (names containing 'Backnet') and their readings for the current company.
+        /// </summary>
+        /// <returns>A redirect to the meter management page with a result message.</returns>
         [HttpPost]
         public async Task<IActionResult> CleanGhostMeters()
         {
@@ -593,6 +632,11 @@ ORDER BY td.""CompanyName""";
             return RedirectToAction("Management");
         }
 
+        /// <summary>
+        /// Bulk-updates tenant, unit, type, or parent fields on multiple meters, optionally matching a search criteria.
+        /// </summary>
+        /// <param name="request">The bulk edit request containing meter IDs, field updates, and search criteria.</param>
+        /// <returns>JSON indicating whether the bulk update succeeded.</returns>
         [HttpPost]
         public async Task<IActionResult> BulkEditMeters([FromBody] BulkEditMetersRequest request)
         {

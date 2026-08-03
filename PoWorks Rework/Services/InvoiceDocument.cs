@@ -5,15 +5,27 @@ using QuestPDF.Infrastructure;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// QuestPDF document that renders a formatted invoice for a bill entity.
+    /// Includes header, line items table, totals, and footer with page numbers.
+    /// </summary>
     public class InvoiceDocument : IDocument
     {
         private readonly BillEntity _bill;
 
+        /// <summary>
+        /// Initializes the invoice document with the bill data to render.
+        /// </summary>
+        /// <param name="bill">The bill entity containing the invoice data.</param>
         public InvoiceDocument(BillEntity bill)
         {
             _bill = bill;
         }
 
+        /// <summary>
+        /// Composes the invoice document layout with header, content, and footer sections.
+        /// </summary>
+        /// <param name="container">The document container to compose into.</param>
         public void Compose(IDocumentContainer container)
         {
             container
@@ -30,6 +42,10 @@ namespace PoWorks_Rework.Services
                 });
         }
 
+        /// <summary>
+        /// Composes the invoice header with the invoice number, dates, and company information.
+        /// </summary>
+        /// <param name="container">The container to compose the header into.</param>
         private void ComposeHeader(IContainer container)
         {
             container.Row(row =>
@@ -52,6 +68,10 @@ namespace PoWorks_Rework.Services
             });
         }
 
+        /// <summary>
+        /// Composes the invoice content including the billed-to section, line items table, and totals.
+        /// </summary>
+        /// <param name="container">The container to compose the content into.</param>
         private void ComposeContent(IContainer container)
         {
             container.PaddingVertical(20).Column(column =>
@@ -69,6 +89,10 @@ namespace PoWorks_Rework.Services
             });
         }
 
+        /// <summary>
+        /// Composes the line items table with meter descriptions, consumption, unit prices, and line totals.
+        /// </summary>
+        /// <param name="container">The container to compose the table into.</param>
         private void ComposeTable(IContainer container)
         {
             container.Table(table =>
@@ -107,6 +131,10 @@ namespace PoWorks_Rework.Services
             });
         }
 
+        /// <summary>
+        /// Composes the totals section with subtotal, tax, and grand total amounts.
+        /// </summary>
+        /// <param name="container">The container to compose the totals into.</param>
         private void ComposeTotals(IContainer container)
         {
             container.Row(row =>
@@ -132,6 +160,10 @@ namespace PoWorks_Rework.Services
             });
         }
 
+        /// <summary>
+        /// Composes the invoice footer with page numbers and generation attribution.
+        /// </summary>
+        /// <param name="container">The container to compose the footer into.</param>
         private void ComposeFooter(IContainer container)
         {
             container.AlignCenter().Text(x =>

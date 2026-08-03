@@ -6,6 +6,9 @@ using PoWorks_Rework.Services;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for parsing and importing VAREXP.DAT files into the meter database.
+    /// </summary>
     public class VarexpImportController : Controller
     {
         #region Dependencies
@@ -14,6 +17,9 @@ namespace PoWorks_Rework.Controllers
         private readonly DatabaseService _databaseService;
         private readonly VarexpParserService _varexpParserService;
 
+        /// <summary>
+        /// Initializes the VAREXP import controller with logging, database, and parser service dependencies.
+        /// </summary>
         public VarexpImportController(
             ILogger<VarexpImportController> logger,
             DatabaseService databaseService,
@@ -27,6 +33,11 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region VAREXP Parse & Import Methods
+        /// <summary>
+        /// Parses an uploaded VAREXP.DAT file and returns the extracted meter records.
+        /// </summary>
+        /// <param name="VarexpFile">The uploaded VAREXP.DAT file.</param>
+        /// <returns>JSON with the parsed records and parent meter options.</returns>
         [HttpPost]
         [ValidateAntiForgeryToken]
         [IgnoreAntiforgeryToken]
@@ -38,9 +49,9 @@ namespace PoWorks_Rework.Controllers
             try
             {
                 var records = await _varexpParserService.ParseVarexpAsync(VarexpFile);
-                _logger.LogInformation("🔍 DEBUG: About to call GetParentMeterOptions()");
+                _logger.LogInformation("DEBUG: About to call GetParentMeterOptions()");
                 var parentOptions = await GetParentMeterOptions();
-                _logger.LogInformation("🔍 DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0);
+                _logger.LogInformation("DEBUG: GetParentMeterOptions() returned {Count} options", parentOptions?.Count ?? 0);
 
                 var response = new
                 {
@@ -49,7 +60,7 @@ namespace PoWorks_Rework.Controllers
                     parentOptions
                 };
 
-                _logger.LogInformation("🔍 DEBUG: Returning response with {RecordCount} records and {ParentCount} parent options",
+                _logger.LogInformation("DEBUG: Returning response with {RecordCount} records and {ParentCount} parent options",
                     records?.Count ?? 0, parentOptions?.Count ?? 0);
 
                 return Json(response);
@@ -65,6 +76,11 @@ namespace PoWorks_Rework.Controllers
                 return BadRequest($"Unexpected error: {ex.Message}");
             }
         }
+        /// <summary>
+        /// Imports meters parsed from a VAREXP.DAT file into the database.
+        /// </summary>
+        /// <param name="request">The import request containing the meters to import and their settings.</param>
+        /// <returns>JSON with import counts and any errors.</returns>
         [HttpPost]
         public async Task<IActionResult> ImportVarexpMeters([FromBody] ImportVarexpMetersRequest request)
         {
@@ -170,6 +186,10 @@ namespace PoWorks_Rework.Controllers
         #endregion
 
         #region Helper Methods
+        /// <summary>
+        /// Retrieves the active main-type meters as dropdown options for parent meter selection.
+        /// </summary>
+        /// <returns>A list of select list items for parent meter selection.</returns>
         private async Task<List<SelectListItem>> GetParentMeterOptions()
         {
             var options = new List<SelectListItem>
@@ -210,6 +230,12 @@ namespace PoWorks_Rework.Controllers
 
             return options;
         }
+        /// <summary>
+        /// Looks up an existing meter by its name.
+        /// </summary>
+        /// <param name="meterName">The meter name to look up.</param>
+        /// <param name="connection">The database connection to use.</param>
+        /// <returns>A dynamic object with the meter data, or null if not found.</returns>
         private async Task<dynamic> GetExistingMeterByNameAsync(string meterName, NpgsqlConnection connection)
         {
             var command = new NpgsqlCommand(@"
@@ -237,6 +263,12 @@ namespace PoWorks_Rework.Controllers
 
             return null;
         }
+        /// <summary>
+        /// Creates a new meter from a VAREXP import item.
+        /// </summary>
+        /// <param name="meter">The meter data to insert.</param>
+        /// <param name="createMissingParents">Whether to allow creating meters without a valid parent.</param>
+        /// <param name="connection">The database connection to use.</param>
         private async Task CreateNewVarexpMeterAsync(VarexpMeterImportItem meter, bool createMissingParents, NpgsqlConnection connection)
         {
             int? parentId = null;
@@ -280,6 +312,12 @@ namespace PoWorks_Rework.Controllers
             var newMeterId = await command.ExecuteScalarAsync();
             _logger.LogInformation($"Created meter {meter.MeterName} with ID {newMeterId}");
         }
+        /// <summary>
+        /// Updates an existing meter with data from a VAREXP import item.
+        /// </summary>
+        /// <param name="meterId">The ID of the meter to update.</param>
+        /// <param name="meter">The meter data to apply.</param>
+        /// <param name="connection">The database connection to use.</param>
         private async Task UpdateExistingVarexpMeterAsync(int meterId, VarexpMeterImportItem meter, NpgsqlConnection connection)
         {
             int? parentId = null;
@@ -306,6 +344,12 @@ namespace PoWorks_Rework.Controllers
             await command.ExecuteNonQueryAsync();
             _logger.LogInformation($"Updated meter {meter.MeterName} with ID {meterId}");
         }
+        /// <summary>
+        /// Checks whether a meter with the given ID exists in the database.
+        /// </summary>
+        /// <param name="meterId">The meter ID to check.</param>
+        /// <param name="connection">The database connection to use.</param>
+        /// <returns>True if the meter exists, otherwise false.</returns>
         private async Task<bool> CheckMeterExistsAsync(int meterId, NpgsqlConnection connection)
         {
             var command = new NpgsqlCommand(@"

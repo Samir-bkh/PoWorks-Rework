@@ -72,12 +72,22 @@ namespace PoWorks_Rework.Services
             return new SqlConnection(settings.ToConnectionString());
         }
 
+        /// <summary>
+        /// Initializes the SQL Server service with a single connection settings object.
+        /// </summary>
+        /// <param name="settings">The SQL Server settings to use.</param>
         public void Initialize(SqlServerSettings settings)
         {
             _currentSettings = settings;
             _isInitialized = true;
         }
 
+        /// <summary>
+        /// Removes a SQL Server connection from the collection by its ID.
+        /// The last remaining connection cannot be removed.
+        /// </summary>
+        /// <param name="connectionId">The connection ID to remove.</param>
+        /// <returns>True if the connection was removed, otherwise false.</returns>
         public bool RemoveConnection(string connectionId)
         {
             try
@@ -108,6 +118,12 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves the list of base tables available on the specified SQL Server connection.
+        /// Returns a set of default HDS table names if no tables are found.
+        /// </summary>
+        /// <param name="connectionId">The optional connection ID to query.</param>
+        /// <returns>A list of table names.</returns>
         public async Task<List<string>> GetAvailableTables(string connectionId = null)
         {
             if (!IsInitialized)
@@ -156,6 +172,9 @@ namespace PoWorks_Rework.Services
             return tables;
         }
 
+        /// <summary>
+        /// Loads the SQL Server connection settings from the PostgreSQL database.
+        /// </summary>
         public void LoadSettingsFromDatabase()
         {
             try
@@ -225,6 +244,11 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves the list of base tables from the current SQL Server connection.
+        /// Returns a set of default HDS table names if no tables are found.
+        /// </summary>
+        /// <returns>A list of table names.</returns>
         public async Task<List<string>> GetAvailableTables()
         {
             if (!IsInitialized)
@@ -273,6 +297,14 @@ namespace PoWorks_Rework.Services
             return tables;
         }
 
+        /// <summary>
+        /// Retrieves distinct meter names from a SQL Server table.
+        /// Returns sample meter data when no meters are found (for development).
+        /// </summary>
+        /// <param name="tableName">The table name to query.</param>
+        /// <param name="limit">The maximum number of meters to return.</param>
+        /// <param name="connectionId">The optional connection ID to use.</param>
+        /// <returns>A list of HDS meter items.</returns>
         public async Task<List<HDSMeterItem>> GetDistinctMeterNames(string tableName, int? limit = null, string connectionId = null)
         {
             if (!IsInitialized)
@@ -372,6 +404,11 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
+        /// <summary>
+        /// Validates that a table name only contains safe characters.
+        /// </summary>
+        /// <param name="tableName">The table name to validate.</param>
+        /// <returns>True if the table name is valid, otherwise false.</returns>
         private bool IsValidTableName(string tableName)
         {
             if (string.IsNullOrWhiteSpace(tableName))
@@ -382,11 +419,19 @@ namespace PoWorks_Rework.Services
         }
 
 
+        /// <summary>
+        /// Returns all configured SQL Server connections.
+        /// </summary>
+        /// <returns>A list of SQL Server connection settings.</returns>
         public List<SqlServerSettings> GetAllConnections()
         {
             return _connectionCollection.Connections.ToList();
         }
 
+        /// <summary>
+        /// Initializes the SQL Server service with a list of connection settings.
+        /// </summary>
+        /// <param name="connections">The list of SQL Server connection settings.</param>
         public void InitializeMultiple(List<SqlServerSettings> connections)
         {
             _connectionCollection = new SqlServerConnectionCollection();
@@ -399,6 +444,12 @@ namespace PoWorks_Rework.Services
             _isInitialized = connections.Any();
         }
 
+        /// <summary>
+        /// Validates that a table exists on the specified SQL Server connection.
+        /// </summary>
+        /// <param name="tableName">The table name to validate.</param>
+        /// <param name="connectionId">The optional connection ID to use.</param>
+        /// <returns>True if the table exists, otherwise false.</returns>
         public async Task<bool> ValidateTableExists(string tableName, string connectionId = null)
         {
             if (!IsInitialized)

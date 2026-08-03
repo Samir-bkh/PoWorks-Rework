@@ -1,8 +1,19 @@
-﻿@model PoWorks_Rework.Models.MeterManagementViewModel
+﻿@* 
+    Meter Management View (PoWorks)
+    
+    Provides a comprehensive management interface for metering infrastructure.
+    Features include advanced search/filtering, paginated results table with single and 
+    cross-page bulk selection ("Select all matching in database"), individual meter details 
+    editing (parent hierarchy, label, tenant assignment, active status), sub-meter 
+    hierarchy visualization, bulk edit modal (multi-property updates), and bulk deletion capabilities.
+*@
+
+@model PoWorks_Rework.Models.MeterManagementViewModel
 @{
     ViewData["Title"] = "Meter Management";
 }
 
+@* Feedback Alerts: Operations Status Notifications *@
 @if (TempData["SuccessMessage"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -20,11 +31,13 @@
 }
 
 <div class="card">
+    @* Card Header *@
     <div class="card-header d-flex justify-content-between align-items-center">
         <h4>Meters</h4>
     </div>
     <div class="card-body">
-        <!-- Tabs -->
+        
+        @* Section Navigation Tabs *@
         <ul class="nav nav-tabs mb-4">
             <li class="nav-item">
                 <a class="nav-link" asp-controller="Meter" asp-action="Readings">Meter Readings</a>
@@ -34,9 +47,10 @@
             </li>
         </ul>
 
-        <!-- Search Area -->
+        @* SECTION 1: Meter Search and Filter Form *@
         <form asp-action="Search" method="post" id="searchForm">
             <div class="meter-search-area mb-4">
+                @* Criteria Selection Row *@
                 <div class="row mb-2">
                     <div class="col-md-2">
                         <label for="SearchField" class="form-label">Search Criteria</label>
@@ -49,20 +63,27 @@
                         </select>
                     </div>
                 </div>
+
+                @* Dynamic Search Value Input Row *@
                 <div class="row mb-3">
                     <div class="col-md-2">
                         <label for="SearchTerm" class="form-label">Search Term</label>
                     </div>
                     <div class="col-md-4">
                         <div id="searchTermContainer">
+                            @* Free Text Search (Name/Label) *@
                             <input type="text" class="form-control" id="textInput" asp-for="SearchCriteria.SearchTerm"
                                    style="display: @(Model.SearchCriteria?.SearchField == "Name" ? "block" : "none")">
+                            
+                            @* Type Select Dropdown *@
                             <select class="form-select" id="typeSelect" name="SearchCriteria.SearchTerm"
                                     style="display: @(Model.SearchCriteria?.SearchField == "Type" ? "block" : "none")">
                                 <option value="">Select Type</option>
                                 <option value="Main" selected="@(Model.SearchCriteria?.SearchTerm == "Main")">Main</option>
                                 <option value="Sub" selected="@(Model.SearchCriteria?.SearchTerm == "Sub")">Sub</option>
                             </select>
+
+                            @* Tenant Select Dropdown *@
                             <select class="form-select" id="tenantSelect" name="SearchCriteria.SearchTerm"
                                     style="display: @(Model.SearchCriteria?.SearchField == "Tenant" ? "block" : "none")">
                                 <option value="">Select Tenant</option>
@@ -75,6 +96,8 @@
                             </select>
                         </div>
                     </div>
+                    
+                    @* Search Actions *@
                     <div class="col-md-6 d-flex align-items-center">
                         <button type="submit" class="btn btn-primary me-2">Search</button>
                         <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#newMeterModal">New Meter</button>
@@ -83,13 +106,14 @@
             </div>
         </form>
 
-        <!-- Search Results -->
+        @* SECTION 2: Search Results Table Container *@
         <div class="card mb-4">
             <div class="card-header bg-light">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h5 class="mb-0">Search Results</h5>
                 </div>
                 
+                @* Bulk Action Operations Bar (Revealed dynamically when items are checked) *@
                 <div id="bulkActionBar" class="bg-primary-subtle p-2 rounded d-flex align-items-center justify-content-between border border-primary" style="display: none !important;">
                     <div>
                         <span class="badge bg-primary fs-6"><span id="selectedCount">0</span> selected</span>
@@ -102,9 +126,11 @@
                     </div>
                 </div>
             </div>
+
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover mb-0">
+                        @* Table Headers *@
                         <thead>
                             <tr>
                                 <th class="text-center" style="width: 50px;">
@@ -119,7 +145,9 @@
                                 <th>Active</th>
                             </tr>
                         </thead>
+
                         <tbody>
+                            @* Banner Row: Cross-Page Global Selection Option *@
                             <tr id="selectAllBannerRow" style="display: none;">
                                 <td colspan="8" class="text-center bg-primary-subtle text-primary border-primary py-2">
                                     <span id="bannerTextNormal">
@@ -137,6 +165,7 @@
                                 </td>
                             </tr>
                             
+                            @* Result Rows *@
                             @if(Model.SearchResults != null) {
                                 @foreach (var meter in Model.SearchResults)
                                 {
@@ -156,6 +185,8 @@
                                     </tr>
                                 }
                             }
+                            
+                            @* Empty State Row *@
                             @if (Model.SearchResults == null || !Model.SearchResults.Any())
                             {
                                 <tr><td colspan="8" class="text-center">No meters found.</td></tr>
@@ -164,6 +195,7 @@
                     </table>
                 </div>
                 
+                @* Table Pagination Controls *@
                 <div class="d-flex justify-content-between align-items-center p-2 bg-light border-top">
                     <div>
                         <nav aria-label="Page navigation">
@@ -196,9 +228,10 @@
             </div>
         </div>
 
+        @* SECTION 3: Selected Meter Configuration & Sub-Meter Hierarchy *@
         @if (Model.SelectedMeter != null)
         {
-            <!-- Meter Details -->
+            @* Detailed Configuration Form *@
             <form method="post">
                 <div class="card mb-4">
                     <div class="card-header bg-light">
@@ -207,6 +240,7 @@
                     <div class="card-body">
                         <input type="hidden" name="Id" value="@Model.SelectedMeter.Id" />
 
+                        @* Name and Parent Meter Selection *@
                         <div class="row mb-3">
                             <div class="col-md-2"><label for="Name" class="form-label">Name</label></div>
                             <div class="col-md-4">
@@ -229,7 +263,7 @@
                             </div>
                         </div>
 
-                        <!-- Label field row -->
+                        @* Display Label and Tenant Association *@
                         <div class="row mb-3">
                             <div class="col-md-2"><label for="Label" class="form-label">Label</label></div>
                             <div class="col-md-4">
@@ -243,6 +277,7 @@
                             </div>
                         </div>
 
+                        @* Engineering Unit and Read-Only Last Reading *@
                         <div class="row mb-3">
                             <div class="col-md-2"><label for="Unit" class="form-label">Unit</label></div>
                             <div class="col-md-4"><input type="text" class="form-control" id="Unit" name="Unit" value="@Model.SelectedMeter.Unit"></div>
@@ -250,6 +285,7 @@
                             <div class="col-md-4"><input type="text" class="form-control bg-light" id="LastReading" name="LastReading" value="@Model.SelectedMeter.LastReading" readonly></div>
                         </div>
 
+                        @* Meter Classification Type and Active Status *@
                         <div class="row mb-3">
                             <div class="col-md-2"><label for="Type" class="form-label">Type</label></div>
                             <div class="col-md-4">
@@ -269,6 +305,8 @@
                                 </div>
                             </div>
                         </div>
+
+                        @* Individual Meter Actions *@
                         <div class="text-end">
                             <button type="submit" class="btn btn-primary me-2" asp-action="Update">Update</button>
                             <button type="submit" class="btn btn-success" asp-action="Create">Save as New</button>
@@ -277,7 +315,7 @@
                 </div>
             </form>
             
-            <!-- Sub Meters -->
+            @* Sub-Meters Hierarchy Grid *@
             <div class="card">
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Sub Meters</h5>
@@ -323,7 +361,7 @@
     </div>
 </div>
 
-<!-- Bulk Edit Modal -->
+@* MODAL 1: Bulk Edit Selected Meters *@
 <div class="modal fade" id="bulkEditModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -332,6 +370,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                @* Bulk Field: Tenant Update *@
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="cbUpdateTenant" onchange="toggleBulkField('bulkTenantSelect')">
                     <label class="form-check-label fw-bold" for="cbUpdateTenant">Change Tenant</label>
@@ -346,12 +385,14 @@
                     }
                 </select>
 
+                @* Bulk Field: Unit Update *@
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="cbUpdateUnit" onchange="toggleBulkField('bulkUnitInput')">
                     <label class="form-check-label fw-bold" for="cbUpdateUnit">Change Unit</label>
                 </div>
                 <input type="text" class="form-control mb-4" id="bulkUnitInput" disabled placeholder="e.g. kWh, m3...">
 
+                @* Bulk Field: Meter Type Update *@
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="cbUpdateType" onchange="toggleBulkField('bulkTypeSelect')">
                     <label class="form-check-label fw-bold" for="cbUpdateType">Change Type</label>
@@ -361,6 +402,7 @@
                     <option value="Sub">Sub</option>
                 </select>
 
+                @* Bulk Field: Parent Meter Hierarchy Update *@
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="cbUpdateParent" onchange="toggleBulkField('bulkParentSelect')">
                     <label class="form-check-label fw-bold" for="cbUpdateParent">Change Parent Meter</label>
@@ -383,7 +425,7 @@
     </div>
 </div>
 
-<!-- New Meter Modal -->
+@* MODAL 2: Create Single New Meter *@
 <div class="modal fade" id="newMeterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -393,7 +435,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                     <div class="row mb-3">
+                    <div class="row mb-3">
                         <div class="col-md-3"><label class="form-label">Name</label></div>
                         <div class="col-md-9"><input type="text" class="form-control" name="Name" required></div>
                     </div>
@@ -411,8 +453,13 @@
     </div>
 </div>
 
+@* Client-Side Management Scripts *@
 @section Scripts {
     <script>
+        /**
+         * Dynamic Search Input Handler
+         * Updates input element visibility and name attributes based on the selected search field criteria.
+         */
         function updateMeterSearchOptions() {
             const criteria = document.getElementById('SearchField').value;
             
@@ -436,6 +483,7 @@
             }
         }
 
+        // Initialize view state and restore selected tenant options on page load
         document.addEventListener('DOMContentLoaded', function() {
             updateMeterSearchOptions();
             
@@ -453,8 +501,12 @@
             }
         });
 
+        // Global flag tracking whether "Select All Matching Across Database Pages" is active
         let isSelectingAcrossPages = false;
         
+        /**
+         * Updates the bulk actions bar visibility, counter, and selection banner states.
+         */
         function updateBulkUI() {
             const selectAll = document.getElementById('selectAllMeters');
             const checkboxes = document.querySelectorAll('.meter-checkbox');
@@ -488,6 +540,9 @@
             }
         }
 
+        /**
+         * Activates global selection across all paginated records in the database.
+         */
         window.selectAllAcrossPages = function(e) {
             e.preventDefault();
             isSelectingAcrossPages = true;
@@ -496,6 +551,9 @@
             updateBulkUI();
         };
 
+        /**
+         * Resets cross-page global selection state.
+         */
         window.clearAllAcrossPages = function(e) {
             e.preventDefault();
             isSelectingAcrossPages = false;
@@ -504,27 +562,38 @@
             updateBulkUI();
         };
 
+        // Header checkbox listener to toggle all visible rows
         document.getElementById('selectAllMeters')?.addEventListener('change', e => {
             isSelectingAcrossPages = false;
             document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = e.target.checked);
             updateBulkUI();
         });
 
+        // Individual row checkbox listeners
         document.querySelectorAll('.meter-checkbox').forEach(cb => cb.addEventListener('change', () => {
             isSelectingAcrossPages = false;
             updateBulkUI();
         }));
 
+        /**
+         * Enables/disables form inputs within the bulk edit modal.
+         */
         window.toggleBulkField = function(fieldId) {
             const field = document.getElementById(fieldId);
             field.disabled = !field.disabled;
         };
 
+        /**
+         * Unassigns tenant associations from all selected meters.
+         */
         window.unassignBulkTenant = function() {
             if(!confirm('Are you sure you want to unassign tenants for selected meters?')) return;
             sendBulkEditRequest({ UpdateTenant: true, TenantId: null });
         };
 
+        /**
+         * Compiles user inputs from the bulk edit modal and submits the request.
+         */
         window.applyBulkEdit = function() {
             const updateTenant = document.getElementById('cbUpdateTenant').checked;
             const tenantId = document.getElementById('bulkTenantSelect').value;
@@ -548,6 +617,9 @@
             });
         };
 
+        /**
+         * Sends an asynchronous bulk edit HTTP POST request to the server API.
+         */
         function sendBulkEditRequest(editData) {
             const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
             const searchField = document.getElementById('SearchField') ? document.getElementById('SearchField').value : null;
@@ -573,6 +645,9 @@
             });
         }
 
+        /**
+         * Sends an asynchronous bulk deletion HTTP POST request after user confirmation.
+         */
         window.deleteBulkMeters = function() {
             const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
             if(!confirm(`Warning: You are about to permanently delete ${selectedIds.length} meters and all their historical readings. Are you sure?`)) return;

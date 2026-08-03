@@ -24,7 +24,7 @@ function setupUnifiedEventDelegation() {
     document.body.addEventListener('click', function (event) {
         // Unified Print Button
         if (event.target.id === 'printSelectedBtn' || event.target.closest('#printSelectedBtn')) {
-            console.log('🎯 Unified Print Button clicked');
+            console.log('Unified Print Button clicked');
             event.preventDefault();
             handleUnifiedPrint();
             return;
@@ -32,7 +32,7 @@ function setupUnifiedEventDelegation() {
 
         // Unified Import Button
         if (event.target.id === 'importSelectedBtn' || event.target.closest('#importSelectedBtn')) {
-            console.log('🔧 Unified Import Button clicked');
+            console.log(' Unified Import Button clicked');
             event.preventDefault();
             handleImport();
             return;
@@ -40,7 +40,7 @@ function setupUnifiedEventDelegation() {
 
         // Unified Select All Button
         if (event.target.id === 'selectAllBtn' || event.target.closest('#selectAllBtn')) {
-            console.log('🔧 Unified Select All Button clicked');
+            console.log(' Unified Select All Button clicked');
             event.preventDefault();
             handleSelectAll();
             return;
@@ -48,7 +48,7 @@ function setupUnifiedEventDelegation() {
 
         // Unified Deselect All Button
         if (event.target.id === 'deselectAllBtn' || event.target.closest('#deselectAllBtn')) {
-            console.log('🔧 Unified Deselect All Button clicked');
+            console.log(' Unified Deselect All Button clicked');
             event.preventDefault();
             handleDeselectAll();
             return;
@@ -59,7 +59,7 @@ function setupUnifiedEventDelegation() {
     document.body.addEventListener('change', function (event) {
         if (event.target.classList.contains('meter-checkbox') ||
             event.target.classList.contains('web-service-variable-checkbox')) {
-            console.log('🔧 Checkbox changed, updating counter');
+            console.log(' Checkbox changed, updating counter');
             updateMeterCounter();
         }
     });

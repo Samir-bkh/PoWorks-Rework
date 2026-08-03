@@ -1,14 +1,26 @@
-﻿@{
+﻿@*
+    Energy Consumption Dashboard View (PoWorks)
+
+Provides an interactive analytics dashboard for monitoring, comparing, and analyzing
+    energy consumption across workspace tenants and meters.
+    Features dynamic timeframes (Daily, Monthly, Annual), custom date range filters, multi-meter
+    comparison with maximum curve safeguards, amCharts integration, top consumer rankings,
+    and key performance metrics (KPI cards).
+*@
+
+@{
     ViewData["Title"] = "Energy Consumption Dashboard";
     Layout = "_Layout";
 }
 
+@* Workspace Context Banner *@
 <div class="alert alert-info shadow-sm mb-4">
     <i class="bi bi-building"></i> <strong>Active Workspace :</strong> @ViewData["CurrentTenant"]
 </div>
 
+@* Dashboard View Layout & Fullscreen Chart Styles *@
 <style>
-    /* Full Screen Mode for the chart */
+    /* Fullscreen Mode Layout Overrides for amCharts Container */
     .chart-fullscreen {
         position: fixed !important;
         top: 0;
@@ -20,14 +32,11 @@
         border-radius: 0;
     }
 
-
-
         .chart-fullscreen .card-body {
             height: calc(100vh - 70px) !important;
             display: flex;
             flex-direction: column;
         }
-
 
         .chart-fullscreen #chartdiv {
             max-height: none !important;
@@ -37,6 +46,7 @@
 </style>
 
 <div class="container-fluid mt-4">
+    @* System / Data Warning Alerts *@
     @if (TempData["WarningMessage"] != null)
     {
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
@@ -45,13 +55,14 @@
         </div>
     }
 
+    @* Page Title *@
     <div class="row">
         <div class="col-12">
             <h2>Energy Consumption Analytics</h2>
         </div>
     </div>
 
-    <!-- Filters Section -->
+    @* SECTION 1: Analytics Filters & Controls *@
     <div class="row mt-3">
         <div class="col-12">
             <div class="card">
@@ -60,7 +71,7 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <!-- Date Filter -->
+                        @* Hidden Legacy Date Range Selector *@
                         <div class="col-md-2 d-none">
                             <div class="form-group">
                                 <label for="dateFilter">Date Range</label>
@@ -72,7 +83,7 @@
                             </div>
                         </div>
 
-                        <!-- Tenant Filter (Optional) -->
+                        @* Tenant Filter (Optional Scope Restriction) *@
                         <div class="col-md-2">
                             <div class="form-group">
                                 <label for="tenantFilter">Tenant (Optional)</label>
@@ -82,7 +93,7 @@
                             </div>
                         </div>
 
-                        <!-- Meter Filter (Multi-Select with Search) -->
+                        @* Multi-Select Meter Filter Dropdown with Search Support *@
                         <div class="col-md-3">
                             <div class="form-group">
                                 <label>Meters to compare</label>
@@ -99,7 +110,7 @@
                             </div>
                         </div>
 
-                        <!-- Default View / Top Consumers -->
+                        @* Default Consumer View Limit *@
                         <div class="col-md-2">
                             <div class="form-group">
                                 <label for="meterLimit">Default View</label>
@@ -111,7 +122,7 @@
                             </div>
                         </div>
 
-                        <!-- Chart Type -->
+                        @* Visualization Chart Type *@
                         <div class="col-md-2">
                             <div class="form-group">
                                 <label for="chartType">Chart Type</label>
@@ -123,7 +134,7 @@
                             </div>
                         </div>
 
-                        <!-- Quick Actions -->
+                        @* Refresh Quick Action Button *@
                         <div class="col-md-1">
                             <div class="form-group">
                                 <label>&nbsp;</label>
@@ -136,7 +147,9 @@
                         </div>
                     </div>
 
+                    @* Date Range & Visual Limits Controls *@
                     <div class="row mt-3">
+                        @* Custom Date Range Selection *@
                         <div class="col-md-4">
                             <div class="form-group">
                                 <label for="dateRange">Date Range</label>
@@ -148,7 +161,7 @@
                             </div>
                         </div>
 
-                        <!-- NEW: Max curves displayed at once (avoids unreadable spaghetti charts) -->
+                        @* Maximum Visual Curve Threshold Selector (Prevents chart cluttering) *@
                         <div class="col-md-2">
                             <div class="form-group">
                                 <label for="maxCurves" title="Au-delà de ce nombre, les meters restants sont regroupés dans une courbe 'Autres'">
@@ -163,13 +176,14 @@
                             </div>
                         </div>
 
+                        @* Filter Trigger Actions *@
                         <div class="col-md-6 d-flex align-items-end">
                             <button id="applyFilters" class="btn btn-primary mr-2">Apply Filters</button>
                             <button id="resetFilters" class="btn btn-secondary">Reset</button>
                         </div>
                     </div>
 
-                    <!-- NEW: Comparison mode options - only visible when "Comparison" is selected above -->
+                    @* Comparison Mode Period Options (Toggled via JavaScript) *@
                     <div class="row mt-3 d-none" id="comparisonOptions">
                         <div class="col-md-4">
                             <div class="form-group">
@@ -193,7 +207,7 @@
                         </div>
                     </div>
 
-                    <!-- Data Status Information -->
+                    @* Dynamic Data Loading & Status Status Indicator *@
                     <div class="row mt-2">
                         <div class="col-12">
                             <div id="dataStatus" class="alert alert-info" style="display: none;">
@@ -206,14 +220,16 @@
         </div>
     </div>
 
-    <!-- Chart Section -->
+    @* SECTION 2: Chart Analytics Container *@
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
+                @* Chart Toolbar: Display Mode & Quick Action Controls *@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-3">
                         <h5 class="mb-0">Energy Consumption</h5>
 
+                        @* Standard vs Comparison View Mode Toggle *@
                         <div class="btn-group btn-group-sm" role="group" aria-label="Display mode">
                             <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
                             <label class="btn btn-outline-primary" for="modeStandard"><i class="bi bi-graph-up"></i> Standard</label>
@@ -223,6 +239,7 @@
                         </div>
                     </div>
 
+                    @* Chart Navigation Tools *@
                     <div class="btn-group btn-group-sm" role="group">
                         <button id="resetZoomBtn" class="btn btn-outline-secondary" type="button" title="Reset the zoom">
                             <i class="bi bi-arrows-angle-expand"></i> Zoom
@@ -238,8 +255,9 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body">
 
+                <div class="card-body">
+                    @* Timeframe Granularity Tabs *@
                     <div class="row mb-3">
                         <div class="col-12 d-flex justify-content-center">
                             <div class="btn-group shadow-sm" role="group">
@@ -250,12 +268,13 @@
                         </div>
                     </div>
 
-                    <!-- NEW: shown when the selection exceeds "Max courbes" -->
+                    @* Curve Exceeded Warning Banner *@
                     <div id="curveLimitWarning" class="alert alert-warning d-none mb-3">
                         <i class="bi bi-exclamation-triangle"></i>
                         <span id="curveLimitWarningText"></span>
                     </div>
 
+                    @* Chart Loading Spinner *@
                     <div id="loadingSpinner" class="text-center d-none">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -263,14 +282,14 @@
                         <p class="mt-2 text-muted">Loading chart data...</p>
                     </div>
 
-
+                    @* Main amCharts Rendering Target *@
                     <div id="chartdiv" style="width: 100%; height: 450px;"></div>
                 </div>
             </div>
         </div>
     </div>
 
-
+    @* SECTION 3: Top Consumers Leaderboard *@
     <div class="row mt-4">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
@@ -286,7 +305,9 @@
         </div>
     </div>
 
+    @* SECTION 4: Key Performance Indicator (KPI) Summary Cards *@
     <div class="row mt-4">
+        @* KPI 1: Total Consumption *@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -303,6 +324,8 @@
                 </div>
             </div>
         </div>
+
+        @* KPI 2: Average Daily Usage *@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -319,6 +342,8 @@
                 </div>
             </div>
         </div>
+
+        @* KPI 3: Peak Usage Record *@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -335,6 +360,8 @@
                 </div>
             </div>
         </div>
+
+        @* KPI 4: Active Meters Count *@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -352,13 +379,16 @@
             </div>
         </div>
     </div>
+</div>
 
-    @section Scripts {
+@* SECTION 5: External Dependencies & Dashboard Scripts *@
+@section Scripts {
+    @* amCharts 5 Visualization Engine *@
+    <script src="~/lib/amcharts/lib/5/index.js"></script>
+    <script src="~/lib/amcharts/lib/5/xy.js"></script>
+    <script src="~/lib/amcharts/lib/5/themes/Animated.js"></script>
+    <script src="~/lib/amcharts/lib/5/plugins/exporting.js"></script>
 
-        <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
-        <script src="https://cdn.amcharts.com/lib/5/xy.js"></script>
-        <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
-        <script src="https://cdn.amcharts.com/lib/5/plugins/exporting.js"></script>
-
-        <script src="~/js/energy-dashboard.js"></script>
-    }
+    @* Custom Dashboard Logic *@
+    <script src="~/js/energy-dashboard.js"></script>
+}

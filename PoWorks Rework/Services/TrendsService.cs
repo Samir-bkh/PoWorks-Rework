@@ -83,6 +83,15 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves trend data for a previously created trend request.
+        /// Handles authentication retries if the token expires.
+        /// </summary>
+        /// <param name="requestId">The request ID returned from CreateTrendRequestAsync.</param>
+        /// <param name="startDate">The start of the data range.</param>
+        /// <param name="endDate">The end of the data range.</param>
+        /// <param name="settings">The web service connection settings to use.</param>
+        /// <returns>A TrendDataResult with the retrieved data points.</returns>
         public async Task<TrendDataResult> GetTrendDataAsync(string requestId, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings)
         {
             if (string.IsNullOrEmpty(requestId))
@@ -129,6 +138,14 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Processes trends data for multiple variables concurrently with a throttling limit.
+        /// </summary>
+        /// <param name="variableNames">The list of variable names to process.</param>
+        /// <param name="startDate">The start of the data range.</param>
+        /// <param name="endDate">The end of the data range.</param>
+        /// <param name="settings">The web service connection settings to use.</param>
+        /// <returns>A list of per-variable trend results.</returns>
         public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(List<string> variableNames, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings)
         {
             var throttler = new SemaphoreSlim(15);

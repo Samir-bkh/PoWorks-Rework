@@ -7,10 +7,18 @@ using System.Data;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for viewing, filtering, exporting, and computing statistics on meter readings.
+    /// Supports raw, daily, monthly, and yearly aggregated reading views.
+    /// </summary>
     public class MeterReadingsController : BaseController
     {
         private readonly ILogger<MeterReadingsController> _logger;
         private readonly ICompanyContext _companyContext;
+
+        /// <summary>
+        /// Initializes the meter readings controller with database, company context, and logging dependencies.
+        /// </summary>
         public MeterReadingsController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<MeterReadingsController> logger)
             : base(databaseService)
         {
@@ -18,6 +26,14 @@ namespace PoWorks_Rework.Controllers
             _logger = logger;
         }
 
+        /// <summary>
+        /// Displays the meter readings page with filterable and paginated reading data.
+        /// </summary>
+        /// <param name="meterIds">Comma-separated list of meter IDs to filter by.</param>
+        /// <param name="viewType">The aggregation view type (raw, daily, monthly, yearly).</param>
+        /// <param name="page">The page number to display (1-based).</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <returns>The meter readings index view.</returns>
         public async Task<IActionResult> Index(string meterIds, string viewType = "raw", int page = 1, int pageSize = 50)
         {
             if (!_databaseService.IsInitialized)
@@ -51,6 +67,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Parses a comma-separated string of meter IDs into a distinct list of valid IDs.
+        /// </summary>
+        /// <param name="meterIds">The comma-separated meter ID string.</param>
+        /// <returns>A distinct list of positive meter IDs.</returns>
         private List<int> ParseMeterIds(string meterIds)
         {
             if (string.IsNullOrWhiteSpace(meterIds))
@@ -63,6 +84,10 @@ namespace PoWorks_Rework.Controllers
                           .ToList();
         }
 
+        /// <summary>
+        /// Loads readings, total count, pagination, and multi-meter statistics into the view model.
+        /// </summary>
+        /// <param name="viewModel">The view model to populate.</param>
         private async Task LoadReadingsData(MeterReadingsViewModel viewModel)
         {
             viewModel.Readings = await GetReadingsByType(
@@ -93,6 +118,16 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Returns readings as JSON with pagination for AJAX requests.
+        /// </summary>
+        /// <param name="meterIds">Comma-separated list of meter IDs to filter by.</param>
+        /// <param name="viewType">The aggregation view type (raw, daily, monthly, yearly).</param>
+        /// <param name="page">The page number to retrieve.</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <returns>JSON with the readings and pagination information.</returns>
         [HttpGet]
         public async Task<IActionResult> GetReadings(string meterIds, string viewType = "raw", int page = 1, int pageSize = 50, DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -127,6 +162,13 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Returns aggregate statistics for the selected meters as JSON.
+        /// </summary>
+        /// <param name="meterIds">Comma-separated list of meter IDs to compute stats for.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <returns>JSON with the computed meter statistics.</returns>
         [HttpGet]
         public async Task<IActionResult> GetMeterStats(string meterIds, DateTime? startDate = null, DateTime? endDate = null)
         {
@@ -148,6 +190,15 @@ namespace PoWorks_Rework.Controllers
 
 
 
+        /// <summary>
+        /// Exports the filtered meter readings to a CSV or JSON file.
+        /// </summary>
+        /// <param name="meterIds">Comma-separated list of meter IDs to export.</param>
+        /// <param name="viewType">The aggregation view type (raw, daily, monthly, yearly).</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <param name="format">The export format (csv or json).</param>
+        /// <returns>A file download containing the exported readings.</returns>
         [HttpGet]
         public async Task<IActionResult> Export(string meterIds, string viewType = "raw", DateTime? startDate = null, DateTime? endDate = null, string format = "csv")
         {
@@ -228,6 +279,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Escapes a value for safe inclusion in a CSV file.
+        /// </summary>
+        /// <param name="value">The value to escape.</param>
+        /// <returns>The escaped CSV value.</returns>
         private string EscapeCsv(string value)
         {
             if (string.IsNullOrEmpty(value)) return "";
@@ -240,6 +296,16 @@ namespace PoWorks_Rework.Controllers
 
         #region Private Helper Methods
 
+        /// <summary>
+        /// Retrieves meter readings from the appropriate table based on the view type.
+        /// </summary>
+        /// <param name="meterIds">The list of meter IDs to filter by.</param>
+        /// <param name="viewType">The aggregation view type (raw, daily, monthly, yearly).</param>
+        /// <param name="page">The page number to retrieve.</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <returns>A list of meter readings.</returns>
         private async Task<List<MeterReading>> GetReadingsByType(List<int> meterIds, string viewType, int page, int pageSize, DateTime? startDate = null, DateTime? endDate = null)
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -258,6 +324,14 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
+        /// <summary>
+        /// Counts the total number of readings matching the given filters.
+        /// </summary>
+        /// <param name="meterIds">The list of meter IDs to filter by.</param>
+        /// <param name="viewType">The aggregation view type (raw, daily, monthly, yearly).</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <returns>The total count of matching readings.</returns>
         private async Task<int> GetReadingsCount(List<int> meterIds, string viewType, DateTime? startDate = null, DateTime? endDate = null)
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -275,6 +349,13 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
+        /// <summary>
+        /// Computes aggregate statistics across the selected meters.
+        /// </summary>
+        /// <param name="meterIds">The list of meter IDs to compute stats for.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <returns>A MeterStats object with the computed aggregates.</returns>
         private async Task<MeterStats> CalculateMultiMeterStats(List<int> meterIds, DateTime? startDate = null, DateTime? endDate = null)
         {
             var stats = new MeterStats();
@@ -335,6 +416,10 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
+        /// <summary>
+        /// Retrieves the active meters belonging to the current company.
+        /// </summary>
+        /// <returns>A list of meter options.</returns>
         private async Task<List<MeterOption>> GetAvailableMeters()
         {
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -368,6 +453,16 @@ namespace PoWorks_Rework.Controllers
             });
         }
 
+        /// <summary>
+        /// Builds a SQL query for retrieving readings with filters and pagination.
+        /// </summary>
+        /// <param name="tableName">The reading table to query.</param>
+        /// <param name="meterIds">The list of meter IDs to filter by.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <param name="page">The page number to retrieve.</param>
+        /// <param name="pageSize">The number of results per page.</param>
+        /// <returns>The constructed SQL query string.</returns>
         private string BuildReadingsQuery(string tableName, List<int> meterIds, DateTime? startDate, DateTime? endDate, int page, int pageSize)
         {
             var conditions = new List<string> { "m.\"CompanyId\" = @CompanyId" };
@@ -436,6 +531,14 @@ namespace PoWorks_Rework.Controllers
         LIMIT @pageSize OFFSET @offset";
         }
 
+        /// <summary>
+        /// Builds a SQL count query for the given table and filters.
+        /// </summary>
+        /// <param name="tableName">The reading table to query.</param>
+        /// <param name="meterIds">The list of meter IDs to filter by.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <returns>The constructed SQL count query string.</returns>
         private string BuildCountQuery(string tableName, List<int> meterIds, DateTime? startDate, DateTime? endDate)
         {
             var conditions = new List<string> { "m.\"CompanyId\" = @CompanyId" };
@@ -481,6 +584,13 @@ namespace PoWorks_Rework.Controllers
         {whereClause}";
         }
 
+        /// <summary>
+        /// Adds date filter parameters to the given command.
+        /// End dates at midnight are extended to the end of the day.
+        /// </summary>
+        /// <param name="command">The command to add parameters to.</param>
+        /// <param name="startDate">Optional start date.</param>
+        /// <param name="endDate">Optional end date.</param>
         private void AddDateParameters(NpgsqlCommand command, DateTime? startDate, DateTime? endDate)
         {
             if (startDate.HasValue) command.Parameters.AddWithValue("@startDate", startDate.Value);
@@ -497,12 +607,23 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Adds pagination parameters (limit and offset) to the given command.
+        /// </summary>
+        /// <param name="command">The command to add parameters to.</param>
+        /// <param name="page">The page number (1-based).</param>
+        /// <param name="pageSize">The number of results per page.</param>
         private void AddPaginationParameters(NpgsqlCommand command, int page, int pageSize)
         {
             command.Parameters.AddWithValue("@pageSize", pageSize);
             command.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
         }
 
+        /// <summary>
+        /// Maps a view type string to its corresponding reading table name.
+        /// </summary>
+        /// <param name="viewType">The view type (raw, daily, monthly, yearly).</param>
+        /// <returns>The table name for the given view type.</returns>
         private string GetTableNameForViewType(string viewType)
         {
             return viewType.ToLower() switch
@@ -514,6 +635,12 @@ namespace PoWorks_Rework.Controllers
             };
         }
 
+        /// <summary>
+        /// Reads meter reading entities from a data reader, mapping columns based on the view type.
+        /// </summary>
+        /// <param name="reader">The data reader to read from.</param>
+        /// <param name="viewType">The aggregation view type used to determine which columns to map.</param>
+        /// <returns>A list of meter readings.</returns>
         private async Task<List<MeterReading>> ReadMeterReadingsFromDataReader(NpgsqlDataReader reader, string viewType)
         {
             var readings = new List<MeterReading>();
@@ -568,8 +695,17 @@ namespace PoWorks_Rework.Controllers
 
 
 
+    /// <summary>
+    /// Extension methods for NpgsqlDataReader.
+    /// </summary>
     public static class NpgsqlDataReaderExtensions
     {
+        /// <summary>
+        /// Checks whether the data reader contains the specified column.
+        /// </summary>
+        /// <param name="reader">The data reader to check.</param>
+        /// <param name="columnName">The column name to look for.</param>
+        /// <returns>True if the column exists, otherwise false.</returns>
         public static bool HasColumn(this NpgsqlDataReader reader, string columnName)
         {
             try

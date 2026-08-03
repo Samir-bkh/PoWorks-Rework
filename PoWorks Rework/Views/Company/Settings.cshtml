@@ -1,20 +1,37 @@
-﻿@model PoWorks_Rework.Models.CompanySettings
+﻿@*
+    Company Settings View (PoWorks)
+
+Provides an accordion-based configuration interface for system-wide company settings.
+    Organized into collapsible sections: General system preferences (date/time formats,
+    reading interval, output directory), Invoice Numbering configuration (prefix, suffix,
+    digit length, formatting), Email Server credentials (SMTP server, authentication),
+    and SMS Gateway configuration (API link, credentials).
+*@
+
+@model PoWorks_Rework.Models.CompanySettings
 @{
     ViewData["Title"] = "Company Settings";
 }
 
 <div class="card">
+    @* Top Header: Page Title & Form Submission Controls *@
     <div class="card-header d-flex justify-content-between align-items-center">
         <h4>Company Settings</h4>
         <div>
+            @* Submits the main configuration form *@
             <button type="submit" form="companySettingsForm" class="btn btn-primary me-2">Save</button>
             <button type="button" class="btn btn-secondary">Cancel</button>
         </div>
     </div>
+
     <div class="card-body">
+        @* Main Settings Form *@
         <form id="companySettingsForm" asp-action="SaveSettings" asp-controller="Company" method="post">
-            <!-- General Section -->
+
+            @* Accordion Container for Settings Grouping *@
             <div class="accordion mb-3" id="settingsAccordion">
+
+                @* ACCORDION SECTION 1: General Preferences *@
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingGeneral">
                         <button class="accordion-button" type="button" data-bs-toggle="collapse"
@@ -24,6 +41,7 @@
                     </h2>
                     <div id="collapseGeneral" class="accordion-collapse collapse show" aria-labelledby="headingGeneral" data-bs-parent="#settingsAccordion">
                         <div class="accordion-body">
+                            @* Date Format Selection *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="DateFormat" class="form-label">Date Format</label>
@@ -36,6 +54,8 @@
                                     </select>
                                 </div>
                             </div>
+
+                            @* Time Format Selection *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="TimeFormat" class="form-label">Time Format</label>
@@ -47,6 +67,8 @@
                                     </select>
                                 </div>
                             </div>
+
+                            @* Meter Reading Collection Interval *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="ReadingInterval" class="form-label">Reading Interval</label>
@@ -58,6 +80,8 @@
                                     <span class="form-text mt-2">Times Per Hour</span>
                                 </div>
                             </div>
+
+                            @* File Export Output Directory *@
                             <div class="row">
                                 <div class="col-md-3">
                                     <label for="OutputFolder" class="form-label">Output Folder</label>
@@ -70,7 +94,7 @@
                     </div>
                 </div>
 
-                <!-- Invoice Number Format Section -->
+                @* ACCORDION SECTION 2: Invoice Number Format Rules *@
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingInvoice">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
@@ -80,6 +104,7 @@
                     </h2>
                     <div id="collapseInvoice" class="accordion-collapse collapse" aria-labelledby="headingInvoice" data-bs-parent="#settingsAccordion">
                         <div class="accordion-body">
+                            @* Invoice Prefix *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="Prefix" class="form-label">Prefix</label>
@@ -88,6 +113,8 @@
                                     <input type="text" class="form-control" id="Prefix" asp-for="Prefix">
                                 </div>
                             </div>
+
+                            @* Invoice Suffix *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="Suffix" class="form-label">Suffix</label>
@@ -96,6 +123,8 @@
                                     <input type="text" class="form-control" id="Suffix" asp-for="Suffix">
                                 </div>
                             </div>
+
+                            @* Zero-Padding Digit Length *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="NumberOfDigits" class="form-label">Number of Digits</label>
@@ -104,6 +133,8 @@
                                     <input type="number" class="form-control" id="NumberOfDigits" asp-for="NumberOfDigits">
                                 </div>
                             </div>
+
+                            @* Invoice Composite Format Pattern *@
                             <div class="row">
                                 <div class="col-md-3">
                                     <label for="Format" class="form-label">Format</label>
@@ -116,7 +147,7 @@
                     </div>
                 </div>
 
-                <!-- Email Server Section -->
+                @* ACCORDION SECTION 3: Email Server Settings (SMTP) *@
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingEmail">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
@@ -126,6 +157,7 @@
                     </h2>
                     <div id="collapseEmail" class="accordion-collapse collapse" aria-labelledby="headingEmail" data-bs-parent="#settingsAccordion">
                         <div class="accordion-body">
+                            @* SMTP Host / Server Address *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="EmailServer" class="form-label">Email Server</label>
@@ -134,6 +166,8 @@
                                     <input type="text" class="form-control" id="EmailServer" asp-for="EmailServer">
                                 </div>
                             </div>
+
+                            @* SMTP Username *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="EmailUsername" class="form-label">Username</label>
@@ -142,6 +176,8 @@
                                     <input type="text" class="form-control" id="EmailUsername" asp-for="EmailUsername">
                                 </div>
                             </div>
+
+                            @* SMTP Password *@
                             <div class="row">
                                 <div class="col-md-3">
                                     <label for="EmailPassword" class="form-label">Password</label>
@@ -154,7 +190,7 @@
                     </div>
                 </div>
 
-                <!-- SMS Server Section -->
+                @* ACCORDION SECTION 4: SMS Gateway Configuration *@
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingSMS">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
@@ -164,6 +200,7 @@
                     </h2>
                     <div id="collapseSMS" class="accordion-collapse collapse" aria-labelledby="headingSMS" data-bs-parent="#settingsAccordion">
                         <div class="accordion-body">
+                            @* Gateway Endpoint URL / Link *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="SmsLink" class="form-label">SMS Link</label>
@@ -172,6 +209,8 @@
                                     <input type="text" class="form-control" id="SmsLink" asp-for="SmsLink">
                                 </div>
                             </div>
+
+                            @* SMS Gateway Username *@
                             <div class="row mb-3">
                                 <div class="col-md-3">
                                     <label for="SmsUsername" class="form-label">Username</label>
@@ -180,6 +219,8 @@
                                     <input type="text" class="form-control" id="SmsUsername" asp-for="SmsUsername">
                                 </div>
                             </div>
+
+                            @* SMS Gateway Password *@
                             <div class="row">
                                 <div class="col-md-3">
                                     <label for="SmsPassword" class="form-label">Password</label>
@@ -191,8 +232,10 @@
                         </div>
                     </div>
                 </div>
+
             </div>
 
+            @* Feedback Alert Notification *@
             @if (TempData["SuccessMessage"] != null)
             {
                 <div class="alert alert-success mt-3">

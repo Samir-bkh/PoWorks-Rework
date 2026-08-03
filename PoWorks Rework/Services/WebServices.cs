@@ -92,11 +92,21 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Requests a new OAuth access token from the PCVue web service.
+        /// </summary>
+        /// <param name="settings">The web service connection settings.</param>
+        /// <returns>An OAuth token response with the access token.</returns>
         public async Task<OAuthTokenResponse> GetAccessTokenAsync(PCVueWebServiceSettings settings)
         {
             return await RequestNewTokenAsync(settings);
         }
 
+        /// <summary>
+        /// Requests a new token from the PCVue OAuth endpoint with password grant.
+        /// </summary>
+        /// <param name="settings">The web service connection settings.</param>
+        /// <returns>An OAuth token response with success status and token data.</returns>
         private async Task<OAuthTokenResponse> RequestNewTokenAsync(PCVueWebServiceSettings settings)
         {
             try
@@ -162,6 +172,11 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Refreshes the OAuth access token using the stored refresh token.
+        /// </summary>
+        /// <param name="settings">The web service connection settings.</param>
+        /// <returns>The new access token, or null if refresh failed.</returns>
         private async Task<string?> RefreshTokenAsync(PCVueWebServiceSettings settings)
         {
             try
@@ -209,6 +224,11 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Tests the connection to a PCVue web service by validating settings and requesting a token.
+        /// </summary>
+        /// <param name="settings">The web service connection settings to test.</param>
+        /// <returns>A WebServiceTestResult indicating success or failure.</returns>
         public async Task<WebServiceTestResult> TestConnectionAsync(PCVueWebServiceSettings settings)
         {
             try
@@ -229,12 +249,20 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Validates the required web service connection settings.
+        /// </summary>
+        /// <param name="settings">The settings to validate.</param>
+        /// <returns>A ValidationResult indicating validity.</returns>
         private static ValidationResult ValidateSettings(PCVueWebServiceSettings settings)
         {
             if (string.IsNullOrWhiteSpace(settings.BaseUrl)) return new ValidationResult(false, "Base URL is required");
             return new ValidationResult(true, "Settings are valid");
         }
 
+        /// <summary>
+        /// Clears all cached OAuth tokens and resets token state.
+        /// </summary>
         public void ClearTokens()
         {
             _accessToken = null;
@@ -242,11 +270,21 @@ namespace PoWorks_Rework.Services
             _tokenExpiry = DateTime.MinValue;
         }
 
+        /// <summary>
+        /// Clears the cached OAuth tokens. Alias for ClearTokens.
+        /// </summary>
         public void ClearToken()
         {
             ClearTokens();
         }
 
+        /// <summary>
+        /// Performs a bulk read of multiple variables from the PCVue real-time data API.
+        /// </summary>
+        /// <param name="settings">The web service connection settings.</param>
+        /// <param name="variables">The variable names to read.</param>
+        /// <param name="properties">The properties to retrieve for each variable.</param>
+        /// <returns>The raw JSON response from the API.</returns>
         public async Task<string> BulkReadVariablesAsync(PCVueWebServiceSettings settings, string[] variables, string[] properties = null)
         {
             var token = await GetValidAccessTokenAsync(settings);
@@ -272,36 +310,112 @@ namespace PoWorks_Rework.Services
     }
 
     #region Response Models
+    /// <summary>
+    /// Represents the OAuth token response from the PCVue web service.
+    /// </summary>
     public class OAuthTokenResponse
     {
+        /// <summary>
+        /// Whether the token request succeeded.
+        /// </summary>
         public bool Success { get; set; }
+
+        /// <summary>
+        /// The error message if the request failed.
+        /// </summary>
         public string? ErrorMessage { get; set; }
+
+        /// <summary>
+        /// The OAuth access token.
+        /// </summary>
         [JsonPropertyName("access_token")] public string AccessToken { get; set; } = "";
+
+        /// <summary>
+        /// The token type (usually Bearer).
+        /// </summary>
         [JsonPropertyName("token_type")] public string TokenType { get; set; } = "Bearer";
+
+        /// <summary>
+        /// The token lifetime in seconds.
+        /// </summary>
         [JsonPropertyName("expires_in")] public int ExpiresIn { get; set; }
+
+        /// <summary>
+        /// The refresh token for obtaining new access tokens.
+        /// </summary>
         [JsonPropertyName("refresh_token")] public string? RefreshToken { get; set; }
+
+        /// <summary>
+        /// The scope of the issued token.
+        /// </summary>
         [JsonPropertyName("scope")] public string? Scope { get; set; }
     }
 
+    /// <summary>
+    /// Represents an OAuth error response from the PCVue web service.
+    /// </summary>
     public class OAuthErrorResponse
     {
+        /// <summary>
+        /// The OAuth error code.
+        /// </summary>
         public string Error { get; set; } = "";
+
+        /// <summary>
+        /// A human-readable error description.
+        /// </summary>
         public string ErrorDescription { get; set; } = "";
+
+        /// <summary>
+        /// An optional URI with more information about the error.
+        /// </summary>
         public string? ErrorUri { get; set; }
     }
 
+    /// <summary>
+    /// Represents the result of a web service connection test.
+    /// </summary>
     public class WebServiceTestResult
     {
+        /// <summary>
+        /// Whether the test succeeded.
+        /// </summary>
         public bool Success { get; set; }
+
+        /// <summary>
+        /// A success message.
+        /// </summary>
         public string? Message { get; set; }
+
+        /// <summary>
+        /// An error message if the test failed.
+        /// </summary>
         public string? ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Optional token information from the test.
+        /// </summary>
         public string? TokenInfo { get; set; }
     }
 
+    /// <summary>
+    /// Represents the result of validating web service settings.
+    /// </summary>
     public class ValidationResult
     {
+        /// <summary>
+        /// Whether the settings are valid.
+        /// </summary>
         public bool IsValid { get; }
+
+        /// <summary>
+        /// The validation error message.
+        /// </summary>
         public string ErrorMessage { get; }
+
+        /// <summary>
+        /// Initializes the validation result.
+        /// </summary>
         public ValidationResult(bool isValid, string errorMessage)
         {
             IsValid = isValid;

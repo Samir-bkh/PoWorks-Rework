@@ -1,52 +1,87 @@
+@*
+    Bill Details View (PoWorks Energy Management)
+
+Renders an interactive invoice document showing tenant information, meter
+    breakdowns, tax calculations (SST), and status-driven workflow actions
+    (PDF download, print, validation, payment processing, and deletion).
+*@
+
 @model PoWorks_Rework.Models.BillEntity
 @{
     ViewData["Title"] = "Bill Details";
 }
 
+@* Action Toolbar: Export options and conditional workflow action buttons based on status *@
 <div class="d-flex gap-2 mb-3">
-        <a asp-action="DownloadPdf" asp-route-id="@Model.BillId" class="btn btn-outline-primary shadow-sm fw-medium">
-            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
-        </a>
-        <a asp-action="Index" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to List</a>
-        
-        <button class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+    @* Export & Navigation Actions *@
+    <a asp-action="DownloadPdf" asp-route-id="@Model.BillId" class="btn btn-outline-primary shadow-sm fw-medium">
+        <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+    </a>
+    <a asp-action="Index" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to List</a>
 
-        @if(Model.Status == "Draft")
-        {
-            <form asp-action="UpdateStatus" asp-route-id="@Model.BillId" method="post" class="d-inline">
-                <input type="hidden" name="newStatus" value="Validated" />
-                <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Validate</button>
-            </form>
+    <button class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
 
-            <form asp-action="Delete" asp-route-id="@Model.BillId" method="post" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette facture brouillon ? Cette action est définitive.');" class="d-inline">
-                <button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Delete</button>
-            </form>
-        }
-        else if(Model.Status == "Validated")
-        {
-            <form asp-action="UpdateStatus" asp-route-id="@Model.BillId" method="post" class="d-inline">
-                <input type="hidden" name="newStatus" value="Paid" />
-                <button type="submit" class="btn btn-success"><i class="bi bi-cash"></i> Mark as Paid</button>
-            </form>
-        }
-        </div>
+    @* Status-Specific Workflow Controls *@
+    @if (Model.Status == "Draft")
+    {
+        @* Allows validating a draft bill *@
+        <form asp-action="UpdateStatus" asp-route-id="@Model.BillId" method="post" class="d-inline">
+            <input type="hidden" name="newStatus" value="Validated" />
+            <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Validate</button>
+        </form>
 
+        @* Allows permanent deletion of draft bills *@
+        <form asp-action="Delete" asp-route-id="@Model.BillId" method="post" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette facture brouillon ? Cette action est définitive.');" class="d-inline">
+            <button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Delete</button>
+        </form>
+    }
+    else if (Model.Status == "Validated")
+    {
+        @* Allows transitioning a validated bill to paid *@
+        <form asp-action="UpdateStatus" asp-route-id="@Model.BillId" method="post" class="d-inline">
+            <input type="hidden" name="newStatus" value="Paid" />
+            <button type="submit" class="btn btn-success"><i class="bi bi-cash"></i> Mark as Paid</button>
+        </form>
+    }
+</div>
+
+@* Invoice Document Container *@
 <div class="card shadow-sm invoice-card">
     <div class="card-body p-5">
+
+        @* Invoice Header: Issuer details, status badge, and invoice dates *@
         <div class="row mb-4">
+            @* Company / Issuer Information *@
             <div class="col-sm-6">
                 <h4 class="text-primary mb-3">PoWorks Energy Management</h4>
                 <div>Petaling Jaya, Selangor</div>
                 <div>Malaysia</div>
                 <div>Email: billing@poworks.com</div>
             </div>
+
+            @* Invoice Metadata & Status *@
             <div class="col-sm-6 text-end">
                 <h4 class="mb-3">
-                    Status: 
-                    @if(Model.Status == "Draft") { <span class="badge bg-warning text-dark">Draft</span> }
-                    else if(Model.Status == "Validated") { <span class="badge bg-info">Validated</span> }
-                    else if(Model.Status == "Paid") { <span class="badge bg-success">Paid</span> }
-                    else { <span class="badge bg-secondary">@Model.Status</span> }
+                    Status:
+                    @if (Model.Status == "Draft")
+                    {
+                        <span class="badge bg-warning text-dark">Draft</span>
+                    }
+                    else if (Model.Status == "Validated")
+                    {
+
+                        <span class="badge bg-info">Validated</span>
+                    }
+                    else if (Model.Status == "Paid")
+                    {
+
+                        <span class="badge bg-success">Paid</span>
+                    }
+                    else
+                    {
+
+                        <span class="badge bg-secondary">@Model.Status</span>
+                    }
                 </h4>
                 <div><strong>Invoice Date:</strong> @Model.GeneratedAt.ToString("dd MMM yyyy")</div>
                 <div><strong>Billing Period:</strong> @Model.PeriodStart.ToString("dd MMM yyyy") - @Model.PeriodEnd.ToString("dd MMM yyyy")</div>
@@ -55,6 +90,7 @@
 
         <hr class="my-4">
 
+        @* Customer / Tenant Section *@
         <div class="row mb-4">
             <div class="col-sm-12">
                 <h5 class="text-muted">Billed To:</h5>
@@ -62,6 +98,7 @@
             </div>
         </div>
 
+        @* Line Items Breakdown Table *@
         <div class="table-responsive mb-4">
             <table class="table table-bordered table-striped">
                 <thead class="table-light text-dark border-bottom border-dark">
@@ -97,13 +134,17 @@
             </table>
         </div>
 
+        @* Invoice Footer: Notes & Total Financial Summary *@
         <div class="row">
+            @* Legal & Payment Terms *@
             <div class="col-lg-6 col-md-6">
                 <p class="text-muted small">
                     <em>* SST applies to commercial energy usage as per Malaysian regulations.</em><br />
                     <em>* Please make the payment within 14 days of the invoice date.</em>
                 </p>
             </div>
+
+            @* Financial Calculations Summary *@
             <div class="col-lg-6 col-md-6">
                 <table class="table table-clear">
                     <tbody>
@@ -123,5 +164,6 @@
                 </table>
             </div>
         </div>
+
     </div>
 </div>

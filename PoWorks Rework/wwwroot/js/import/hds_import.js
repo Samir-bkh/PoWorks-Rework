@@ -8,7 +8,7 @@
  * - HDS-specific connection management
  */
 
- // Définition temporaire si hdsMeterSelection.js manque
+ 
 function initializeHdsDateRange() {
     const today = new Date();
     const start = new Date(today);
@@ -29,11 +29,11 @@ function initializeHdsDateRange() {
  * Sets up all DOM event listeners once the document is loaded.
  */
 document.addEventListener('DOMContentLoaded', function () {
-    // 1. On charge les connexions EN PREMIER pour être sûr que le menu se remplit
+  
     loadSqlServerConnections();
     setupConnectionEventListeners();
 
-    // 2. Initialisation des événements
+   
     initializeEventDelegation();
     initializeModalIfAlreadyPresent();
 
@@ -611,7 +611,7 @@ function handleHDSImport() {
     const meters = extractHDSMeterData(selectedCheckboxes);
     const hdsContext = window.currentHDSContext || {};
 
-    // NOUVEAU : On récupère les dates
+    
     const startDate = document.getElementById('hdsStartDate')?.value || null;
     const endDate = document.getElementById('hdsEndDate')?.value || null;
 

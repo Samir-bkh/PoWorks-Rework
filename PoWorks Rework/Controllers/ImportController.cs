@@ -9,6 +9,11 @@ using PoWorks_Rework.Repositories;
 
 namespace PoWorks_Rework.Controllers
 {
+    /// <summary>
+    /// Controller for data import functionality.
+    /// Handles HDS (Historical Data Server) table browsing, meter import from SQL Server,
+    /// meter reading imports, trends data retrieval, and meter export.
+    /// </summary>
     public class ImportController : Controller
     {
         #region Constructor and Dependencies
@@ -20,6 +25,9 @@ namespace PoWorks_Rework.Controllers
         private readonly MeterRepository _meterRepository;
         private readonly ICompanyContext _companyContext;
 
+        /// <summary>
+        /// Initializes the import controller with its logging, database, trends, repository, and company context dependencies.
+        /// </summary>
         public ImportController(
             ILogger<ImportController> logger,
             SqlServerService sqlServerService,
@@ -42,6 +50,10 @@ namespace PoWorks_Rework.Controllers
 
         #region General Controller Actions
 
+        /// <summary>
+        /// Displays the main import/export page.
+        /// </summary>
+        /// <returns>The import/export index view.</returns>
         public IActionResult Index()
         {
             var viewModel = new ImportExportViewModel
@@ -51,6 +63,10 @@ namespace PoWorks_Rework.Controllers
             return View(viewModel);
         }
 
+        /// <summary>
+        /// Returns the list of configured SQL Server connections.
+        /// </summary>
+        /// <returns>JSON containing the available SQL Server connections.</returns>
         [HttpGet]
         public IActionResult GetSqlServerConnections()
         {
@@ -79,6 +95,11 @@ namespace PoWorks_Rework.Controllers
 
         #region Trends Endpoints
 
+        /// <summary>
+        /// Processes trends data for the specified variables from a PCVue web service connection.
+        /// </summary>
+        /// <param name="request">The trends request containing connection ID, variable names, and date range.</param>
+        /// <returns>JSON with trends data results and a processing summary.</returns>
         [HttpPost]
         public async Task<IActionResult> GetTrendsData([FromBody] ProcessTrendsRequest request)
         {
@@ -173,6 +194,10 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Returns the list of available PCVue web service connections for trends processing.
+        /// </summary>
+        /// <returns>JSON containing the available web service connections.</returns>
         [HttpGet]
         public IActionResult GetWebServiceConnectionsForTrends()
         {
@@ -198,6 +223,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Processes trends data for imported WebService meters, retrieving and importing readings for each meter.
+        /// </summary>
+        /// <param name="request">The request containing connection, date range, and meter selection criteria.</param>
+        /// <returns>JSON with per-meter trends results and an overall processing summary.</returns>
         [HttpPost]
         public async Task<IActionResult> GetTrendsDataForImportedMeters([FromBody] GetTrendsForImportedMetersRequest request)
         {
@@ -271,6 +301,13 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Processes each meter sequentially, retrieving its trends data and importing the results.
+        /// </summary>
+        /// <param name="meters">The list of meters to process.</param>
+        /// <param name="request">The original trends request parameters.</param>
+        /// <param name="settings">The web service connection settings to use.</param>
+        /// <returns>A list of per-meter trends processing results.</returns>
         private async Task<List<MeterTrendsResult>> ProcessMetersSequentially(
             List<MeterForTrendsAnalysis> meters,
             GetTrendsForImportedMetersRequest request,
@@ -314,6 +351,13 @@ namespace PoWorks_Rework.Controllers
             return results;
         }
 
+        /// <summary>
+        /// Calls the trends data retrieval for a single meter's variable.
+        /// </summary>
+        /// <param name="meter">The meter whose variable trends should be retrieved.</param>
+        /// <param name="request">The original trends request parameters.</param>
+        /// <param name="settings">The web service connection settings to use.</param>
+        /// <returns>A tuple with success status, error message, trend data, and request ID.</returns>
         private async Task<(bool Success, string? Error, List<TrendDataPoint>? Data, string? RequestId)> CallGetTrendsDataEndpoint(
             MeterForTrendsAnalysis meter,
             GetTrendsForImportedMetersRequest request,
@@ -348,6 +392,13 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Imports trends data for a single meter's variable from the web service.
+        /// </summary>
+        /// <param name="meter">The meter whose trends should be imported.</param>
+        /// <param name="request">The original trends request parameters.</param>
+        /// <param name="settings">The web service connection settings to use.</param>
+        /// <returns>A tuple with success status, error message, import action, and imported point count.</returns>
         private async Task<(bool Success, string? Error, string Action, int ImportedPoints)> CallImportTrendsEndpoint(
             MeterForTrendsAnalysis meter,
             GetTrendsForImportedMetersRequest request,
@@ -387,6 +438,11 @@ namespace PoWorks_Rework.Controllers
 
         #region HDS (Historical Data Server) FUNCTIONALITY
 
+        /// <summary>
+        /// Returns the available tables from a SQL Server connection.
+        /// </summary>
+        /// <param name="connectionId">The optional connection ID to use.</param>
+        /// <returns>JSON with the list of available tables.</returns>
         [HttpGet]
         public async Task<IActionResult> GetTables(string connectionId = null)
         {
@@ -411,6 +467,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Returns the available HDS tables from a SQL Server connection.
+        /// </summary>
+        /// <param name="connectionId">The optional connection ID to use.</param>
+        /// <returns>JSON with the list of available HDS tables.</returns>
         [HttpGet]
         public async Task<IActionResult> GetHdsTables(string connectionId = null)
         {
@@ -430,6 +491,15 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Retrieves the distinct meter names from a HDS table, along with parent meter options.
+        /// </summary>
+        /// <param name="tableName">The name of the HDS table to query.</param>
+        /// <param name="connectionId">The optional SQL Server connection ID to use.</param>
+        /// <param name="startDate">Optional start date filter.</param>
+        /// <param name="endDate">Optional end date filter.</param>
+        /// <param name="limit">The maximum number of meters to return (capped at 10000).</param>
+        /// <returns>JSON with the meters found and parent meter options.</returns>
         [HttpGet]
         public async Task<IActionResult> GetMetersFromTable(string tableName, string connectionId = null, string startDate = null, string endDate = null, int limit = 1000)
         {
@@ -491,6 +561,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Imports meters into the PostgreSQL database, skipping or updating existing meters based on the request options.
+        /// </summary>
+        /// <param name="request">The import request containing the meters to import and their settings.</param>
+        /// <returns>JSON with import counts and any errors.</returns>
         [HttpPost]
         public async Task<IActionResult> ImportMeters([FromBody] ImportMetersRequest request)
         {
@@ -672,6 +747,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Imports meter readings from a SQL Server table into the PostgreSQL database.
+        /// </summary>
+        /// <param name="request">The import request containing the table name, meter names, and optional filters.</param>
+        /// <returns>JSON with import totals and any errors.</returns>
         [HttpPost]
         public async Task<IActionResult> ImportMeterReadings([FromBody] ImportReadingsRequest request)
         {
@@ -834,6 +914,11 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Prints the selected HDS meters.
+        /// </summary>
+        /// <param name="request">The request containing the selected meters.</param>
+        /// <returns>JSON with the count of selected meters.</returns>
         [HttpPost]
         public IActionResult PrintHDSMeters([FromBody] PrintHDSMetersRequest request)
         {
@@ -851,6 +936,11 @@ namespace PoWorks_Rework.Controllers
 
         #region Helper Methods
 
+        /// <summary>
+        /// Attempts to parse a timestamp string into a DateTime value.
+        /// </summary>
+        /// <param name="timestamp">The timestamp string to parse.</param>
+        /// <returns>The parsed DateTime, or null if parsing fails.</returns>
         private DateTime? GetParsedTimestamp(string? timestamp)
         {
             if (string.IsNullOrEmpty(timestamp)) return null;
@@ -858,6 +948,11 @@ namespace PoWorks_Rework.Controllers
             return null;
         }
 
+        /// <summary>
+        /// Finds a PCVue web service connection by its ID from the configuration.
+        /// </summary>
+        /// <param name="connectionId">The connection ID to look up.</param>
+        /// <returns>The matching settings, or null if not found.</returns>
         private PCVueWebServiceSettings? GetWebServiceConnectionById(string connectionId)
         {
             var webServiceSection = HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetSection("WebServiceConnections");
@@ -885,6 +980,10 @@ namespace PoWorks_Rework.Controllers
             return null;
         }
 
+        /// <summary>
+        /// Reads the list of available PCVue web service connections from appsettings.json.
+        /// </summary>
+        /// <returns>The list of configured web service connections.</returns>
         private List<PCVueWebServiceSettings> GetAvailableWebServiceConnections()
         {
             var connections = new List<PCVueWebServiceSettings>();
@@ -929,12 +1028,21 @@ namespace PoWorks_Rework.Controllers
 
         #region UTILITY METHODS & HELPERS
 
+        /// <summary>
+        /// Prints the selected meters.
+        /// </summary>
+        /// <param name="request">The request containing the selected meter names.</param>
+        /// <returns>JSON with the count of selected meters.</returns>
         [HttpPost]
         public IActionResult PrintSelectedMeters([FromBody] PrintMetersRequest request)
         {
             return Json(new { success = true, count = request?.SelectedMeterNames?.Count ?? 0 });
         }
 
+        /// <summary>
+        /// Retrieves the active main-type meters for the current company as dropdown options.
+        /// </summary>
+        /// <returns>A list of select list items for parent meter selection.</returns>
         private async Task<List<SelectListItem>> GetParentMeterOptions()
         {
             var options = new List<SelectListItem>
@@ -981,6 +1089,11 @@ namespace PoWorks_Rework.Controllers
             return options;
         }
 
+        /// <summary>
+        /// Validates a trends request for imported meters.
+        /// </summary>
+        /// <param name="request">The request to validate.</param>
+        /// <returns>A tuple indicating validity and an error message if invalid.</returns>
         private (bool IsValid, string? ErrorMessage) ValidateTrendsRequest(GetTrendsForImportedMetersRequest request)
         {
             if (request == null) return (false, "Request cannot be null");
@@ -992,6 +1105,11 @@ namespace PoWorks_Rework.Controllers
             return (true, null);
         }
 
+        /// <summary>
+        /// Retrieves the list of imported meters to process based on the request criteria.
+        /// </summary>
+        /// <param name="request">The request containing meter selection criteria.</param>
+        /// <returns>A list of meters configured with the assigned connection ID.</returns>
         private async Task<List<MeterForTrendsAnalysis>> GetImportedMetersForProcessing(GetTrendsForImportedMetersRequest request)
         {
             List<MeterForTrendsAnalysis> meters;
@@ -1015,6 +1133,14 @@ namespace PoWorks_Rework.Controllers
             return meters;
         }
 
+        /// <summary>
+        /// Builds a meter trends result from the trends data and import results.
+        /// </summary>
+        /// <param name="meter">The meter that was processed.</param>
+        /// <param name="trendsResult">The trends data retrieval result.</param>
+        /// <param name="importResult">The trends import result.</param>
+        /// <param name="startTime">The time processing started for this meter.</param>
+        /// <returns>A populated MeterTrendsResult.</returns>
         private MeterTrendsResult CreateMeterResult(
             MeterForTrendsAnalysis meter,
             (bool Success, string? Error, List<TrendDataPoint>? Data, string? RequestId) trendsResult,
@@ -1039,6 +1165,15 @@ namespace PoWorks_Rework.Controllers
             };
         }
 
+        /// <summary>
+        /// Creates an overall processing summary from the per-meter trends results.
+        /// </summary>
+        /// <param name="results">The list of per-meter results.</param>
+        /// <param name="startTime">The time overall processing started.</param>
+        /// <param name="endTime">The time overall processing ended.</param>
+        /// <param name="settings">The web service connection settings used.</param>
+        /// <param name="request">The original trends request.</param>
+        /// <returns>A populated TrendsProcessingSummary.</returns>
         private TrendsProcessingSummary CreateProcessingSummary(
             List<MeterTrendsResult> results,
             DateTime startTime,
@@ -1062,6 +1197,13 @@ namespace PoWorks_Rework.Controllers
                                 .ToList()
             };
         }
+        /// <summary>
+        /// Exports the meters for the current company to a CSV or JSON file.
+        /// </summary>
+        /// <param name="format">The export format (CSV or JSON).</param>
+        /// <param name="activeOnly">Whether to only include active meters.</param>
+        /// <param name="includeReadings">Whether to include the last reading for each meter.</param>
+        /// <returns>A file download containing the exported meter data.</returns>
         [HttpGet]
         public async Task<IActionResult> ExportMeters(string format = "CSV", bool activeOnly = false, bool includeReadings = false)
         {
