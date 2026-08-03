@@ -1,126 +1,282 @@
 ﻿@using Npgsql
+
+@* Injects the database service used to create PostgreSQL connections *@
 @inject PoWorks_Rework.Services.DatabaseService DbService
+
+@* Injects the company context used to store and retrieve the currently selected company *@
 @inject PoWorks_Rework.Services.ICompanyContext CompanyContext
+
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
+
+    @* Defines responsive behavior for different screen sizes *@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    @* Dynamically displays the current page title *@
     <title>@ViewData["Title"] - PoWorks</title>
 
-    <!-- ========================================== -->
-    <!-- Script pour intercepter et préfixer 'fetch' -->
-    <!-- avec le PathBase de l'application (Sub-Path) -->
-    <!-- ========================================== -->
-    <script>
-            (function() {
-                const basePath = '@Context.Request.PathBase.Value';
-                const originalFetch = window.fetch;
 
-                window.fetch = function(url, options) {
-                    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(basePath + '/')) {
-                        url = basePath + url;
-                    }
-                    return originalFetch.call(this, url, options);
-                };
-            })();
+    <!--
+        JavaScript override of the native fetch function.
+        This automatically adds the application's PathBase (sub-path)
+        to all relative API requests starting with '/'.
+
+        This is required when the application is hosted under a virtual directory
+        instead of directly at the website root.
+    -->
+    <script>
+        (function () {
+
+            // Gets the application's base path from the current HTTP request
+            const basePath = '@Context.Request.PathBase.Value';
+
+            // Stores the original browser fetch function
+            const originalFetch = window.fetch;
+
+            // Overrides the default fetch implementation
+            window.fetch = function (url, options) {
+
+                // Adds the application base path to absolute URLs
+                // that do not already contain it
+                if (typeof url === 'string'
+                    && url.startsWith('/')
+                    && !url.startsWith(basePath + '/')) {
+
+                    url = basePath + url;
+                }
+
+                // Executes the original fetch request
+                return originalFetch.call(this, url, options);
+            };
+
+        })();
     </script>
 
-    <!-- Stylesheets (Bootstrap, Bootstrap Icons, Custom Site/Sidebar) -->
+
+    <!-- Main application stylesheets -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+
+    @* Main site styling *@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+
+    @* Sidebar specific styling *@
     <link rel="stylesheet" href="~/css/sidebar.css" asp-append-version="true" />
+
+    @* Bootstrap icon library *@
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
+
 </head>
+
+
 <body>
+
+    <!-- Main responsive application container -->
     <div class="container-fluid p-0">
+
         <div class="row g-0">
 
-            <!-- ========================================== -->
-            <!-- Navigation Latérale (Sidebar Component)    -->
-            <!-- ========================================== -->
+
+            <!--
+                Left navigation sidebar.
+                The sidebar content is loaded from a reusable Razor partial view.
+            -->
             <div class="col-auto sidebar">
                 <partial name="_Sidebar" />
             </div>
 
-            <!-- ========================================== -->
-            <!-- Zone de Contenu Principal (Main Content)   -->
-            <!-- ========================================== -->
+
+
+            <!-- Main application content area -->
             <div class="col main-content">
 
-                <!-- En-tête Administrateur (Top Navigation / Header Bar) -->
+
+                <!--
+                    Administrator header section.
+                    Contains application title, company selector and user actions.
+                -->
                 <div class="admin-header d-flex justify-content-between align-items-center p-3 border-bottom">
-                    <span class="fw-bold">PoWorks Analytics</span>
+
+
+                    <!-- Application branding -->
+                    <span class="fw-bold">
+                        PoWorks Analytics
+                    </span>
+
 
                     <div class="d-flex align-items-center">
 
-                        <!-- Sélecteur de compagnie (Visible uniquement pour le rôle 'admin') -->
+
+                        <!--
+                            Company selector.
+                            This option is displayed only for the administrator account.
+
+                            Administrators can switch between available companies.
+                        -->
                         @if (User.Identity?.Name?.ToLower() == "admin")
                         {
-                            <form asp-controller="Company" asp-action="SwitchCompany" method="post" class="me-4 d-flex align-items-center m-0">
-                                <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+
+                            <form asp-controller="Company"
+                                  asp-action="SwitchCompany"
+                                  method="post"
+                                  class="me-4 d-flex align-items-center m-0">
+
+
+                                @* Keeps the current page after switching company *@
+                                <input type="hidden"
+                                       name="returnUrl"
+                                       value="@Context.Request.Path@Context.Request.QueryString" />
+
+
                                 <i class="bi bi-buildings-fill me-2 text-primary fs-5"></i>
 
-                                <select name="companyId" class="form-select form-select-sm shadow-sm" onchange="this.form.submit()" style="width: auto; min-width: 180px; cursor: pointer;">
+
+
+                                <select name="companyId"
+                                        class="form-select form-select-sm shadow-sm"
+                                        onchange="this.form.submit()"
+                                        style="width: auto; min-width: 180px; cursor: pointer;">
+
+
                                     @{
-                                        // Chargement dynamique de la liste des entreprises depuis PostgreSQL
+
+                                        // Opens a new PostgreSQL connection
+                                        // to retrieve all available companies
                                         using var conn = DbService.CreateNewConnection();
+
                                         conn.Open();
-                                        using var cmd = new NpgsqlCommand("SELECT \"CompanyId\", \"Name\" FROM \"Companies\" ORDER BY \"Name\"", conn);
+
+
+                                        // SQL query retrieving companies sorted alphabetically
+                                        using var cmd = new NpgsqlCommand(
+                                            "SELECT \"CompanyId\", \"Name\" FROM \"Companies\" ORDER BY \"Name\"",
+                                            conn);
+
+
                                         using var reader = cmd.ExecuteReader();
+
+
+                                        // Retrieves the currently selected company ID
                                         int currentId = CompanyContext.CurrentCompanyId;
 
+
+
+                                        // Creates a dropdown option for each company
                                         while (reader.Read())
                                         {
+
                                             int cId = reader.GetInt32(0);
                                             string cName = reader.GetString(1);
 
+
+
+                                            // Marks the current company as selected
                                             if (cId == currentId)
                                             {
-                                                <option value="@cId" selected>🏢 @cName</option>
+                                                <option value="@cId" selected>
+                                                    🏢 @cName
+                                                </option>
                                             }
                                             else
                                             {
-                                                <option value="@cId">@cName</option>
+                                                <option value="@cId">
+                                                    @cName
+                                                </option>
                                             }
                                         }
+
                                     }
+
                                 </select>
+
                             </form>
+
                         }
 
-                        <!-- Informations sur l'utilisateur connecté -->
+
+
+                        <!-- Displays information about the authenticated user -->
                         <span class="me-3 fw-bold">
-                            <i class="bi bi-person-circle"></i> @User.Identity?.Name
+
+                            <i class="bi bi-person-circle"></i>
+
+                            @User.Identity?.Name
+
                         </span>
 
-                        <!-- Bouton de Déconnexion -->
-                        <form asp-controller="Auth" asp-action="Logout" method="post" class="m-0">
-                            <button type="submit" class="btn btn-sm btn-outline-danger shadow-sm">
-                                <i class="bi bi-box-arrow-right"></i> Logout
+
+
+
+                        <!-- User logout action -->
+                        <form asp-controller="Auth"
+                              asp-action="Logout"
+                              method="post"
+                              class="m-0">
+
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-danger shadow-sm">
+
+                                <i class="bi bi-box-arrow-right"></i>
+
+                                Logout
+
                             </button>
+
                         </form>
+
+
                     </div>
+
                 </div>
 
-                <!-- Injection dynamique de la vue principale -->
+
+
+
+                <!--
+                    Main dynamic content area.
+                    The content of each Razor view is injected here.
+                -->
                 <div class="content-body">
+
                     @RenderBody()
+
                 </div>
+
 
             </div>
+
         </div>
+
     </div>
 
-    <!-- ========================================== -->
-    <!-- Scripts JavaScript (jQuery, Bootstrap, Site) -->
-    <!-- ========================================== -->
+
+
+
+
+    <!--
+        JavaScript dependencies:
+        - jQuery library
+        - Bootstrap JavaScript components
+        - Custom application scripts
+    -->
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
+
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+
     <script src="~/js/site.js" asp-append-version="true"></script>
 
-    <!-- Injection dynamique des scripts spécifiques aux vues -->
+
+
+
+    <!--
+        Loads optional scripts defined by individual Razor views.
+        Views can inject additional JavaScript code here when required.
+    -->
     @await RenderSectionAsync("Scripts", required: false)
+
+
 </body>
+
 </html>
