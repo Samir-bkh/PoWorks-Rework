@@ -220,7 +220,8 @@ namespace PoWorks_Rework.Services
                                         Username = reader["Username"].ToString(),
                                         Password = _encryptionService.Decrypt(reader["Password"].ToString()),
                                         ProjectName = reader["ProjectName"].ToString(),
-                                        IsDefault = Convert.ToBoolean(reader["IsDefault"])
+                                        IsDefault = Convert.ToBoolean(reader["IsDefault"]),
+                                        UseWindowsAuth = reader["UseWindowsAuth"] != DBNull.Value && Convert.ToBoolean(reader["UseWindowsAuth"])
                                     });
                                 }
                             }

@@ -571,14 +571,14 @@ ORDER BY td.""CompanyName""";
                 await connection.OpenAsync();
                 using var tx = await connection.BeginTransactionAsync();
 
-                // 1. Supprimer les relevés associés (en s'assurant qu'ils appartiennent à la bonne entreprise)
+              
                 string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId)";
                 using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, tx);
                 cmdReadings.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
                 cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
                 await cmdReadings.ExecuteNonQueryAsync();
 
-                // 2. Supprimer les compteurs (sécurisé avec CompanyId)
+         
                 string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
                 using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, tx);
                 cmdMeters.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
@@ -594,43 +594,7 @@ ORDER BY td.""CompanyName""";
             }
         }
 
-        /// <summary>
-        /// Deletes "ghost" meters (names containing 'Backnet') and their readings for the current company.
-        /// </summary>
-        /// <returns>A redirect to the meter management page with a result message.</returns>
-        [HttpPost]
-        public async Task<IActionResult> CleanGhostMeters()
-        {
-            if (!_databaseService.IsInitialized) return RedirectToAction("Management");
-
-            try
-            {
-                using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
-                await connection.OpenAsync();
-                using var transaction = await connection.BeginTransactionAsync();
-
-                // 1. Supprimer les relevés des compteurs fantômes (sécurisé avec CompanyId)
-                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%' AND ""CompanyId"" = @CompanyId)";
-                using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, transaction);
-                cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                await cmdReadings.ExecuteNonQueryAsync();
-
-                // 2. Supprimer les compteurs fantômes (sécurisé avec CompanyId)
-                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""Name"" LIKE '%Backnet%' AND ""CompanyId"" = @CompanyId";
-                using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, transaction);
-                cmdMeters.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                int deletedCount = await cmdMeters.ExecuteNonQueryAsync();
-
-                await transaction.CommitAsync();
-                TempData["SuccessMessage"] = $"Nettoyage réussi : {deletedCount} compteurs fantômes ('Backnet') ont été supprimés de la base de données.";
-            }
-            catch (Exception ex)
-            {
-                TempData["ErrorMessage"] = $"Erreur lors du nettoyage : {ex.Message}";
-            }
-
-            return RedirectToAction("Management");
-        }
+        
 
         /// <summary>
         /// Bulk-updates tenant, unit, type, or parent fields on multiple meters, optionally matching a search criteria.

@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <Folder Include="Views\Auth\" />
+    <Folder Include="wwwroot\Images\" />
   </ItemGroup>
 
 </Project>

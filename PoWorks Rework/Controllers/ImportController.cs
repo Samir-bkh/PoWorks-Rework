@@ -844,7 +844,7 @@ namespace PoWorks_Rework.Controllers
 
                                     readings.Add((timestamp, value, quality));
                                 }
-                                catch (Exception) { /* Ignorer les erreurs de parsing mineures */ }
+                                catch (Exception) { /* Ignore minor parsing errors */ }
                             }
                         }
 

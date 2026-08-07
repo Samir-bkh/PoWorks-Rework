@@ -38,20 +38,20 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// Legal name of the company to create
         /// </summary>
-        [Required(ErrorMessage = "Le nom de l'entreprise est requis.")]
+        [Required(ErrorMessage = "The company name is required.")]
         public string CompanyName { get; set; } = string.Empty;
 
         /// <summary>
         /// Username for the initial admin user
         /// </summary>
-        [Required(ErrorMessage = "Le nom d'utilisateur est requis.")]
+        [Required(ErrorMessage = "The username is required.")]
         public string AdminUsername { get; set; } = string.Empty;
 
         /// <summary>
         /// Password for the initial admin user (minimum 6 characters)
         /// </summary>
-        [Required(ErrorMessage = "Le mot de passe est requis.")]
-        [MinLength(6, ErrorMessage = "Le mot de passe doit faire au moins 6 caractères.")]
+        [Required(ErrorMessage = "The password is required.")]
+        [MinLength(6, ErrorMessage = "The password must be at least 6 characters long.")]
         public string AdminPassword { get; set; } = string.Empty;
     }
 }

@@ -303,14 +303,12 @@ window.showWebServiceMeterSelection = function (variables, parentOptions, connec
 
     const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
     
-    // --- LA CORRECTION EST ICI ---
-    // Au lieu d'écraser tout le 'card-body' (et donc la barre de recherche),
-    // On cible uniquement le conteneur du tableau (.table-responsive)
+
     const tableContainer = meterSelectionSection.querySelector('.table-responsive');
     if (tableContainer) {
         tableContainer.outerHTML = tableHtml;
     }
-    // -----------------------------
+ 
 
     const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
     if (sectionHeader) {
@@ -571,16 +569,14 @@ function importWebServiceVariables() {
         connectionInfo: connectionInfo
     });
 
-    // ==========================================
-    // CORRECTION : On mappe exactement avec le Modèle C#
-    // ==========================================
+
     const requestData = {
         variables: selectedVariables,
         skipExisting: skipExisting,
         updateExisting: updateExisting,
-        importTrendsData: true, // On précise au backend qu'on veut les trends
-        trendsStartDate: dateRange.startDate, // Le C# attend 'TrendsStartDate'
-        trendsEndDate: dateRange.endDate,     // Le C# attend 'TrendsEndDate'
+        importTrendsData: true,
+        trendsStartDate: dateRange.startDate, 
+        trendsEndDate: dateRange.endDate,     
         connectionId: connectionInfo.connectionId
     };
 
@@ -594,9 +590,7 @@ function importWebServiceVariables() {
 
     console.log('Sending import request:', requestData);
 
-    // ==========================================
-    // CORRECTION : La VRAIE adresse de ton API C#
-    // ==========================================
+ 
     fetch('/Import/ImportWebServiceVariablesWithTrends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -230,7 +230,7 @@ namespace PoWorks_Rework.Controllers
                 });
             }
 
-            items.Add(new SelectListItem { Value = "NEW", Text = "+ Créer une nouvelle Company" });
+            items.Add(new SelectListItem { Value = "NEW", Text = "+ Create a New Company" });
             return items;
         }
 

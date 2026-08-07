@@ -467,15 +467,13 @@
         };
 
         if (warningDiv && warningText) {
-            warningText.textContent = `Affichage limité aux ${keptSlots} plus gros consommateurs. ${rest.length} meter(s) regroupé(s) dans "Autres". Augmentez "Max courbes" ou affinez votre sélection pour plus de détail.`;
+            warningText.textContent = `Display limited to the ${keptSlots} largest consumers. ${rest.length} meter(s) grouped in "Others". Increase "Max curves" or refine your selection for more detail.`;
             warningDiv.classList.remove('d-none');
         }
 
         return { datasets: [...kept, othersDataset] };
     }
 
-    // ------------------------------------------------------------
-    // NEW: Comparison mode (period-vs-period)
     // ------------------------------------------------------------
     // Comparing meters to each other is already what Standard mode does
     // (several meters overlaid). "Comparison" here means: same meter(s),
@@ -567,7 +565,7 @@
                 filters.compareStartDate = compareRange.start;
                 filters.compareEndDate = compareRange.end;
             } else {
-                showNotification('Sélectionnez une période de comparaison valide', 'warning');
+                showNotification('Select a valid comparison period', 'warning');
             }
         }
 
@@ -596,7 +594,7 @@
             if (isComparisonActive && compareRange && data.compareChartData) {
                 formatted = buildComparisonPairs(formatted, data.compareChartData, filters.startDate, compareRange.start);
             } else if (isComparisonActive && compareRange && !data.compareChartData) {
-                showNotification('Aucune donnée trouvée pour la période de comparaison', 'warning');
+                showNotification('No data found for the comparison period', 'warning');
             }
 
             currentData = formatted;
@@ -694,7 +692,7 @@
             })
         }));
 
-        // Vrai carré de sélection classique (zoom X+Y au drag)
+     
         let cursor = chart.set("cursor", am5xy.XYCursor.new(root, {
             behavior: "zoomXY",
             xAxis: xAxis,

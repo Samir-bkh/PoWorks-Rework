@@ -196,10 +196,8 @@ function updatePrintButtonForDataType(dataType) {
     }
 }
 
-// =====================================================
-// SELECT / DESELECT HANDLERS (Mis à jour pour le filtre)
-// =====================================================
 
+// SELECT / DESELECT HANDLERS 
 function handleSelectAll() {
     const dataType = window.currentMeterDataType || 'UNKNOWN';
     let checkboxes;

@@ -218,13 +218,34 @@
                                     </div>
 
                                     <div class="row mb-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label d-block">Authentication Mode *</label>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input auth-mode-radio" type="radio" name="AuthMode-@connection.ConnectionId"
+                                                       id="authSql-@connection.ConnectionId" value="sql"
+                                                       @(connection.UseWindowsAuth ? "" : "checked")
+                                                       onchange="toggleAuthMode('@connection.ConnectionId')">
+                                                <label class="form-check-label" for="authSql-@connection.ConnectionId">SQL Server Authentication</label>
+                                            </div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input auth-mode-radio" type="radio" name="AuthMode-@connection.ConnectionId"
+                                                       id="authWindows-@connection.ConnectionId" value="windows"
+                                                       @(connection.UseWindowsAuth ? "checked" : "")
+                                                       onchange="toggleAuthMode('@connection.ConnectionId')">
+                                                <label class="form-check-label" for="authWindows-@connection.ConnectionId">Windows Authentication</label>
+                                            </div>
+                                            <input type="hidden" name="UseWindowsAuth" id="useWindowsAuth-@connection.ConnectionId" value="@(connection.UseWindowsAuth ? "true" : "false")" />
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3" id="sqlAuthFields-@connection.ConnectionId" style="@(connection.UseWindowsAuth ? "display:none;" : "")">
                                         <div class="col-md-6">
                                             <label class="form-label">Username *</label>
-                                            <input type="text" class="form-control" name="Username" value="@connection.Username" placeholder="SQL Server username" required />
+                                            <input type="text" class="form-control" name="Username" value="@connection.Username" placeholder="SQL Server username" />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Password *</label>
-                                            <input type="password" class="form-control" name="Password" value="@connection.Password" placeholder="SQL Server password" required />
+                                            <input type="password" class="form-control" name="Password" value="@connection.Password" placeholder="SQL Server password" />
                                         </div>
                                     </div>
 
@@ -565,6 +586,9 @@
     /**
      * Returns HTML template string for a new SQL Server connection form.
      */
+    /**
+     * Returns HTML template string for a new SQL Server connection form.
+     */
     function createConnectionFormHtml(connectionId, index) {
         return `
             <div class="tab-pane fade" id="sqlconn-${connectionId}" role="tabpanel">
@@ -602,28 +626,50 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <div class="mb-3">
                                 <label class="form-label">Database *</label>
                                 <input type="text" class="form-control" name="Database" placeholder="Database name" required />
                             </div>
                         </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label d-block">Authentication Mode *</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input auth-mode-radio" type="radio" name="AuthMode-${connectionId}"
+                                       id="authSql-${connectionId}" value="sql" checked
+                                       onchange="toggleAuthMode('${connectionId}')">
+                                <label class="form-check-label" for="authSql-${connectionId}">SQL Server Authentication</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input auth-mode-radio" type="radio" name="AuthMode-${connectionId}"
+                                       id="authWindows-${connectionId}" value="windows"
+                                       onchange="toggleAuthMode('${connectionId}')">
+                                <label class="form-check-label" for="authWindows-${connectionId}">Windows Authentication</label>
+                            </div>
+                            <input type="hidden" name="UseWindowsAuth" id="useWindowsAuth-${connectionId}" value="false" />
+                        </div>
+                    </div>
+
+                    <div class="row" id="sqlAuthFields-${connectionId}">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Username *</label>
                                 <input type="text" class="form-control" name="Username" required />
                             </div>
                         </div>
-                    </div>
-
-                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Password *</label>
                                 <input type="password" class="form-control" name="Password" required />
                             </div>
                         </div>
-                        <div class="col-md-6 text-end">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 offset-md-6 text-end">
                             <button type="button" class="btn btn-outline-primary" onclick="testConnection('${connectionId}')">
                                 <i class="bi bi-wifi"></i> Test Connection
                             </button>
@@ -685,6 +731,23 @@
         }
     };
 
+    window.toggleAuthMode = function(connectionId) {
+    const isWindows = document.getElementById(`authWindows-${connectionId}`).checked;
+    document.getElementById(`useWindowsAuth-${connectionId}`).value = isWindows ? 'true' : 'false';
+    const fieldsDiv = document.getElementById(`sqlAuthFields-${connectionId}`);
+    fieldsDiv.style.display = isWindows ? 'none' : '';
+
+    const userField = fieldsDiv.querySelector('input[name="Username"]');
+    const passField = fieldsDiv.querySelector('input[name="Password"]');
+    if (isWindows) {
+        userField.removeAttribute('required');
+        passField.removeAttribute('required');
+    } else {
+        userField.setAttribute('required', 'required');
+        passField.setAttribute('required', 'required');
+    }
+};
+
     /**
      * Sends an AJAX request to test SQL Server connectivity.
      */
@@ -693,21 +756,26 @@
         if (!form) return;
 
         const formData = new FormData(form);
-        const connectionData = {
-            connectionId: connectionId,
-            host: formData.get('Host') || '',
-            port: formData.get('Port') || '1433',
-            database: formData.get('Database') || '',
-            username: formData.get('Username') || '',
-            password: formData.get('Password') || '',
-            projectName: formData.get('ProjectName') || '',
-            connectionName: formData.get('ConnectionName') || ''
-        };
+       const connectionData = {
+    connectionId: connectionId,
+    host: formData.get('Host') || '',
+    port: formData.get('Port') || '1433',
+    database: formData.get('Database') || '',
+    username: formData.get('Username') || '',
+    password: formData.get('Password') || '',
+    projectName: formData.get('ProjectName') || '',
+    connectionName: formData.get('ConnectionName') || '',
+    useWindowsAuth: formData.get('UseWindowsAuth') === 'true'
+};
 
-        if (!connectionData.host || !connectionData.database || !connectionData.username) {
-            showConnectionResult(connectionId, 'warning', 'Please fill in all required fields (Host, Database, Username)');
-            return;
-        }
+if (!connectionData.host || !connectionData.database) {
+    showConnectionResult(connectionId, 'warning', 'Please fill in Host and Database');
+    return;
+}
+if (!connectionData.useWindowsAuth && !connectionData.username) {
+    showConnectionResult(connectionId, 'warning', 'Username required for SQL authentication');
+    return;
+}
 
         showConnectionResult(connectionId, 'info', 'Testing connection...');
 

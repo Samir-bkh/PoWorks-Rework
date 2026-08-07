@@ -66,11 +66,30 @@ namespace PoWorks_Rework.Models
         /// Generates a SQL Server connection string from the configured parameters.
         /// Includes SSL trust and connection timeout settings.
         /// </summary>
+        /// <summary>
+        /// Whether to use Windows Authentication (Integrated Security) instead of SQL authentication
+        /// </summary>
+        [Display(Name = "Use Windows Authentication")]
+        public bool UseWindowsAuth { get; set; } = false;
+
+        /// <summary>
+        /// Generates a SQL Server connection string from the configured parameters.
+        /// Includes SSL trust and connection timeout settings.
+        /// </summary>
         public string ToConnectionString()
         {
             var server = string.IsNullOrWhiteSpace(Port)
                 ? Host
                 : $"{Host},{Port}";
+
+            if (UseWindowsAuth)
+            {
+                return $"Server={server};" +
+                       $"Database={Database};" +
+                       $"Integrated Security=True;" +
+                       $"TrustServerCertificate=True;" +
+                       $"Connection Timeout=30;";
+            }
 
             return $"Server={server};" +
                    $"Database={Database};" +

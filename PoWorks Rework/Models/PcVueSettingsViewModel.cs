@@ -16,20 +16,20 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// Base URL of the PCVue web service
         /// </summary>
-        [Required(ErrorMessage = "L'URL de base est requise.")]
-        [Url(ErrorMessage = "L'URL n'est pas valide.")]
+        [Required(ErrorMessage = "The base URL is required.")]
+        [Url(ErrorMessage = "The URL is not valid.")]
         public string BaseUrl { get; set; } = string.Empty;
 
         /// <summary>
         /// OAuth Client ID for authentication
         /// </summary>
-        [Required(ErrorMessage = "Le Client ID est requis.")]
+        [Required(ErrorMessage = "The Client ID is required.")]
         public string ClientId { get; set; } = string.Empty;
 
         /// <summary>
         /// OAuth Client Secret for authentication
         /// </summary>
-        [Required(ErrorMessage = "Le Client Secret est requis.")]
+        [Required(ErrorMessage = "The Client Secret is required.")]
         public string ClientSecret { get; set; } = string.Empty;
 
         /// <summary>

@@ -235,7 +235,7 @@ namespace PoWorks_Rework.Services
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Erreur lors de la sauvegarde de la facture");
+                _logger.LogError(ex, "Error saving the invoice");
                 throw;
             }
         }
