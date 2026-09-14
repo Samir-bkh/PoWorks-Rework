@@ -1,5 +1,7 @@
 using Xunit;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -101,7 +103,12 @@ public class UserLifecycleTests
 
             var encryption = new EncryptionService(configuration);
             var databaseService = new DatabaseService(configuration, encryption);
-            var controller = new UserManagementController(userManager, databaseService, new FixedCompanyContext());
+            var controller = new UserManagementController(userManager, databaseService, new FixedCompanyContext())
+            {
+                TempData = new TempDataDictionary(
+                    new DefaultHttpContext(),
+                    new InMemoryTempDataProvider())
+            };
 
             return Task.FromResult(new TestFixture(provider, userManager, controller));
         }
@@ -122,6 +129,21 @@ public class UserLifecycleTests
         public async ValueTask DisposeAsync()
         {
             await Services.DisposeAsync();
+        }
+    }
+
+    private sealed class InMemoryTempDataProvider : ITempDataProvider
+    {
+        private Dictionary<string, object> _data = new();
+
+        public IDictionary<string, object> LoadTempData(HttpContext context)
+        {
+            return new Dictionary<string, object>(_data);
+        }
+
+        public void SaveTempData(HttpContext context, IDictionary<string, object> values)
+        {
+            _data = new Dictionary<string, object>(values);
         }
     }
 
