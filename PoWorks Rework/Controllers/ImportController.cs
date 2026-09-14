@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Data.SqlClient;
@@ -14,6 +15,7 @@ namespace PoWorks_Rework.Controllers
     /// Handles HDS (Historical Data Server) table browsing, meter import from SQL Server,
     /// meter reading imports, trends data retrieval, and meter export.
     /// </summary>
+    [Authorize(Policy = "ImportExportAccess")]
     public class ImportController : Controller
     {
         #region Constructor and Dependencies
