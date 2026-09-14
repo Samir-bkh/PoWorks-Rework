@@ -504,14 +504,15 @@ namespace PoWorks_Rework.Controllers
                         }
 
                         string insertPayment = @"
-                            INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"") 
-                            VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, 'Virement')";
+                            INSERT INTO ""Payments"" (""BillId"", ""TenantID"", ""PaymentDate"", ""AmountPaid"", ""PaymentMethod"", ""CompanyId"")
+                            VALUES (@billId, @tenantId, CURRENT_TIMESTAMP, @amount, 'Virement', @companyId)";
 
                         using (var cmdInsert = new NpgsqlCommand(insertPayment, connection, transaction))
                         {
                             cmdInsert.Parameters.AddWithValue("billId", id);
                             cmdInsert.Parameters.AddWithValue("tenantId", tenantId);
                             cmdInsert.Parameters.AddWithValue("amount", amount);
+                            cmdInsert.Parameters.AddWithValue("companyId", _companyContext.CurrentCompanyId);
                             cmdInsert.ExecuteNonQuery();
                         }
                     }
