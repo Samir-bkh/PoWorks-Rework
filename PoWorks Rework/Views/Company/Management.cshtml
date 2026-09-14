@@ -104,12 +104,20 @@
 
                                 <form asp-action="DeleteCompany" method="post" class="d-inline ms-1">
                                     <input type="hidden" name="companyId" value="@company.CompanyId" />
-                                    <button class="btn btn-sm btn-outline-danger"
-                                            type="submit"
-                                            @(!company.CanDelete ? "disabled" : null)
-                                            onclick="return confirm('Permanently delete this EMPTY company? This cannot be undone.');">
-                                        <i class="bi bi-trash"></i> Delete
-                                    </button>
+                                    @if (company.CanDelete)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                type="submit"
+                                                onclick="return confirm('Permanently delete this EMPTY company? This cannot be undone.');">
+                                            <i class="bi bi-trash"></i> Delete
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" type="button" disabled>
+                                            <i class="bi bi-trash"></i> Delete
+                                        </button>
+                                    }
                                 </form>
                             }
                         </td>
