@@ -1,13 +1,13 @@
 @model PoWorks_Rework.Controllers.CompanyAdminViewModel
 @{
-    ViewData["Title"] = "Company Management";
+    ViewData["Title"] = "Workspaces";
 }
 
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Company Management</h2>
-            <p class="text-muted mb-0">Create, enable, disable and safely retire customer workspaces.</p>
+            <h2 class="mb-1">Workspaces</h2>
+            <p class="text-muted mb-0">Create and manage isolated customer / site workspaces.</p>
         </div>
     </div>
 
@@ -22,31 +22,31 @@
 
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white">
-            <strong>Create Company</strong>
+            <strong>Create Workspace</strong>
         </div>
         <div class="card-body">
             <form asp-action="CreateCompany" method="post" class="row g-2">
                 <div class="col-md-6">
-                    <input type="text" name="name" class="form-control" placeholder="Customer / site name" required />
+                    <input type="text" name="name" class="form-control" placeholder="Customer, building or site name" required />
                 </div>
                 <div class="col-auto">
-                    <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Create</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Create Workspace</button>
                 </div>
             </form>
-            <div class="form-text mt-2">Companies are created here only. Users are then assigned to an existing company.</div>
+            <div class="form-text mt-2">A workspace isolates one customer or managed site. Management users belong to a workspace; tenant users belong to a tenant inside that workspace.</div>
         </div>
     </div>
 
     <div class="card shadow-sm">
         <div class="card-header bg-white">
-            <strong>Customer Workspaces</strong>
+            <strong>Available Workspaces</strong>
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
                         <th>ID</th>
-                        <th>Company</th>
+                        <th>Workspace</th>
                         <th>Status</th>
                         <th>Users</th>
                         <th>Tenants</th>
