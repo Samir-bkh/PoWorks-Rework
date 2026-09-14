@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
+using Npgsql;
 
 namespace PoWorks_Rework.Controllers
 {
@@ -34,6 +35,35 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (IsTenantUser && CurrentTenantId.HasValue)
+                {
+                    using var connection = GetDatabaseConnection();
+                    await connection.OpenAsync();
+
+                    using var cmd = new NpgsqlCommand(@"
+                        SELECT t.""TenantID"",
+                               COALESCE(td.""CompanyName"", t.""DisplayName"") AS ""TenantName""
+                        FROM ""Tenants"" t
+                        LEFT JOIN ""TenantDetails"" td ON td.""TenantID"" = t.""TenantID""
+                        WHERE t.""TenantID"" = @TenantId", connection);
+                    cmd.Parameters.AddWithValue("TenantId", CurrentTenantId.Value);
+
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                    {
+                        return Json(new[]
+                        {
+                            new
+                            {
+                                id = reader.GetInt32(0),
+                                name = reader.GetString(1)
+                            }
+                        });
+                    }
+
+                    return Json(new List<object>());
+                }
+
                 var tenants = await _dashboardDataService.GetTenantsAsync();
                 return Json(tenants);
             }
@@ -127,7 +157,7 @@ namespace PoWorks_Rework.Controllers
                 {
                     StartDate = request.StartDate,
                     EndDate = adjustedEndDate,
-                    TenantId = request.TenantId,
+                    TenantId = IsTenantUser ? CurrentTenantId : request.TenantId,
                     Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
                     Offset = Math.Max(0, request.Offset ?? 0),
                     IncludeNullTenants = request.IncludeNullTenants ?? true,
@@ -187,6 +217,15 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (IsTenantUser)
+                {
+                    if (!CurrentTenantId.HasValue)
+                    {
+                        return Forbid();
+                    }
+
+                    tenantId = CurrentTenantId.Value;
+                }
                 if (limit <= 0 || limit > 100)
                 {
                     limit = 25;
@@ -264,7 +303,7 @@ namespace PoWorks_Rework.Controllers
                 var filters = new MeterReadingFilters
                 {
                     DateFilter = request.DateFilter ?? "monthly",
-                    TenantId = request.TenantId,
+                    TenantId = IsTenantUser ? CurrentTenantId : request.TenantId,
                     MeterIds = request.MeterIds ?? new List<int>(),
                     StartDate = request.StartDate,
                     EndDate = adjustedEndDate,
@@ -375,8 +414,9 @@ namespace PoWorks_Rework.Controllers
 
                 var filters = new MeterReadingFilters
                 {
+                    TenantId = IsTenantUser ? CurrentTenantId : null,
                     Limit = 1,
-                    IncludeNullTenants = true,
+                    IncludeNullTenants = !IsTenantUser,
                     StartDate = startDate,
                     EndDate = adjustedEndDate
                 };
