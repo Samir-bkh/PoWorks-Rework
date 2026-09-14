@@ -18,7 +18,8 @@
                 <thead class="table-light">
                     <tr>
                         <th>Username</th>
-                        <th>Assigned Company / Project</th>
+                        <th>Profile</th>
+                        <th>Assignment</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -28,10 +29,31 @@
                         <tr>
                             <td class="fw-bold" style="vertical-align: middle;">@user.UserName</td>
                             <td style="vertical-align: middle;">
-                                <span class="badge bg-info text-dark">@user.CompanyName</span>
+                                @if (user.UserType == "Admin")
+                                {
+                                    <span class="badge bg-dark">Admin</span>
+                                }
+                                else if (user.UserType == "Tenant")
+                                {
+                                    <span class="badge bg-success">Tenant</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-primary">Management</span>
+                                }
+                            </td>
+                            <td style="vertical-align: middle;">
+                                @if (user.UserType == "Tenant")
+                                {
+                                    <span class="badge bg-info text-dark">@(!string.IsNullOrWhiteSpace(user.TenantName) ? user.TenantName : $"Tenant #{user.TenantId}")</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">@user.CompanyName</span>
+                                }
                             </td>
                             <td class="text-end" style="vertical-align: middle;">
-                                @if (user.UserName.ToLower() != "admin")
+                                @if (!string.Equals(user.UserName, "admin", StringComparison.OrdinalIgnoreCase))
                                 {
                                     <form asp-action="Delete" asp-route-id="@user.Id" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this user?');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">
