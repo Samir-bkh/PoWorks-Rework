@@ -70,14 +70,14 @@ namespace PoWorks_Rework.Controllers
                 return View();
             }
 
-            if (user.LockoutEnabled && user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow)
+            if (!AccessRules.IsUserEnabled(user, DateTimeOffset.UtcNow))
             {
                 ModelState.AddModelError(string.Empty, "This account is disabled. Contact an administrator.");
                 return View();
             }
 
             var claims = (await _userManager.GetClaimsAsync(user)).ToList();
-            var isAdmin = string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase);
+            var isAdmin = AccessRules.IsAdmin(user.UserName);
 
             if (!isAdmin)
             {
@@ -89,7 +89,7 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 var userType = claims.FirstOrDefault(x => x.Type == "UserType")?.Value;
-                if (string.Equals(userType, "Tenant", StringComparison.OrdinalIgnoreCase))
+                if (AccessRules.IsTenant(userType))
                 {
                     var tenantClaim = claims.FirstOrDefault(x => x.Type == "TenantId")?.Value;
                     if (!int.TryParse(tenantClaim, out var tenantId) || !IsTenantActiveForCompany(tenantId, companyId))
