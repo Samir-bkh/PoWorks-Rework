@@ -146,7 +146,7 @@ namespace PoWorks_Rework.Services
         /// <param name="endDate">The end of the data range.</param>
         /// <param name="settings">The web service connection settings to use.</param>
         /// <returns>A list of per-variable trend results.</returns>
-        public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(List<string> variableNames, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings)
+        public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(List<string> variableNames, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings, string? logContext = null)
         {
             var throttler = new SemaphoreSlim(15);
 
@@ -156,7 +156,8 @@ namespace PoWorks_Rework.Services
                 try
                 {
                     var requestResult = await CreateTrendRequestAsync(variableName, settings);
-                    Console.WriteLine($"[TRENDS] {variableName} -> request {(requestResult.Success ? "OK" : "FAIL: " + requestResult.ErrorMessage)}");
+                    var contextPrefix = string.IsNullOrWhiteSpace(logContext) ? "" : $"[{logContext}]";
+                    Console.WriteLine($"[TRENDS]{contextPrefix} {variableName} -> request {(requestResult.Success ? "OK" : "FAIL: " + requestResult.ErrorMessage)}");
                     if (requestResult.Success)
                     {
                         var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);
