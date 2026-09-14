@@ -15,11 +15,12 @@
     let exporting = null;
 
     document.addEventListener('DOMContentLoaded', function () {
-        console.log('Dashboard initializing with amCharts 5...');
+        console.log('Dashboard v5 initializing with amCharts 5...');
 
         try {
             attachEventListeners();
-            document.getElementById('dateFilter').value = 'daily';
+            const initialDateFilter = document.getElementById('dateFilter');
+            if (initialDateFilter) initialDateFilter.value = 'daily';
 
             Promise.all([
                 loadDateRangeSuggestions(),
@@ -92,23 +93,23 @@
     }
 
     function attachEventListeners() {
-        document.getElementById('tenantFilter').addEventListener('change', onTenantChange);
-        document.getElementById('applyFilters').addEventListener('click', loadChartData);
-        document.getElementById('resetFilters').addEventListener('click', resetFilters);
-        document.getElementById('chartType').addEventListener('change', () => loadChartData());
+        document.getElementById('tenantFilter')?.addEventListener('change', onTenantChange);
+        document.getElementById('applyFilters')?.addEventListener('click', loadChartData);
+        document.getElementById('resetFilters')?.addEventListener('click', resetFilters);
+        document.getElementById('chartType')?.addEventListener('change', () => loadChartData());
 
-        document.getElementById('dateFilter').addEventListener('change', onDateFilterChange);
-        document.getElementById('startDate').addEventListener('change', onDateRangeChange);
-        document.getElementById('endDate').addEventListener('change', onDateRangeChange);
+        document.getElementById('dateFilter')?.addEventListener('change', onDateFilterChange);
+        document.getElementById('startDate')?.addEventListener('change', onDateRangeChange);
+        document.getElementById('endDate')?.addEventListener('change', onDateRangeChange);
 
-        document.getElementById('meterLimit').addEventListener('change', onMeterLimitChange);
-        document.getElementById('refreshMeters').addEventListener('click', refreshMeters);
+        document.getElementById('meterLimit')?.addEventListener('change', onMeterLimitChange);
+        document.getElementById('refreshMeters')?.addEventListener('click', refreshMeters);
 
         // NEW: "Max curves displayed" selector - just reloads/re-renders with the new cap
         document.getElementById('maxCurves')?.addEventListener('change', () => loadChartData());
 
-        document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
-        document.getElementById('exportChart').addEventListener('click', exportChart);
+        document.getElementById('autoRefresh')?.addEventListener('click', toggleAutoRefresh);
+        document.getElementById('exportChart')?.addEventListener('click', exportChart);
 
         document.getElementById('fullscreenChart')?.addEventListener('click', toggleFullscreen);
 
