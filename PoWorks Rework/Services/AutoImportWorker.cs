@@ -233,11 +233,7 @@ namespace PoWorks_Rework.Services
         private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int companyId)
         {
             var dict = new Dictionary<int, (DateTime Timestamp, decimal Value)>();
-            using var cmd = new NpgsqlCommand(@"
-                SELECT DISTINCT ON (""MeterId"") ""MeterId"", ""Timestamp"", ""Value""
-                FROM ""MeterReadings""
-                WHERE ""CompanyId"" = @companyId
-                ORDER BY ""MeterId"", ""Timestamp"" DESC", conn, tr);
+            using var cmd = new NpgsqlCommand(AutoImportQueries.LastReadings, conn, tr);
             cmd.Parameters.AddWithValue("companyId", companyId);
             using var reader = await cmd.ExecuteReaderAsync();
 
@@ -314,12 +310,7 @@ namespace PoWorks_Rework.Services
         private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int companyId)
         {
             var meters = new List<MeterForTrendsAnalysis>();
-            using var cmd = new NpgsqlCommand(@"
-                SELECT ""MeterId"", ""Name"", ""Active""
-                FROM ""Meters""
-                WHERE ""CompanyId"" = @companyId
-                  AND (""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')
-                  AND ""Active"" = TRUE", conn, tr);
+            using var cmd = new NpgsqlCommand(AutoImportQueries.ActiveMeters, conn, tr);
             cmd.Parameters.AddWithValue("companyId", companyId);
             using var reader = await cmd.ExecuteReaderAsync();
 
@@ -347,16 +338,7 @@ namespace PoWorks_Rework.Services
             {
                 return await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
-                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
-                                  ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
-                                  ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport""
-                           FROM ""WebServiceConnections""
-                           WHERE ""CompanyId"" = @companyId
-                             AND ""IsActive"" = TRUE
-                           ORDER BY ""IsDefault"" DESC, ""ConnectionId""
-                           LIMIT 1";
-
-                    using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    using var cmd = new NpgsqlCommand(AutoImportQueries.ApiSettings, conn, tr);
                     cmd.Parameters.AddWithValue("companyId", companyId);
                     using var reader = await cmd.ExecuteReaderAsync();
 
