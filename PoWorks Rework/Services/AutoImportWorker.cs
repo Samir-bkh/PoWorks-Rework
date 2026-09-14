@@ -108,12 +108,12 @@ namespace PoWorks_Rework.Services
 
                     await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
                     {
-                        var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction);
+                        var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction, companyId);
                         _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
 
                         if (!metersToImport.Any()) return;
 
-                        var lastReadings = await GetLastKnownReadingsAsync(connection, transaction);
+                        var lastReadings = await GetLastKnownReadingsAsync(connection, transaction, companyId);
                         DateTime endTime = DateTime.Now;
 
                         var meterGroups = metersToImport
@@ -230,13 +230,15 @@ namespace PoWorks_Rework.Services
         /// <param name="conn">The database connection to use.</param>
         /// <param name="tr">The transaction to use.</param>
         /// <returns>A dictionary mapping meter IDs to their last known reading.</returns>
-        private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
+        private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int companyId)
         {
             var dict = new Dictionary<int, (DateTime Timestamp, decimal Value)>();
             using var cmd = new NpgsqlCommand(@"
                 SELECT DISTINCT ON (""MeterId"") ""MeterId"", ""Timestamp"", ""Value""
                 FROM ""MeterReadings""
+                WHERE ""CompanyId"" = @companyId
                 ORDER BY ""MeterId"", ""Timestamp"" DESC", conn, tr);
+            cmd.Parameters.AddWithValue("companyId", companyId);
             using var reader = await cmd.ExecuteReaderAsync();
 
             while (await reader.ReadAsync())
@@ -309,10 +311,16 @@ namespace PoWorks_Rework.Services
         /// <param name="conn">The database connection to use.</param>
         /// <param name="tr">The transaction to use.</param>
         /// <returns>A list of meters for trends analysis.</returns>
-        private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(NpgsqlConnection conn, NpgsqlTransaction tr)
+        private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int companyId)
         {
             var meters = new List<MeterForTrendsAnalysis>();
-            using var cmd = new NpgsqlCommand("SELECT \"MeterId\", \"Name\", \"Active\" FROM \"Meters\" WHERE (\"Name\" LIKE '%.%' OR \"Name\" LIKE 'varsets.%') AND \"Active\" = true", conn, tr);
+            using var cmd = new NpgsqlCommand(@"
+                SELECT ""MeterId"", ""Name"", ""Active""
+                FROM ""Meters""
+                WHERE ""CompanyId"" = @companyId
+                  AND (""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')
+                  AND ""Active"" = TRUE", conn, tr);
+            cmd.Parameters.AddWithValue("companyId", companyId);
             using var reader = await cmd.ExecuteReaderAsync();
 
             while (await reader.ReadAsync())
@@ -343,9 +351,13 @@ namespace PoWorks_Rework.Services
                                   ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
                                   ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport""
                            FROM ""WebServiceConnections""
+                           WHERE ""CompanyId"" = @companyId
+                             AND ""IsActive"" = TRUE
+                           ORDER BY ""IsDefault"" DESC, ""ConnectionId""
                            LIMIT 1";
 
                     using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    cmd.Parameters.AddWithValue("companyId", companyId);
                     using var reader = await cmd.ExecuteReaderAsync();
 
                     if (await reader.ReadAsync())
