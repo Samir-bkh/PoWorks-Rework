@@ -5,6 +5,8 @@ VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoWorks Rework", "PoWorks Rework\PoWorks Rework.csproj", "{4D71C9D4-74AD-4D43-BFA8-4A9547597C6A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoWorks Rework.Tests", "PoWorks Rework.Tests\PoWorks Rework.Tests.csproj", "{C7B5877D-7E61-4A1A-A92B-7775F8AC77E4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{4D71C9D4-74AD-4D43-BFA8-4A9547597C6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4D71C9D4-74AD-4D43-BFA8-4A9547597C6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4D71C9D4-74AD-4D43-BFA8-4A9547597C6A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7B5877D-7E61-4A1A-A92B-7775F8AC77E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7B5877D-7E61-4A1A-A92B-7775F8AC77E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7B5877D-7E61-4A1A-A92B-7775F8AC77E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7B5877D-7E61-4A1A-A92B-7775F8AC77E4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

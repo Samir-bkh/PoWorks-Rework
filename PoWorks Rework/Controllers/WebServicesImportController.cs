@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using NpgsqlTypes;
@@ -12,6 +13,7 @@ namespace PoWorks_Rework.Controllers
     /// Controller for importing meters and trends data from PCVue web services.
     /// Handles variable browsing, meter import, and background trends data retrieval.
     /// </summary>
+    [Authorize(Policy = "ImportExportAccess")]
     public class WebServicesImportController : Controller
     {
         #region Dependencies
@@ -286,8 +288,11 @@ namespace PoWorks_Rework.Controllers
                 var connections = await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
                     var list = new List<dynamic>();
-                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault"" FROM ""WebServiceConnections""";
+                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault""
+                                   FROM ""WebServiceConnections""
+                                   WHERE ""CompanyId"" = @companyId";
                     using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    cmd.Parameters.AddWithValue("companyId", companyId);
                     using var reader = await cmd.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -378,10 +383,13 @@ namespace PoWorks_Rework.Controllers
                                           ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
                                           ""ProjectName"", ""IsDefault""
                                    FROM ""WebServiceConnections""
-                                   WHERE ""ConnectionId"" = @connId LIMIT 1";
+                                   WHERE ""ConnectionId"" = @connId
+                                     AND ""CompanyId"" = @companyId
+                                   LIMIT 1";
 
                     using var cmd = new NpgsqlCommand(sql, conn, tr);
                     cmd.Parameters.AddWithValue("connId", connectionId);
+                    cmd.Parameters.AddWithValue("companyId", companyId);
                     using var reader = await cmd.ExecuteReaderAsync();
 
                     if (await reader.ReadAsync())

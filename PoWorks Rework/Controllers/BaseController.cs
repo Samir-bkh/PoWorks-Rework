@@ -2,34 +2,20 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using PoWorks_Rework.Services;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace PoWorks_Rework.Controllers
 {
-    /// <summary>
-    /// Base controller class for all auth-protected controllers.
-    /// Provides common database access and authorization checks.
-    /// </summary>
     [Authorize]
     public abstract class BaseController : Controller
     {
-        /// <summary>
-        /// Injected database service for data access operations.
-        /// </summary>
         protected readonly DatabaseService _databaseService;
 
-        /// <summary>
-        /// Initializes the base controller with a database service.
-        /// All derived controllers must inject this dependency.
-        /// </summary>
         public BaseController(DatabaseService databaseService)
         {
             _databaseService = databaseService;
         }
 
-        /// <summary>
-        /// Gets a database connection after verifying the database is initialized.
-        /// Throws InvalidOperationException if database setup is incomplete.
-        /// </summary>
         protected NpgsqlConnection GetDatabaseConnection()
         {
             if (!_databaseService.IsInitialized)
@@ -38,6 +24,18 @@ namespace PoWorks_Rework.Controllers
             }
 
             return _databaseService.GetConnection();
+        }
+
+        protected bool IsTenantUser =>
+            string.Equals(User.FindFirstValue("UserType"), "Tenant", StringComparison.OrdinalIgnoreCase);
+
+        protected int? CurrentTenantId
+        {
+            get
+            {
+                var value = User.FindFirstValue("TenantId");
+                return int.TryParse(value, out var tenantId) ? tenantId : null;
+            }
         }
     }
 }

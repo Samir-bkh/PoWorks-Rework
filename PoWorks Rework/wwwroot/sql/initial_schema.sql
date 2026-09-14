@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS "Bills" (
 CREATE TABLE IF NOT EXISTS "BillLineItems" (
     "LineItemId" SERIAL PRIMARY KEY,
     "BillId" INTEGER NOT NULL REFERENCES "Bills"("BillId") ON DELETE CASCADE,
-    "MeterId" INTEGER NOT NULL REFERENCES "Meters"("MeterId"),
+    "MeterId" INTEGER REFERENCES "Meters"("MeterId") ON DELETE SET NULL,
     "MeterName" VARCHAR(100),
     "Consumption" NUMERIC(12,3),
     "Unit" VARCHAR(20),
@@ -301,6 +301,19 @@ CREATE TABLE IF NOT EXISTS "BillLineItems" (
 );
 
 
+-- Ensure existing databases keep invoice history when a meter is deleted.
+ALTER TABLE "BillLineItems"
+    ALTER COLUMN "MeterId" DROP NOT NULL;
+
+ALTER TABLE "BillLineItems"
+    DROP CONSTRAINT IF EXISTS "BillLineItems_MeterId_fkey";
+
+ALTER TABLE "BillLineItems"
+    ADD CONSTRAINT "BillLineItems_MeterId_fkey"
+    FOREIGN KEY ("MeterId")
+    REFERENCES "Meters"("MeterId")
+    ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_bills_tenantid ON "Bills"("TenantID");
 CREATE INDEX IF NOT EXISTS idx_bills_status ON "Bills"("Status");
 
@@ -308,8 +321,13 @@ CREATE INDEX IF NOT EXISTS idx_bills_status ON "Bills"("Status");
 
 CREATE TABLE IF NOT EXISTS "Companies" (
     "CompanyId" SERIAL PRIMARY KEY,
-    "Name" VARCHAR(255) NOT NULL DEFAULT 'Default Company'
+    "Name" VARCHAR(255) NOT NULL DEFAULT 'Default Company',
+    "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Active" BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CreatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 INSERT INTO "Companies" ("CompanyId", "Name") 
 VALUES (1, 'PoWorks Default') 

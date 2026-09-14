@@ -571,15 +571,57 @@ ORDER BY td.""CompanyName""";
                 await connection.OpenAsync();
                 using var tx = await connection.BeginTransactionAsync();
 
-              
-                string sqlReadings = @"DELETE FROM ""MeterReadings"" WHERE ""MeterId"" IN (SELECT ""MeterId"" FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId)";
-                using var cmdReadings = new NpgsqlCommand(sqlReadings, connection, tx);
-                cmdReadings.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
-                cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                await cmdReadings.ExecuteNonQueryAsync();
+                // Keep deletion scoped to meters that belong to the current company.
+                const string scopedMeterIdsSql = @"
+                    SELECT ""MeterId""
+                    FROM ""Meters""
+                    WHERE ""MeterId"" = ANY(@MeterIds)
+                      AND ""CompanyId"" = @CompanyId";
 
-         
-                string sqlMeters = @"DELETE FROM ""Meters"" WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
+                // Aggregate tables reference Meters directly, so they must be cleared first.
+                foreach (var tableName in new[]
+                {
+                    "MeterReadingsDaily",
+                    "MeterReadingsMonthly",
+                    "MeterReadingsYearly"
+                })
+                {
+                    string sqlAggregate = $@"DELETE FROM ""{tableName}""
+                        WHERE ""MeterId"" IN ({scopedMeterIdsSql})";
+
+                    using var cmdAggregate = new NpgsqlCommand(sqlAggregate, connection, tx);
+                    cmdAggregate.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                    cmdAggregate.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+                    await cmdAggregate.ExecuteNonQueryAsync();
+                }
+
+                string sqlReadings = $@"DELETE FROM ""MeterReadings""
+                    WHERE ""MeterId"" IN ({scopedMeterIdsSql})";
+
+                using (var cmdReadings = new NpgsqlCommand(sqlReadings, connection, tx))
+                {
+                    cmdReadings.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                    cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+                    await cmdReadings.ExecuteNonQueryAsync();
+                }
+
+                // Detach child meters before deleting a parent meter to avoid the self-referencing ParentId FK.
+                string sqlDetachChildren = $@"UPDATE ""Meters""
+                    SET ""ParentId"" = NULL
+                    WHERE ""ParentId"" IN ({scopedMeterIdsSql})
+                      AND ""CompanyId"" = @CompanyId";
+
+                using (var cmdDetachChildren = new NpgsqlCommand(sqlDetachChildren, connection, tx))
+                {
+                    cmdDetachChildren.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+                    cmdDetachChildren.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+                    await cmdDetachChildren.ExecuteNonQueryAsync();
+                }
+
+                string sqlMeters = @"DELETE FROM ""Meters""
+                    WHERE ""MeterId"" = ANY(@MeterIds)
+                      AND ""CompanyId"" = @CompanyId";
+
                 using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, tx);
                 cmdMeters.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
                 cmdMeters.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
@@ -626,7 +668,7 @@ ORDER BY td.""CompanyName""";
                 if (!idsToUpdate.Any())
                     return Json(new { success = false, message = "No meters matched the criteria." });
 
-                if (!request.UpdateTenant && !request.UpdateUnit && !request.UpdateType && !request.UpdateParent)
+                if (!request.UpdateTenant && !request.UpdateUnit && !request.UpdateType && !request.UpdateParent && !request.UpdateActive)
                     return Json(new { success = false, message = "No fields selected for update." });
 
                 using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
@@ -638,6 +680,7 @@ ORDER BY td.""CompanyName""";
                 if (request.UpdateUnit) setClauses.Add("\"Unit\" = @Unit");
                 if (request.UpdateType) setClauses.Add("\"Type\" = @Type");
                 if (request.UpdateParent) setClauses.Add("\"ParentId\" = @ParentId");
+                if (request.UpdateActive) setClauses.Add("\"Active\" = @Active");
 
                 string sql = $@"UPDATE ""Meters"" SET {string.Join(", ", setClauses)} WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
 
@@ -647,6 +690,7 @@ ORDER BY td.""CompanyName""";
                 if (request.UpdateUnit) cmd.Parameters.AddWithValue("@Unit", request.Unit ?? "");
                 if (request.UpdateType) cmd.Parameters.AddWithValue("@Type", request.Type ?? "main");
                 if (request.UpdateParent) cmd.Parameters.AddWithValue("@ParentId", request.ParentId.HasValue ? request.ParentId.Value : DBNull.Value);
+                if (request.UpdateActive) cmd.Parameters.AddWithValue("@Active", request.Active);
 
                 cmd.Parameters.AddWithValue("@MeterIds", idsToUpdate.ToArray());
                 cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);

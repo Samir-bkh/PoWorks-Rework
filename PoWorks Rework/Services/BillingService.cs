@@ -15,6 +15,7 @@ namespace PoWorks_Rework.Services
     public class BillingService
     {
         private readonly DatabaseService _databaseService;
+        private readonly ICompanyContext _companyContext;
         private readonly ILogger<BillingService> _logger;
         /// <summary>
         /// Malaysia Service and Sales Tax (SST) rate (8%)
@@ -24,9 +25,10 @@ namespace PoWorks_Rework.Services
         /// <summary>
         /// Initializes the billing service with database and logging dependencies.
         /// </summary>
-        public BillingService(DatabaseService databaseService, ILogger<BillingService> logger)
+        public BillingService(DatabaseService databaseService, ICompanyContext companyContext, ILogger<BillingService> logger)
         {
             _databaseService = databaseService;
+            _companyContext = companyContext;
             _logger = logger;
         }
 
@@ -50,6 +52,7 @@ namespace PoWorks_Rework.Services
                 Status = "Draft"
             };
 
+            int companyId = _companyContext.CurrentCompanyId;
             var connection = _databaseService.GetConnection();
             if (connection.State == System.Data.ConnectionState.Closed)
             {
@@ -59,10 +62,12 @@ namespace PoWorks_Rework.Services
                 SELECT t.""DisplayName"", td.""Tarif_1"", td.""AbonnementMensuel"" 
                 FROM ""Tenants"" t
                 LEFT JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                WHERE t.""TenantID"" = @tenantId";
+                WHERE t.""TenantID"" = @tenantId
+                  AND t.""CompanyId"" = @companyId";
 
             using var cmdTenant = new NpgsqlCommand(tenantQuery, connection);
             cmdTenant.Parameters.AddWithValue("tenantId", tenantId);
+            cmdTenant.Parameters.AddWithValue("companyId", companyId);
 
             decimal unitPriceRM = 0;
             decimal monthlyFeeRM = 0;
@@ -80,9 +85,10 @@ namespace PoWorks_Rework.Services
                     throw new Exception($"Tenant not found (ID: {tenantId})");
                 }
             }
-            string metersQuery = @"SELECT ""MeterId"", ""Name"", ""Unit"" FROM ""Meters"" WHERE ""TenantID"" = @tenantId AND ""Active"" = true";
+            string metersQuery = @"SELECT ""MeterId"", ""Name"", ""Unit"" FROM ""Meters"" WHERE ""TenantID"" = @tenantId AND ""CompanyId"" = @companyId AND ""Active"" = true";
             using var cmdMeters = new NpgsqlCommand(metersQuery, connection);
             cmdMeters.Parameters.AddWithValue("tenantId", tenantId);
+            cmdMeters.Parameters.AddWithValue("companyId", companyId);
 
             var meters = new List<(int Id, string Name, string Unit)>();
             using (var reader = await cmdMeters.ExecuteReaderAsync())
@@ -94,7 +100,7 @@ namespace PoWorks_Rework.Services
             }
             foreach (var meter in meters)
             {
-                decimal consumption = await CalculateMeterConsumptionAsync(connection, meter.Id, meter.Unit, startDate, adjustedEndDate);
+                decimal consumption = await CalculateMeterConsumptionAsync(connection, meter.Id, meter.Unit, startDate, adjustedEndDate, companyId);
 
                 if (consumption > 0)
                 {
@@ -131,18 +137,20 @@ namespace PoWorks_Rework.Services
         /// <param name="start">The start of the billing period.</param>
         /// <param name="end">The end of the billing period.</param>
         /// <returns>The calculated consumption value.</returns>
-        private async Task<decimal> CalculateMeterConsumptionAsync(NpgsqlConnection connection, int meterId, string unit, DateTime start, DateTime end)
+        private async Task<decimal> CalculateMeterConsumptionAsync(NpgsqlConnection connection, int meterId, string unit, DateTime start, DateTime end, int companyId)
         {
             if (unit.Equals("kWh", StringComparison.OrdinalIgnoreCase))
             {
                 string query = @"
                     SELECT COALESCE(MAX(""Value"") - MIN(""Value""), 0) 
                     FROM ""MeterReadings"" 
-                    WHERE ""MeterId"" = @meterId 
+                    WHERE ""MeterId"" = @meterId
+                    AND ""CompanyId"" = @companyId
                     AND ""Timestamp"" >= @start AND ""Timestamp"" <= @end";
 
                 using var cmd = new NpgsqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("meterId", meterId);
+                cmd.Parameters.AddWithValue("companyId", companyId);
                 cmd.Parameters.AddWithValue("start", start);
                 cmd.Parameters.AddWithValue("end", end);
 
@@ -156,12 +164,13 @@ namespace PoWorks_Rework.Services
                         SELECT ""Value"", 
                                EXTRACT(EPOCH FROM (LEAD(""Timestamp"") OVER (ORDER BY ""Timestamp"") - ""Timestamp"")) / 3600.0 AS HoursDelta
                         FROM ""MeterReadings""
-                        WHERE ""MeterId"" = @meterId AND ""Timestamp"" >= @start AND ""Timestamp"" <= @end
+                        WHERE ""MeterId"" = @meterId AND ""CompanyId"" = @companyId AND ""Timestamp"" >= @start AND ""Timestamp"" <= @end
                     )
                     SELECT COALESCE(SUM(""Value"" * HoursDelta), 0) FROM DataWithDelta WHERE HoursDelta IS NOT NULL;";
 
                 using var cmd = new NpgsqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("meterId", meterId);
+                cmd.Parameters.AddWithValue("companyId", companyId);
                 cmd.Parameters.AddWithValue("start", start);
                 cmd.Parameters.AddWithValue("end", end);
 
@@ -178,6 +187,7 @@ namespace PoWorks_Rework.Services
         /// <returns>The newly created bill ID.</returns>
         public async Task<int> SaveBillAsync(BillEntity bill)
         {
+            int companyId = _companyContext.CurrentCompanyId;
             var connection = _databaseService.GetConnection();
             if (connection.State == System.Data.ConnectionState.Closed)
             {
@@ -186,14 +196,27 @@ namespace PoWorks_Rework.Services
             using var transaction = await connection.BeginTransactionAsync();
             try
             {
+                using (var tenantGuard = new NpgsqlCommand(@"
+                    SELECT COUNT(*)
+                    FROM ""Tenants""
+                    WHERE ""TenantID"" = @tenantId
+                      AND ""CompanyId"" = @companyId", connection, transaction))
+                {
+                    tenantGuard.Parameters.AddWithValue("tenantId", bill.TenantID);
+                    tenantGuard.Parameters.AddWithValue("companyId", companyId);
+                    var tenantCount = Convert.ToInt32(await tenantGuard.ExecuteScalarAsync());
+                    if (tenantCount == 0)
+                        throw new InvalidOperationException("Tenant does not belong to the current workspace.");
+                }
+
                 string insertBillQuery = @"
     INSERT INTO ""Bills"" (
-        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"", 
-        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"", ""GrandTotal"", ""Status""
-    ) 
+        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"",
+        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"", ""GrandTotal"", ""Status"", ""CompanyId""
+    )
     VALUES (
-        @tenantId, @billNumber, @start, @end, 
-        @totalKwh, @subTotal, @tax, @grandTotal, @grandTotal, 'Draft'
+        @tenantId, @billNumber, @start, @end,
+        @totalKwh, @subTotal, @tax, @grandTotal, @grandTotal, 'Draft', @companyId
     ) RETURNING ""BillId"";";
 
                 using var cmdBill = new NpgsqlCommand(insertBillQuery, connection, transaction);
@@ -205,6 +228,7 @@ namespace PoWorks_Rework.Services
                 cmdBill.Parameters.AddWithValue("subTotal", bill.AmountExclTax);
                 cmdBill.Parameters.AddWithValue("tax", bill.TaxAmount);
                 cmdBill.Parameters.AddWithValue("grandTotal", bill.AmountInclTax);
+                cmdBill.Parameters.AddWithValue("companyId", companyId);
                 int newBillId = Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
                 string insertLineQuery = @"
     INSERT INTO ""BillLineItems"" (

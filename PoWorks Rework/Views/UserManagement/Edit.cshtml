@@ -1,16 +1,16 @@
-@model PoWorks_Rework.Controllers.CreateUserViewModel
+@model PoWorks_Rework.Controllers.EditUserViewModel
 @using Microsoft.AspNetCore.Mvc.Rendering
 
 @{
-    ViewData["Title"] = "Create User";
+    ViewData["Title"] = "Edit User";
 }
 
 <div class="container mt-4">
     <div class="row">
-        <div class="col-md-6 offset-md-3">
+        <div class="col-lg-7 offset-lg-2">
             <div class="card shadow-sm">
                 <div class="card-header bg-white">
-                    <h4 class="mb-0">Create New User</h4>
+                    <h4 class="mb-0">Edit User</h4>
                 </div>
                 <div class="card-body">
                     @if (!ViewData.ModelState.IsValid)
@@ -20,10 +20,12 @@
                         </div>
                     }
 
-                    <form asp-action="Create" method="post">
+                    <form asp-action="Edit" method="post">
+                        <input type="hidden" asp-for="Id" />
+
                         <div class="mb-3">
                             <label class="form-label">Username</label>
-                            <input type="text" asp-for="Username" class="form-control" required />
+                            <input class="form-control" asp-for="Username" readonly />
                         </div>
 
                         <div class="mb-3">
@@ -32,53 +34,56 @@
                                 <option value="Management">Management</option>
                                 <option value="Tenant">Tenant</option>
                             </select>
-                            <div class="form-text">Management users can receive configuration permissions. Tenant users can only access analytics for their assigned tenant.</div>
                         </div>
 
                         <div id="managementFields">
                             <div class="mb-3">
-                                <label class="form-label">Workspace</label>
-                                <input type="text" class="form-control" value="@ViewBag.CurrentWorkspaceName" readonly />
-                                <input type="hidden" asp-for="CompanyId" />
-                                <div class="form-text">Management users are created inside the currently selected workspace. Switch workspace from the top bar before creating the user if needed.</div>
+                                <label class="form-label">Company</label>
+                                <select asp-for="CompanyId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Companies"></select>
                             </div>
                         </div>
 
-                        <div class="mb-3" id="tenantField" style="display:none;">
-                            <label asp-for="TenantId" class="form-label">Assigned Tenant</label>
+                        <div id="tenantField" class="mb-3">
+                            <label class="form-label">Assigned Tenant</label>
                             <select asp-for="TenantId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Tenants"></select>
-                            <span asp-validation-for="TenantId" class="text-danger"></span>
-                            <div class="form-text">This user will only be allowed to view dashboard data for this tenant.</div>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="form-label">Password</label>
-                            <input type="password" asp-for="Password" class="form-control" required />
-                            <div class="form-text">Requires at least 6 characters, uppercase, lowercase, number, and special character.</div>
                         </div>
 
                         <div id="permissionsBlock" class="mb-4 p-3 border rounded bg-light">
-                            <label class="form-label fw-bold mb-3"><i class="bi bi-shield-lock"></i> Access Permissions</label>
+                            <label class="form-label fw-bold mb-3"><i class="bi bi-shield-lock"></i> Management Permissions</label>
 
                             <div class="form-check form-switch mb-2">
                                 <input class="form-check-input" type="checkbox" asp-for="CanViewPcVueConfig">
-                                <label class="form-check-label" asp-for="CanViewPcVueConfig">Allow access to <strong>PcVue Config</strong></label>
+                                <label class="form-check-label" asp-for="CanViewPcVueConfig">PcVue Config</label>
                             </div>
 
                             <div class="form-check form-switch mb-2">
                                 <input class="form-check-input" type="checkbox" asp-for="CanViewImportExport">
-                                <label class="form-check-label" asp-for="CanViewImportExport">Allow access to <strong>Import/Export</strong></label>
+                                <label class="form-check-label" asp-for="CanViewImportExport">Import / Export</label>
                             </div>
 
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" asp-for="CanViewGeneralSettings">
-                                <label class="form-check-label text-danger" asp-for="CanViewGeneralSettings">Allow access to <strong>General Settings (Database & Server)</strong></label>
+                                <label class="form-check-label" asp-for="CanViewGeneralSettings">General Settings</label>
                             </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" asp-for="IsEnabled">
+                                <label class="form-check-label fw-semibold" asp-for="IsEnabled">Account enabled</label>
+                            </div>
+                            <div class="form-text">Disabled users cannot sign in. Their company and tenant data are preserved.</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">New Password</label>
+                            <input class="form-control" type="password" asp-for="NewPassword" autocomplete="new-password" />
+                            <div class="form-text">Leave empty to keep the current password.</div>
                         </div>
 
                         <div class="d-flex justify-content-between">
                             <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
-                            <button type="submit" class="btn btn-primary">Create User</button>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
                         </div>
                     </form>
                 </div>
@@ -96,6 +101,6 @@
             document.getElementById('tenantField').style.display = isTenant ? 'block' : 'none';
         }
 
-        document.addEventListener("DOMContentLoaded", toggleUserTypeFields);
+        document.addEventListener('DOMContentLoaded', toggleUserTypeFields);
     </script>
 }

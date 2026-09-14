@@ -192,5 +192,15 @@ namespace PoWorks_Rework.Models
         /// New parent meter ID
         /// </summary>
         public int? ParentId { get; set; }
+
+        /// <summary>
+        /// If true, update the active/disabled state.
+        /// </summary>
+        public bool UpdateActive { get; set; }
+
+        /// <summary>
+        /// New active state when UpdateActive is true.
+        /// </summary>
+        public bool Active { get; set; }
     }
 }

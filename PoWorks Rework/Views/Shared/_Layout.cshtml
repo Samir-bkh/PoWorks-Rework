@@ -151,7 +151,7 @@
 
                                         // SQL query retrieving companies sorted alphabetically
                                         using var cmd = new NpgsqlCommand(
-                                            "SELECT \"CompanyId\", \"Name\" FROM \"Companies\" ORDER BY \"Name\"",
+                                            "SELECT \"CompanyId\", \"Name\" FROM \"Companies\" WHERE \"Active\" = TRUE ORDER BY \"Name\"",
                                             conn);
 
 
