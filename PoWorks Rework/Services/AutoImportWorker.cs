@@ -134,7 +134,8 @@ namespace PoWorks_Rework.Services
                                 variableNames,
                                 groupStartTime.ToUniversalTime(),
                                 endTime.ToUniversalTime(),
-                                apiSettings);
+                                apiSettings,
+                                $"Company {companyId}");
 
                             allTrendResults.AddRange(groupResults);
                         }
