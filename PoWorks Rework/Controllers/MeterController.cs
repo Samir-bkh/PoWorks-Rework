@@ -668,7 +668,7 @@ ORDER BY td.""CompanyName""";
                 if (!idsToUpdate.Any())
                     return Json(new { success = false, message = "No meters matched the criteria." });
 
-                if (!request.UpdateTenant && !request.UpdateUnit && !request.UpdateType && !request.UpdateParent)
+                if (!request.UpdateTenant && !request.UpdateUnit && !request.UpdateType && !request.UpdateParent && !request.UpdateActive)
                     return Json(new { success = false, message = "No fields selected for update." });
 
                 using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
@@ -680,6 +680,7 @@ ORDER BY td.""CompanyName""";
                 if (request.UpdateUnit) setClauses.Add("\"Unit\" = @Unit");
                 if (request.UpdateType) setClauses.Add("\"Type\" = @Type");
                 if (request.UpdateParent) setClauses.Add("\"ParentId\" = @ParentId");
+                if (request.UpdateActive) setClauses.Add("\"Active\" = @Active");
 
                 string sql = $@"UPDATE ""Meters"" SET {string.Join(", ", setClauses)} WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
 
@@ -689,6 +690,7 @@ ORDER BY td.""CompanyName""";
                 if (request.UpdateUnit) cmd.Parameters.AddWithValue("@Unit", request.Unit ?? "");
                 if (request.UpdateType) cmd.Parameters.AddWithValue("@Type", request.Type ?? "main");
                 if (request.UpdateParent) cmd.Parameters.AddWithValue("@ParentId", request.ParentId.HasValue ? request.ParentId.Value : DBNull.Value);
+                if (request.UpdateActive) cmd.Parameters.AddWithValue("@Active", request.Active);
 
                 cmd.Parameters.AddWithValue("@MeterIds", idsToUpdate.ToArray());
                 cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
