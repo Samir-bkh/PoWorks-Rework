@@ -7,6 +7,24 @@ using System.Data;
 
 namespace PoWorks_Rework.Controllers
 {
+    public class CompanyAdminViewModel
+    {
+        public List<CompanyAdminItem> Companies { get; set; } = new();
+    }
+
+    public class CompanyAdminItem
+    {
+        public int CompanyId { get; set; }
+        public string Name { get; set; } = "";
+        public bool Active { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int UserCount { get; set; }
+        public int TenantCount { get; set; }
+        public int MeterCount { get; set; }
+        public int BillCount { get; set; }
+        public bool CanDelete => CompanyId != 1 && UserCount == 0 && TenantCount == 0 && MeterCount == 0 && BillCount == 0;
+    }
+
     /// <summary>
     /// Controller for managing company information and settings.
     /// Handles company profile data, configuration settings, and company switching for multi-tenancy.
@@ -229,6 +247,175 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+        public IActionResult Management()
+        {
+            var model = new CompanyAdminViewModel();
+
+            using var connection = GetDatabaseConnection();
+            using var cmd = new NpgsqlCommand(@"
+                SELECT c.""CompanyId"",
+                       c.""Name"",
+                       c.""Active"",
+                       c.""CreatedAt"",
+                       (SELECT COUNT(DISTINCT uc.""UserId"")
+                          FROM ""AspNetUserClaims"" uc
+                         WHERE uc.""ClaimType"" = 'CompanyId'
+                           AND uc.""ClaimValue"" = c.""CompanyId""::text) AS ""UserCount"",
+                       (SELECT COUNT(*) FROM ""Tenants"" t WHERE t.""CompanyId"" = c.""CompanyId"") AS ""TenantCount"",
+                       (SELECT COUNT(*) FROM ""Meters"" m WHERE m.""CompanyId"" = c.""CompanyId"") AS ""MeterCount"",
+                       (SELECT COUNT(*) FROM ""Bills"" b
+                          JOIN ""Tenants"" t ON t.""TenantID"" = b.""TenantID""
+                         WHERE t.""CompanyId"" = c.""CompanyId"") AS ""BillCount""
+                  FROM ""Companies"" c
+                 ORDER BY c.""CompanyId""", connection);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                model.Companies.Add(new CompanyAdminItem
+                {
+                    CompanyId = reader.GetInt32(0),
+                    Name = reader.GetString(1),
+                    Active = reader.GetBoolean(2),
+                    CreatedAt = reader.GetDateTime(3),
+                    UserCount = Convert.ToInt32(reader.GetInt64(4)),
+                    TenantCount = Convert.ToInt32(reader.GetInt64(5)),
+                    MeterCount = Convert.ToInt32(reader.GetInt64(6)),
+                    BillCount = Convert.ToInt32(reader.GetInt64(7))
+                });
+            }
+
+            return View(model);
+        }
+
+        [HttpPost]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+        public IActionResult CreateCompany(string name)
+        {
+            name = (name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                TempData["ErrorMessage"] = "Company name is required.";
+                return RedirectToAction(nameof(Management));
+            }
+
+            using var connection = GetDatabaseConnection();
+
+            using (var existsCmd = new NpgsqlCommand(@"SELECT COUNT(*) FROM ""Companies"" WHERE LOWER(""Name"") = LOWER(@name)", connection))
+            {
+                existsCmd.Parameters.AddWithValue("name", name);
+                if (Convert.ToInt32(existsCmd.ExecuteScalar()) > 0)
+                {
+                    TempData["ErrorMessage"] = "A company with this name already exists.";
+                    return RedirectToAction(nameof(Management));
+                }
+            }
+
+            using var cmd = new NpgsqlCommand(@"INSERT INTO ""Companies"" (""Name"", ""Active"") VALUES (@name, TRUE) RETURNING ""CompanyId""", connection);
+            cmd.Parameters.AddWithValue("name", name);
+            var newCompanyId = Convert.ToInt32(cmd.ExecuteScalar());
+
+            TempData["SuccessMessage"] = $"Company '{name}' created (ID {newCompanyId}).";
+            return RedirectToAction(nameof(Management));
+        }
+
+        [HttpPost]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+        public IActionResult SetCompanyActive(int companyId, bool active)
+        {
+            if (companyId == 1 && !active)
+            {
+                TempData["ErrorMessage"] = "The default company cannot be disabled.";
+                return RedirectToAction(nameof(Management));
+            }
+
+            using var connection = GetDatabaseConnection();
+            using var cmd = new NpgsqlCommand(@"UPDATE ""Companies"" SET ""Active"" = @active WHERE ""CompanyId"" = @companyId", connection);
+            cmd.Parameters.AddWithValue("active", active);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+            var rows = cmd.ExecuteNonQuery();
+
+            if (rows == 0)
+                TempData["ErrorMessage"] = "Company not found.";
+            else
+                TempData["SuccessMessage"] = active
+                    ? "Company enabled. Users and automatic imports can use it again."
+                    : "Company disabled. Login access and automatic imports are now blocked.";
+
+            return RedirectToAction(nameof(Management));
+        }
+
+        [HttpPost]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+        public IActionResult DeleteCompany(int companyId)
+        {
+            if (companyId == 1)
+            {
+                TempData["ErrorMessage"] = "The default company cannot be deleted.";
+                return RedirectToAction(nameof(Management));
+            }
+
+            using var connection = GetDatabaseConnection();
+            using var tx = connection.BeginTransaction();
+
+            try
+            {
+                using var dependencyCmd = new NpgsqlCommand(@"
+                    SELECT
+                        (SELECT COUNT(*) FROM ""AspNetUserClaims"" WHERE ""ClaimType"" = 'CompanyId' AND ""ClaimValue"" = @companyIdText),
+                        (SELECT COUNT(*) FROM ""Tenants"" WHERE ""CompanyId"" = @companyId),
+                        (SELECT COUNT(*) FROM ""Meters"" WHERE ""CompanyId"" = @companyId)", connection, tx);
+                dependencyCmd.Parameters.AddWithValue("companyId", companyId);
+                dependencyCmd.Parameters.AddWithValue("companyIdText", companyId.ToString());
+
+                using var reader = dependencyCmd.ExecuteReader();
+                reader.Read();
+                var userCount = Convert.ToInt32(reader.GetInt64(0));
+                var tenantCount = Convert.ToInt32(reader.GetInt64(1));
+                var meterCount = Convert.ToInt32(reader.GetInt64(2));
+                reader.Close();
+
+                if (userCount > 0 || tenantCount > 0 || meterCount > 0)
+                {
+                    tx.Rollback();
+                    TempData["ErrorMessage"] =
+                        $"Company cannot be permanently deleted while it still contains data ({userCount} users, {tenantCount} tenants, {meterCount} meters). Disable it instead.";
+                    return RedirectToAction(nameof(Management));
+                }
+
+                foreach (var table in new[] { "WebServiceConnections", "SqlServerConnections" })
+                {
+                    using var cleanup = new NpgsqlCommand($@"DELETE FROM ""{table}"" WHERE ""CompanyId"" = @companyId", connection, tx);
+                    cleanup.Parameters.AddWithValue("companyId", companyId);
+                    cleanup.ExecuteNonQuery();
+                }
+
+                using (var infoCleanup = new NpgsqlCommand(@"DELETE FROM ""CompanyInfo"" WHERE ""CompanyInfoId"" = @companyId", connection, tx))
+                {
+                    infoCleanup.Parameters.AddWithValue("companyId", companyId);
+                    infoCleanup.ExecuteNonQuery();
+                }
+
+                using (var delete = new NpgsqlCommand(@"DELETE FROM ""Companies"" WHERE ""CompanyId"" = @companyId", connection, tx))
+                {
+                    delete.Parameters.AddWithValue("companyId", companyId);
+                    delete.ExecuteNonQuery();
+                }
+
+                tx.Commit();
+                TempData["SuccessMessage"] = "Empty company permanently deleted.";
+            }
+            catch (Exception ex)
+            {
+                tx.Rollback();
+                _logger.LogError(ex, "Error deleting company {CompanyId}", companyId);
+                TempData["ErrorMessage"] = "Company deletion failed.";
+            }
+
+            return RedirectToAction(nameof(Management));
+        }
+
         /// <summary>
         /// Displays the company settings page with the current configuration values.
         /// </summary>
@@ -268,11 +455,24 @@ namespace PoWorks_Rework.Controllers
         {
             if (User.Identity?.Name?.ToLower() == "admin")
             {
-                Response.Cookies.Append("AdminSelectedCompanyId", companyId.ToString(), new CookieOptions
+                using var connection = GetDatabaseConnection();
+                using var cmd = new NpgsqlCommand(@"SELECT ""Active"" FROM ""Companies"" WHERE ""CompanyId"" = @companyId", connection);
+                cmd.Parameters.AddWithValue("companyId", companyId);
+                var result = cmd.ExecuteScalar();
+
+                if (result is bool active && active)
                 {
-                    Expires = DateTimeOffset.UtcNow.AddDays(1),
-                    HttpOnly = true
-                });
+                    Response.Cookies.Append("AdminSelectedCompanyId", companyId.ToString(), new CookieOptions
+                    {
+                        Expires = DateTimeOffset.UtcNow.AddDays(1),
+                        HttpOnly = true,
+                        SameSite = SameSiteMode.Lax
+                    });
+                }
+                else
+                {
+                    TempData["ErrorMessage"] = "Only active companies can be selected.";
+                }
             }
 
             return LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
