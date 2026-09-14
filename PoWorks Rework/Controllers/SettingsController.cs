@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PoWorks_Rework.Models;
 using System.Text.Json;
@@ -13,6 +14,7 @@ namespace PoWorks_Rework.Controllers
     /// Controller for application settings and configuration management.
     /// Handles database connection settings, SQL Server connections, web service configuration, and application settings.
     /// </summary>
+    [Authorize(Policy = "GeneralSettingsAccess")]
     public class SettingsController : Controller
     {
         private readonly IConfiguration _configuration;
