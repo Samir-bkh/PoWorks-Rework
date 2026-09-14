@@ -103,7 +103,7 @@ namespace PoWorks_Rework.Controllers
                     CompanyName = companyNames.TryGetValue(companyId, out var companyName) ? companyName : (string.IsNullOrWhiteSpace(companyId) ? "Not assigned" : "Unknown"),
                     TenantId = tenantId,
                     TenantName = tenantNames.TryGetValue(tenantId, out var tenantName) ? tenantName : "",
-                    IsEnabled = !(user.LockoutEnabled && user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow)
+                    IsEnabled = AccessRules.IsUserEnabled(user, DateTimeOffset.UtcNow)
                 });
             }
 
@@ -329,24 +329,13 @@ namespace PoWorks_Rework.Controllers
             if (managedClaims.Count > 0)
                 await _userManager.RemoveClaimsAsync(user, managedClaims);
 
-            var isTenant = string.Equals(userType, "Tenant", StringComparison.OrdinalIgnoreCase);
-
-            var claims = new List<Claim>
-            {
-                new Claim("UserType", isTenant ? "Tenant" : "Management"),
-                new Claim("CompanyId", companyId.ToString())
-            };
-
-            if (isTenant && tenantId.HasValue)
-            {
-                claims.Add(new Claim("TenantId", tenantId.Value.ToString()));
-            }
-            else
-            {
-                if (canViewPcVueConfig) claims.Add(new Claim("Permission", "ViewPcVueConfig"));
-                if (canViewImportExport) claims.Add(new Claim("Permission", "ViewImportExport"));
-                if (canViewGeneralSettings) claims.Add(new Claim("Permission", "ViewGeneralSettings"));
-            }
+            var claims = AccessRules.BuildAccessClaims(
+                userType,
+                companyId,
+                tenantId,
+                canViewPcVueConfig,
+                canViewImportExport,
+                canViewGeneralSettings);
 
             await _userManager.AddClaimsAsync(user, claims);
         }
