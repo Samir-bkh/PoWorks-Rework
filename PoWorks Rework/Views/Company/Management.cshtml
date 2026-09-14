@@ -84,23 +84,25 @@
                             }
                             else
                             {
-                                <form asp-action="SetCompanyActive" method="post" class="d-inline">
-                                    <input type="hidden" name="companyId" value="@company.CompanyId" />
-                                    <input type="hidden" name="active" value="@(!company.Active)" />
-                                    @if (company.Active)
-                                    {
+                                @if (company.Active)
+                                {
+                                    <form asp-action="DisableCompany" method="post" class="d-inline">
+                                        <input type="hidden" name="companyId" value="@company.CompanyId" />
                                         <button class="btn btn-sm btn-outline-warning" type="submit"
-                                                onclick="return confirm('Disable this company? Users will be blocked and automatic import will stop, but all data will be preserved.');">
+                                                onclick="return confirm('Disable this workspace? Users will be blocked and automatic import will stop, but all data will be preserved.');">
                                             <i class="bi bi-pause-circle"></i> Disable
                                         </button>
-                                    }
-                                    else
-                                    {
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form asp-action="EnableCompany" method="post" class="d-inline">
+                                        <input type="hidden" name="companyId" value="@company.CompanyId" />
                                         <button class="btn btn-sm btn-outline-success" type="submit">
                                             <i class="bi bi-play-circle"></i> Enable
                                         </button>
-                                    }
-                                </form>
+                                    </form>
+                                }
 
                                 <form asp-action="DeleteCompany" method="post" class="d-inline ms-1">
                                     <input type="hidden" name="companyId" value="@company.CompanyId" />
