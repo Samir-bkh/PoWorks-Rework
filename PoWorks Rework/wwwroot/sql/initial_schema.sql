@@ -381,3 +381,9 @@ ALTER TABLE "MeterReadingsYearly" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER D
 
 
 SELECT setval(pg_get_serial_sequence('"Companies"', 'CompanyId'), coalesce(max("CompanyId"), 1), max("CompanyId") IS NOT null) FROM "Companies";
+
+-- Track completed system migrations.
+CREATE TABLE IF NOT EXISTS "SystemFlags" (
+    "FlagName" TEXT PRIMARY KEY,
+    "SetAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
