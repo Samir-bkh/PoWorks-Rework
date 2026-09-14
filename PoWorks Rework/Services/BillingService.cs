@@ -211,12 +211,12 @@ namespace PoWorks_Rework.Services
 
                 string insertBillQuery = @"
     INSERT INTO ""Bills"" (
-        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"", 
-        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"", ""GrandTotal"", ""Status""
-    ) 
+        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"",
+        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"", ""GrandTotal"", ""Status"", ""CompanyId""
+    )
     VALUES (
-        @tenantId, @billNumber, @start, @end, 
-        @totalKwh, @subTotal, @tax, @grandTotal, @grandTotal, 'Draft'
+        @tenantId, @billNumber, @start, @end,
+        @totalKwh, @subTotal, @tax, @grandTotal, @grandTotal, 'Draft', @companyId
     ) RETURNING ""BillId"";";
 
                 using var cmdBill = new NpgsqlCommand(insertBillQuery, connection, transaction);
@@ -228,6 +228,7 @@ namespace PoWorks_Rework.Services
                 cmdBill.Parameters.AddWithValue("subTotal", bill.AmountExclTax);
                 cmdBill.Parameters.AddWithValue("tax", bill.TaxAmount);
                 cmdBill.Parameters.AddWithValue("grandTotal", bill.AmountInclTax);
+                cmdBill.Parameters.AddWithValue("companyId", companyId);
                 int newBillId = Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
                 string insertLineQuery = @"
     INSERT INTO ""BillLineItems"" (
