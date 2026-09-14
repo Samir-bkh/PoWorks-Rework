@@ -13,6 +13,8 @@ public class WorkspaceIsolationSourceRegressionTests
         Assert.Contains("\"\"TenantID\"\" = @tenantId AND \"\"CompanyId\"\" = @companyId", source);
         Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
         Assert.Contains("Tenant does not belong to the current workspace.", source);
+        Assert.Contains("\"\"Status\"\", \"\"CompanyId\"\"", source);
+        Assert.Contains("cmdBill.Parameters.AddWithValue(\"companyId\", companyId)", source);
     }
 
     [Fact]
@@ -34,6 +36,15 @@ public class WorkspaceIsolationSourceRegressionTests
         Assert.Contains("[Authorize(Policy = \"ImportExportAccess\")]", source);
         Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
         Assert.Contains("cmd.Parameters.AddWithValue(\"companyId\", companyId)", source);
+    }
+
+    [Fact]
+    public void AutomaticBillPayments_PersistWorkspace()
+    {
+        var source = ReadSource("Controllers", "BillsController.cs");
+
+        Assert.Contains("\"\"PaymentMethod\"\", \"\"CompanyId\"\"", source);
+        Assert.Contains("cmdInsert.Parameters.AddWithValue(\"companyId\", _companyContext.CurrentCompanyId)", source);
     }
 
     [Fact]
