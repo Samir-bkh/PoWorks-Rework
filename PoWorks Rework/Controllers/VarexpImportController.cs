@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
@@ -9,6 +10,7 @@ namespace PoWorks_Rework.Controllers
     /// <summary>
     /// Controller for parsing and importing VAREXP.DAT files into the meter database.
     /// </summary>
+    [Authorize(Policy = "ImportExportAccess")]
     public class VarexpImportController : Controller
     {
         #region Dependencies
@@ -16,6 +18,7 @@ namespace PoWorks_Rework.Controllers
         private readonly ILogger<VarexpImportController> _logger;
         private readonly DatabaseService _databaseService;
         private readonly VarexpParserService _varexpParserService;
+        private readonly ICompanyContext _companyContext;
 
         /// <summary>
         /// Initializes the VAREXP import controller with logging, database, and parser service dependencies.
@@ -23,11 +26,13 @@ namespace PoWorks_Rework.Controllers
         public VarexpImportController(
             ILogger<VarexpImportController> logger,
             DatabaseService databaseService,
-            VarexpParserService varexpParserService)
+            VarexpParserService varexpParserService,
+            ICompanyContext companyContext)
         {
             _logger = logger;
             _databaseService = databaseService;
             _varexpParserService = varexpParserService;
+            _companyContext = companyContext;
         }
 
         #endregion
@@ -205,9 +210,12 @@ namespace PoWorks_Rework.Controllers
                     {
                         var command = new NpgsqlCommand(@"
                     SELECT ""MeterId"", ""Name"" 
-                    FROM ""Meters"" 
-                    WHERE ""Type"" = 'main' AND ""Active"" = true
+                    FROM ""Meters""
+                    WHERE ""CompanyId"" = @companyId
+                      AND ""Type"" = 'main'
+                      AND ""Active"" = true
                     ORDER BY ""Name""", connection);
+                        command.Parameters.AddWithValue("@companyId", _companyContext.CurrentCompanyId);
 
                         using (var reader = await command.ExecuteReaderAsync())
                         {
@@ -241,9 +249,11 @@ namespace PoWorks_Rework.Controllers
             var command = new NpgsqlCommand(@"
         SELECT ""MeterId"", ""Name"", ""Type"", ""Unit"", ""ParentId"", ""Active"", ""LastReading"", ""TenantID""
         FROM ""Meters"" 
-        WHERE ""Name"" = @name", connection);
+        WHERE ""Name"" = @name
+          AND ""CompanyId"" = @companyId", connection);
 
             command.Parameters.AddWithValue("@name", meterName);
+            command.Parameters.AddWithValue("@companyId", _companyContext.CurrentCompanyId);
 
             using var reader = await command.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -297,8 +307,8 @@ namespace PoWorks_Rework.Controllers
             }
 
             var command = new NpgsqlCommand(@"
-        INSERT INTO ""Meters"" (""Name"", ""Type"", ""Unit"", ""ParentId"", ""Active"", ""LastReading"", ""TenantID"")
-        VALUES (@name, @type, @unit, @parentId, @active, @lastReading, @tenantId)
+        INSERT INTO ""Meters"" (""Name"", ""Type"", ""Unit"", ""ParentId"", ""Active"", ""LastReading"", ""TenantID"", ""CompanyId"")
+        VALUES (@name, @type, @unit, @parentId, @active, @lastReading, @tenantId, @companyId)
         RETURNING ""MeterId""", connection);
 
             command.Parameters.AddWithValue("@name", meter.MeterName);
@@ -307,7 +317,8 @@ namespace PoWorks_Rework.Controllers
             command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
             command.Parameters.AddWithValue("@active", meter.Active);
             command.Parameters.AddWithValue("@lastReading", 0); 
-            command.Parameters.AddWithValue("@tenantId", DBNull.Value); 
+            command.Parameters.AddWithValue("@tenantId", DBNull.Value);
+            command.Parameters.AddWithValue("@companyId", _companyContext.CurrentCompanyId);
 
             var newMeterId = await command.ExecuteScalarAsync();
             _logger.LogInformation($"Created meter {meter.MeterName} with ID {newMeterId}");
@@ -333,9 +344,11 @@ namespace PoWorks_Rework.Controllers
             var command = new NpgsqlCommand(@"
         UPDATE ""Meters"" 
         SET ""Type"" = @type, ""Unit"" = @unit, ""ParentId"" = @parentId, ""Active"" = @active
-        WHERE ""MeterId"" = @meterId", connection);
+        WHERE ""MeterId"" = @meterId
+          AND ""CompanyId"" = @companyId", connection);
 
             command.Parameters.AddWithValue("@meterId", meterId);
+            command.Parameters.AddWithValue("@companyId", _companyContext.CurrentCompanyId);
             command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); 
             command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); 
             command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
@@ -353,9 +366,10 @@ namespace PoWorks_Rework.Controllers
         private async Task<bool> CheckMeterExistsAsync(int meterId, NpgsqlConnection connection)
         {
             var command = new NpgsqlCommand(@"
-        SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @meterId", connection);
+        SELECT COUNT(*) FROM ""Meters"" WHERE ""MeterId"" = @meterId AND ""CompanyId"" = @companyId", connection);
 
             command.Parameters.AddWithValue("@meterId", meterId);
+            command.Parameters.AddWithValue("@companyId", _companyContext.CurrentCompanyId);
 
             var count = (long)await command.ExecuteScalarAsync();
             return count > 0;
