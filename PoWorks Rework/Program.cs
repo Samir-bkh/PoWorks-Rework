@@ -97,13 +97,27 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOnly", policy =>
     {
         policy.RequireAuthenticatedUser();
-
-        
         policy.RequireAssertion(context =>
             string.Equals(
                 context.User.Identity?.Name,
                 "Admin",
                 StringComparison.OrdinalIgnoreCase));
+    });
+
+    options.AddPolicy("ImportExportAccess", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireAssertion(context =>
+            string.Equals(context.User.Identity?.Name, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            context.User.HasClaim("Permission", "ViewImportExport"));
+    });
+
+    options.AddPolicy("GeneralSettingsAccess", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireAssertion(context =>
+            string.Equals(context.User.Identity?.Name, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            context.User.HasClaim("Permission", "ViewGeneralSettings"));
     });
 });
 
