@@ -53,6 +53,38 @@ public class CompanyContextTests
         Assert.Equal(4, sut.CurrentCompanyId);
     }
 
+
+    [Fact]
+    public void Admin_WithInvalidCookie_FallsBackToCompanyClaim()
+    {
+        var http = new DefaultHttpContext();
+        http.User = Principal("Admin", new Claim("CompanyId", "3"));
+        http.Request.Headers.Cookie = "AdminSelectedCompanyId=not-a-number";
+
+        var sut = new CompanyContext(new HttpContextAccessor { HttpContext = http });
+
+        Assert.Equal(3, sut.CurrentCompanyId);
+    }
+
+    [Fact]
+    public void InvalidCompanyClaim_FallsBackToDefaultWorkspace()
+    {
+        var http = new DefaultHttpContext();
+        http.User = Principal("manager", new Claim("CompanyId", "invalid"));
+
+        var sut = new CompanyContext(new HttpContextAccessor { HttpContext = http });
+
+        Assert.Equal(1, sut.CurrentCompanyId);
+    }
+
+    [Fact]
+    public void MissingHttpContext_FallsBackToDefaultWorkspace()
+    {
+        var sut = new CompanyContext(new HttpContextAccessor());
+
+        Assert.Equal(1, sut.CurrentCompanyId);
+    }
+
     private static ClaimsPrincipal Principal(string name, params Claim[] claims)
     {
         var allClaims = new List<Claim> { new(ClaimTypes.Name, name) };
