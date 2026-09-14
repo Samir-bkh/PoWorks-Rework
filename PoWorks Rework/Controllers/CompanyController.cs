@@ -337,11 +337,25 @@ namespace PoWorks_Rework.Controllers
             var rows = cmd.ExecuteNonQuery();
 
             if (rows == 0)
+            {
                 TempData["ErrorMessage"] = "Company not found.";
+            }
             else
+            {
+                if (!active && _companyContext.CurrentCompanyId == companyId)
+                {
+                    Response.Cookies.Append("AdminSelectedCompanyId", "1", new CookieOptions
+                    {
+                        Expires = DateTimeOffset.UtcNow.AddDays(1),
+                        HttpOnly = true,
+                        SameSite = SameSiteMode.Lax
+                    });
+                }
+
                 TempData["SuccessMessage"] = active
                     ? "Company enabled. Users and automatic imports can use it again."
                     : "Company disabled. Login access and automatic imports are now blocked.";
+            }
 
             return RedirectToAction(nameof(Management));
         }
