@@ -9,9 +9,9 @@ public class WorkspaceIsolationSourceRegressionTests
     {
         var source = ReadSource("Services", "BillingService.cs");
 
-        Assert.Contains(@"t.""""CompanyId"""" = @companyId", source);
-        Assert.Contains(@""""TenantID"""" = @tenantId AND """"CompanyId"""" = @companyId", source);
-        Assert.Contains(@""""CompanyId"""" = @companyId", source);
+        Assert.Contains("t.\"\"CompanyId\"\" = @companyId", source);
+        Assert.Contains("\"\"TenantID\"\" = @tenantId AND \"\"CompanyId\"\" = @companyId", source);
+        Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
         Assert.Contains("Tenant does not belong to the current workspace.", source);
     }
 
@@ -20,9 +20,9 @@ public class WorkspaceIsolationSourceRegressionTests
     {
         var source = ReadSource("Controllers", "VarexpImportController.cs");
 
-        Assert.Contains(@"[Authorize(Policy = ""ImportExportAccess"")]", source);
-        Assert.Contains(@""""CompanyId"""" = @companyId", source);
-        Assert.Contains(@""""CompanyId"""")", source);
+        Assert.Contains("[Authorize(Policy = \"ImportExportAccess\")]", source);
+        Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
+        Assert.Contains("\"\"CompanyId\"\"", source);
         Assert.Contains("_companyContext.CurrentCompanyId", source);
     }
 
@@ -31,9 +31,9 @@ public class WorkspaceIsolationSourceRegressionTests
     {
         var source = ReadSource("Controllers", "WebServicesImportController.cs");
 
-        Assert.Contains(@"[Authorize(Policy = ""ImportExportAccess"")]", source);
-        Assert.Contains(@""""CompanyId"""" = @companyId", source);
-        Assert.Contains("cmd.Parameters.AddWithValue("companyId", companyId)", source);
+        Assert.Contains("[Authorize(Policy = \"ImportExportAccess\")]", source);
+        Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
+        Assert.Contains("cmd.Parameters.AddWithValue(\"companyId\", companyId)", source);
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public class WorkspaceIsolationSourceRegressionTests
     {
         var source = ReadSource("Services", "DashboardDataService.cs");
 
-        Assert.Contains(@"m.""""CompanyId"""" = @CompanyId", source);
-        Assert.Contains(@"WHERE """"CompanyId"""" = @CompanyId AND """"TenantID"""" = @TenantId", source);
+        Assert.Contains("m.\"\"CompanyId\"\" = @CompanyId", source);
+        Assert.Contains("WHERE \"\"CompanyId\"\" = @CompanyId AND \"\"TenantID\"\" = @TenantId", source);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class WorkspaceIsolationSourceRegressionTests
     {
         var source = ReadSource("Controllers", "MeterController.cs");
 
-        Assert.Contains(@""""CompanyId"""" = @CompanyId", source);
+        Assert.Contains("\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("BulkDeleteMeters", source);
     }
 
