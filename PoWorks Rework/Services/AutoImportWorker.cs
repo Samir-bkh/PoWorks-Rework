@@ -291,7 +291,7 @@ namespace PoWorks_Rework.Services
             {
                 using var conn = dbService.CreateNewConnection();
                 await conn.OpenAsync();
-                using var cmd = new NpgsqlCommand("SELECT \"CompanyId\" FROM \"Companies\"", conn);
+                using var cmd = new NpgsqlCommand("SELECT \"CompanyId\" FROM \"Companies\" WHERE \"Active\" = TRUE", conn);
                 using var reader = await cmd.ExecuteReaderAsync();
 
                 while (await reader.ReadAsync())
