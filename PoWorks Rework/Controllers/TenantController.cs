@@ -229,7 +229,7 @@ namespace PoWorks_Rework.Controllers
                         ""td"".""ContactPhone"",
                         0 AS Outstanding,
                         0 AS Overdue,
-                        TRUE AS Active
+                        COALESCE(""td"".""Active"", TRUE) AS Active
                     FROM ""Tenants"" ""t""
                     LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
                     " + whereClause + @"
@@ -305,7 +305,14 @@ namespace PoWorks_Rework.Controllers
                         ""td"".""CompanyMisc"",
                         COALESCE(""td"".""Tarif_1""::numeric, 0.0),
                         COALESCE(""td"".""Tarif_2""::numeric, 0.0),
-                        COALESCE(""td"".""Tarif_3""::numeric, 0.0)
+                        COALESCE(""td"".""Tarif_3""::numeric, 0.0),
+                        ""td"".""StartDate"",
+                        ""td"".""Period"",
+                        COALESCE(""td"".""Deposit""::numeric, 0.0),
+                        COALESCE(""td"".""Active"", TRUE),
+                        COALESCE(""td"".""EmailAlert"", TRUE),
+                        COALESCE(""td"".""PrintBill"", TRUE),
+                        COALESCE(""td"".""EmailBill"", TRUE)
                     FROM ""Tenants"" ""t""
                     LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
                     WHERE ""t"".""TenantID"" = @tenantId AND ""t"".""CompanyId"" = @companyId", connection);
@@ -338,14 +345,15 @@ namespace PoWorks_Rework.Controllers
                         tenant.Threshold1Rate = reader.GetDecimal(9);
                         tenant.Threshold2Rate = reader.GetDecimal(10);
 
-                        tenant.StartDate = DateTime.Now.ToString("yyyy-MM-dd");
-                        tenant.Period = "Monthly";
+                        tenant.StartDate = reader.IsDBNull(11) ? DateTime.Now.ToString("yyyy-MM-dd") : reader.GetDateTime(11).ToString("yyyy-MM-dd");
+                        tenant.Period = reader.IsDBNull(12) ? "Monthly" : reader.GetString(12);
+                        tenant.Deposit = reader.IsDBNull(13) ? 0m : reader.GetDecimal(13);
                         tenant.Threshold1 = 100;
                         tenant.Threshold2 = 200;
-                        tenant.Active = true;
-                        tenant.EmailAlert = true;
-                        tenant.PrintBill = true;
-                        tenant.EmailBill = true;
+                        tenant.Active = !reader.IsDBNull(14) && reader.GetBoolean(14);
+                        tenant.EmailAlert = reader.IsDBNull(15) || reader.GetBoolean(15);
+                        tenant.PrintBill = reader.IsDBNull(16) || reader.GetBoolean(16);
+                        tenant.EmailBill = reader.IsDBNull(17) || reader.GetBoolean(17);
                     }
                 }
             }
