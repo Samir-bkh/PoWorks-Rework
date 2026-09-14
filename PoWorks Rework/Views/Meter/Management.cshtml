@@ -121,8 +121,10 @@
                     <div class="d-flex align-items-center gap-2">
                         <button class="btn btn-sm btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#bulkEditModal"><i class="bi bi-pencil-square"></i> Edit Selected</button>
                         <button class="btn btn-sm btn-warning fw-bold text-dark" onclick="unassignBulkTenant()"><i class="bi bi-person-x"></i> Unassign</button>
+                        <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="setBulkMetersActive(false)"><i class="bi bi-pause-circle"></i> Disable</button>
+                        <button class="btn btn-sm btn-outline-success fw-bold" onclick="setBulkMetersActive(true)"><i class="bi bi-play-circle"></i> Enable</button>
                         <div class="vr mx-1"></div>
-                        <button class="btn btn-sm btn-danger fw-bold" onclick="deleteBulkMeters()"><i class="bi bi-trash"></i> Delete</button>
+                        <button class="btn btn-sm btn-danger fw-bold" onclick="deleteBulkMeters()"><i class="bi bi-trash"></i> Delete permanently</button>
                     </div>
                 </div>
             </div>
@@ -646,11 +648,40 @@
         }
 
         /**
-         * Sends an asynchronous bulk deletion HTTP POST request after user confirmation.
+         * Enables or disables the selected meters without deleting historical readings.
+         */
+        window.setBulkMetersActive = function(active) {
+            const action = active ? 'enable' : 'disable';
+            if (!confirm(`Are you sure you want to ${action} the selected meters? Historical readings will be preserved.`)) return;
+
+            sendBulkEditRequest({
+                UpdateTenant: false,
+                UpdateUnit: false,
+                UpdateType: false,
+                UpdateParent: false,
+                UpdateActive: true,
+                Active: active
+            });
+        };
+
+        /**
+         * Permanently deletes selected meters and their historical readings.
+         * Existing invoice line items are preserved.
          */
         window.deleteBulkMeters = function() {
             const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
-            if(!confirm(`Warning: You are about to permanently delete ${selectedIds.length} meters and all their historical readings. Are you sure?`)) return;
+
+            if (isSelectingAcrossPages) {
+                alert('Permanent deletion is limited to explicitly checked meters. Clear "select all matching" and select the meters you want to delete.');
+                return;
+            }
+
+            if (selectedIds.length === 0) {
+                alert('No meters selected.');
+                return;
+            }
+
+            if(!confirm(`PERMANENT DELETE: ${selectedIds.length} meter(s) and all associated historical readings will be deleted. Existing invoice lines will be preserved. This action cannot be undone. Continue?`)) return;
 
             fetch('/Meter/BulkDeleteMeters', {
                 method: 'POST',
