@@ -88,23 +88,25 @@
                                             <i class="bi bi-pencil"></i> Edit
                                         </a>
 
-                                        <form asp-action="SetEnabled" method="post" class="d-inline">
-                                            <input type="hidden" name="id" value="@user.Id" />
-                                            <input type="hidden" name="enabled" value="@(!user.IsEnabled)" />
-                                            @if (user.IsEnabled)
-                                            {
+                                        @if (user.IsEnabled)
+                                        {
+                                            <form asp-action="DisableUser" method="post" class="d-inline">
+                                                <input type="hidden" name="id" value="@user.Id" />
                                                 <button type="submit" class="btn btn-sm btn-outline-warning"
                                                         onclick="return confirm('Disable this user? The account will no longer be able to sign in.');">
                                                     <i class="bi bi-person-slash"></i> Disable
                                                 </button>
-                                            }
-                                            else
-                                            {
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <form asp-action="EnableUser" method="post" class="d-inline">
+                                                <input type="hidden" name="id" value="@user.Id" />
                                                 <button type="submit" class="btn btn-sm btn-outline-success">
                                                     <i class="bi bi-person-check"></i> Enable
                                                 </button>
-                                            }
-                                        </form>
+                                            </form>
+                                        }
 
                                         <form asp-action="Delete" asp-route-id="@user.Id" method="post" class="d-inline"
                                               onsubmit="return confirm('Delete this login account? Company, tenant, meters, readings, bills and payments will be preserved.');">
