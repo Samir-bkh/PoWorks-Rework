@@ -312,9 +312,23 @@ namespace PoWorks_Rework.Controllers
                 }
             }
 
-            using var cmd = new NpgsqlCommand(@"INSERT INTO ""Companies"" (""Name"", ""Active"") VALUES (@name, TRUE) RETURNING ""CompanyId""", connection);
+            using var tx = connection.BeginTransaction();
+
+            using var cmd = new NpgsqlCommand(@"INSERT INTO ""Companies"" (""Name"", ""Active"") VALUES (@name, TRUE) RETURNING ""CompanyId""", connection, tx);
             cmd.Parameters.AddWithValue("name", name);
             var newCompanyId = Convert.ToInt32(cmd.ExecuteScalar());
+
+            using (var infoCmd = new NpgsqlCommand(@"
+                INSERT INTO ""CompanyInfo"" (""CompanyInfoId"", ""CompanyName"")
+                VALUES (@companyId, @name)
+                ON CONFLICT (""CompanyInfoId"") DO NOTHING", connection, tx))
+            {
+                infoCmd.Parameters.AddWithValue("companyId", newCompanyId);
+                infoCmd.Parameters.AddWithValue("name", name);
+                infoCmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
 
             TempData["SuccessMessage"] = $"Company '{name}' created (ID {newCompanyId}).";
             return RedirectToAction(nameof(Management));
@@ -398,7 +412,7 @@ namespace PoWorks_Rework.Controllers
                     return RedirectToAction(nameof(Management));
                 }
 
-                foreach (var table in new[] { "WebServiceConnections", "SqlServerConnections" })
+                foreach (var table in new[] { "WebServiceConnections", "SqlServerConnections", "Payments" })
                 {
                     using var cleanup = new NpgsqlCommand($@"DELETE FROM ""{table}"" WHERE ""CompanyId"" = @companyId", connection, tx);
                     cleanup.Parameters.AddWithValue("companyId", companyId);
