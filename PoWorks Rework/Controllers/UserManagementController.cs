@@ -158,6 +158,8 @@ namespace PoWorks_Rework.Controllers
                     ModelState.AddModelError(string.Empty, error.Description);
 
                 PopulateLists();
+                ViewBag.CurrentWorkspaceName = GetCompanyName(currentCompanyId);
+                model.CompanyId = currentCompanyId.ToString();
                 return View(model);
             }
 
