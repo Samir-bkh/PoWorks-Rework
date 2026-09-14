@@ -229,7 +229,9 @@ namespace PoWorks_Rework.Controllers
                 model.CanViewGeneralSettings);
 
             await _userManager.SetLockoutEnabledAsync(user, true);
-            await _userManager.SetLockoutEndDateAsync(user, model.IsEnabled ? null : DateTimeOffset.MaxValue);
+            await _userManager.SetLockoutEndDateAsync(
+                user,
+                model.IsEnabled ? DateTimeOffset.UtcNow.AddSeconds(-1) : DateTimeOffset.UtcNow.AddYears(100));
 
             if (!string.IsNullOrWhiteSpace(model.NewPassword))
             {
@@ -258,8 +260,25 @@ namespace PoWorks_Rework.Controllers
             if (user == null || string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
                 return RedirectToAction(nameof(Index));
 
-            await _userManager.SetLockoutEnabledAsync(user, true);
-            await _userManager.SetLockoutEndDateAsync(user, enabled ? null : DateTimeOffset.MaxValue);
+            var lockoutEnabledResult = await _userManager.SetLockoutEnabledAsync(user, true);
+            if (!lockoutEnabledResult.Succeeded)
+            {
+                TempData["ErrorMessage"] = string.Join(" ", lockoutEnabledResult.Errors.Select(e => e.Description));
+                return RedirectToAction(nameof(Index));
+            }
+
+            var lockoutEnd = enabled
+                ? DateTimeOffset.UtcNow.AddSeconds(-1)
+                : DateTimeOffset.UtcNow.AddYears(100);
+
+            var lockoutResult = await _userManager.SetLockoutEndDateAsync(user, lockoutEnd);
+            if (!lockoutResult.Succeeded)
+            {
+                TempData["ErrorMessage"] = string.Join(" ", lockoutResult.Errors.Select(e => e.Description));
+                return RedirectToAction(nameof(Index));
+            }
+
+            await _userManager.ResetAccessFailedCountAsync(user);
             await _userManager.UpdateSecurityStampAsync(user);
 
             TempData["SuccessMessage"] = enabled
