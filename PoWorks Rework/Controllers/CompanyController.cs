@@ -336,27 +336,43 @@ namespace PoWorks_Rework.Controllers
 
         [HttpPost]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
-        public IActionResult SetCompanyActive(int companyId, bool active)
+        public IActionResult EnableCompany(int companyId)
         {
-            if (companyId == 1 && !active)
+            using var connection = GetDatabaseConnection();
+            using var cmd = new NpgsqlCommand(@"UPDATE ""Companies"" SET ""Active"" = TRUE WHERE ""CompanyId"" = @companyId", connection);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+            var rows = cmd.ExecuteNonQuery();
+
+            TempData[rows > 0 ? "SuccessMessage" : "ErrorMessage"] =
+                rows > 0
+                    ? "Workspace enabled. Users and automatic imports can use it again."
+                    : "Workspace not found.";
+
+            return RedirectToAction(nameof(Management));
+        }
+
+        [HttpPost]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+        public IActionResult DisableCompany(int companyId)
+        {
+            if (companyId == 1)
             {
-                TempData["ErrorMessage"] = "The default company cannot be disabled.";
+                TempData["ErrorMessage"] = "The default workspace cannot be disabled.";
                 return RedirectToAction(nameof(Management));
             }
 
             using var connection = GetDatabaseConnection();
-            using var cmd = new NpgsqlCommand(@"UPDATE ""Companies"" SET ""Active"" = @active WHERE ""CompanyId"" = @companyId", connection);
-            cmd.Parameters.AddWithValue("active", active);
+            using var cmd = new NpgsqlCommand(@"UPDATE ""Companies"" SET ""Active"" = FALSE WHERE ""CompanyId"" = @companyId", connection);
             cmd.Parameters.AddWithValue("companyId", companyId);
             var rows = cmd.ExecuteNonQuery();
 
             if (rows == 0)
             {
-                TempData["ErrorMessage"] = "Company not found.";
+                TempData["ErrorMessage"] = "Workspace not found.";
             }
             else
             {
-                if (!active && _companyContext.CurrentCompanyId == companyId)
+                if (_companyContext.CurrentCompanyId == companyId)
                 {
                     Response.Cookies.Append("AdminSelectedCompanyId", "1", new CookieOptions
                     {
@@ -366,9 +382,7 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
-                TempData["SuccessMessage"] = active
-                    ? "Company enabled. Users and automatic imports can use it again."
-                    : "Company disabled. Login access and automatic imports are now blocked.";
+                TempData["SuccessMessage"] = "Workspace disabled. Login access and automatic imports are now blocked.";
             }
 
             return RedirectToAction(nameof(Management));
