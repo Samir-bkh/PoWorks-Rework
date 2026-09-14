@@ -66,11 +66,13 @@ namespace PoWorks_Rework.Controllers
     {
         private readonly UserManager<IdentityUser> _userManager;
         private readonly DatabaseService _databaseService;
+        private readonly ICompanyContext _companyContext;
 
-        public UserManagementController(UserManager<IdentityUser> userManager, DatabaseService databaseService)
+        public UserManagementController(UserManager<IdentityUser> userManager, DatabaseService databaseService, ICompanyContext companyContext)
         {
             _userManager = userManager;
             _databaseService = databaseService;
+            _companyContext = companyContext;
         }
 
         public async Task<IActionResult> Index()
@@ -112,20 +114,34 @@ namespace PoWorks_Rework.Controllers
         public IActionResult Create()
         {
             PopulateLists();
-            return View(new CreateUserViewModel());
+            var currentCompanyId = _companyContext.CurrentCompanyId;
+            ViewBag.CurrentWorkspaceName = GetCompanyName(currentCompanyId);
+            return View(new CreateUserViewModel
+            {
+                CompanyId = currentCompanyId.ToString()
+            });
         }
 
         [HttpPost]
         public async Task<IActionResult> Create(CreateUserViewModel model)
         {
-            var assignment = ValidateAndResolveAssignment(model.UserType, model.CompanyId, model.TenantId);
+            var isTenant = string.Equals(model.UserType, "Tenant", StringComparison.OrdinalIgnoreCase);
+            var currentCompanyId = _companyContext.CurrentCompanyId;
 
-            if (!assignment.IsValid)
-                ModelState.AddModelError(string.Empty, assignment.ErrorMessage);
+            var assignment = isTenant
+                ? ValidateAndResolveTenantAssignment(model.TenantId, currentCompanyId)
+                : IsCompanyActive(currentCompanyId)
+                    ? (true, "", currentCompanyId, (int?)null)
+                    : (false, "The active workspace is disabled or unavailable.", 0, (int?)null);
+
+            if (!assignment.Item1)
+                ModelState.AddModelError(string.Empty, assignment.Item2);
 
             if (!ModelState.IsValid)
             {
                 PopulateLists();
+                ViewBag.CurrentWorkspaceName = GetCompanyName(currentCompanyId);
+                model.CompanyId = currentCompanyId.ToString();
                 return View(model);
             }
 
@@ -148,8 +164,8 @@ namespace PoWorks_Rework.Controllers
             await ApplyAccessClaimsAsync(
                 user,
                 model.UserType,
-                assignment.CompanyId,
-                assignment.TenantId,
+                assignment.Item3,
+                assignment.Item4,
                 model.CanViewPcVueConfig,
                 model.CanViewImportExport,
                 model.CanViewGeneralSettings);
@@ -304,6 +320,18 @@ namespace PoWorks_Rework.Controllers
             await _userManager.AddClaimsAsync(user, claims);
         }
 
+        private (bool, string, int, int?) ValidateAndResolveTenantAssignment(int? tenantId, int currentCompanyId)
+        {
+            if (!tenantId.HasValue)
+                return (false, "A tenant must be selected for a Tenant user.", 0, null);
+
+            var tenant = GetTenantAssignment(tenantId.Value);
+            if (tenant == null || tenant.Value.CompanyId != currentCompanyId)
+                return (false, "The selected tenant does not belong to the active workspace, is disabled, or no longer exists.", 0, null);
+
+            return (true, "", tenant.Value.CompanyId, tenant.Value.TenantId);
+        }
+
         private (bool IsValid, string ErrorMessage, int CompanyId, int? TenantId) ValidateAndResolveAssignment(
             string userType,
             string? companyId,
@@ -427,6 +455,15 @@ namespace PoWorks_Rework.Controllers
                 dict[reader.GetInt32(0).ToString()] = reader.GetString(1);
 
             return dict;
+        }
+
+        private string GetCompanyName(int companyId)
+        {
+            using var connection = _databaseService.CreateNewConnection();
+            connection.Open();
+            using var cmd = new NpgsqlCommand(@"SELECT ""Name"" FROM ""Companies"" WHERE ""CompanyId"" = @companyId", connection);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+            return cmd.ExecuteScalar()?.ToString() ?? $"Workspace #{companyId}";
         }
 
         private bool IsCompanyActive(int companyId)
