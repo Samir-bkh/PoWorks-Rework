@@ -35,9 +35,11 @@ namespace PoWorks_Rework.Controllers
         /// </summary>
         [AllowAnonymous]
         [HttpGet]
-        public IActionResult Login(string returnUrl = null)
+        public IActionResult Login(string returnUrl = null, int? accessDisabled = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
+            if (accessDisabled == 1)
+                ModelState.AddModelError(string.Empty, "Your company or tenant access has been disabled. Contact an administrator.");
             return View();
         }
 
