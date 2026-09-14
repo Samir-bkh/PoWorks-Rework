@@ -1,0 +1,106 @@
+@model PoWorks_Rework.Controllers.EditUserViewModel
+@using Microsoft.AspNetCore.Mvc.Rendering
+
+@{
+    ViewData["Title"] = "Edit User";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-7 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h4 class="mb-0">Edit User</h4>
+                </div>
+                <div class="card-body">
+                    @if (!ViewData.ModelState.IsValid)
+                    {
+                        <div class="alert alert-danger">
+                            @Html.ValidationSummary(string.Empty, new { @class = "mb-0" })
+                        </div>
+                    }
+
+                    <form asp-action="Edit" method="post">
+                        <input type="hidden" asp-for="Id" />
+
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input class="form-control" asp-for="Username" readonly />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">User Type</label>
+                            <select asp-for="UserType" id="userType" class="form-select" onchange="toggleUserTypeFields()">
+                                <option value="Management">Management</option>
+                                <option value="Tenant">Tenant</option>
+                            </select>
+                        </div>
+
+                        <div id="managementFields">
+                            <div class="mb-3">
+                                <label class="form-label">Company</label>
+                                <select asp-for="CompanyId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Companies"></select>
+                            </div>
+                        </div>
+
+                        <div id="tenantField" class="mb-3">
+                            <label class="form-label">Assigned Tenant</label>
+                            <select asp-for="TenantId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Tenants"></select>
+                        </div>
+
+                        <div id="permissionsBlock" class="mb-4 p-3 border rounded bg-light">
+                            <label class="form-label fw-bold mb-3"><i class="bi bi-shield-lock"></i> Management Permissions</label>
+
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="CanViewPcVueConfig">
+                                <label class="form-check-label" asp-for="CanViewPcVueConfig">PcVue Config</label>
+                            </div>
+
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="CanViewImportExport">
+                                <label class="form-check-label" asp-for="CanViewImportExport">Import / Export</label>
+                            </div>
+
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" asp-for="CanViewGeneralSettings">
+                                <label class="form-check-label" asp-for="CanViewGeneralSettings">General Settings</label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" asp-for="IsEnabled">
+                                <label class="form-check-label fw-semibold" asp-for="IsEnabled">Account enabled</label>
+                            </div>
+                            <div class="form-text">Disabled users cannot sign in. Their company and tenant data are preserved.</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">New Password</label>
+                            <input class="form-control" type="password" asp-for="NewPassword" autocomplete="new-password" />
+                            <div class="form-text">Leave empty to keep the current password.</div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function toggleUserTypeFields() {
+            const isTenant = document.getElementById('userType').value === 'Tenant';
+            document.getElementById('managementFields').style.display = isTenant ? 'none' : 'block';
+            document.getElementById('permissionsBlock').style.display = isTenant ? 'none' : 'block';
+            document.getElementById('tenantField').style.display = isTenant ? 'block' : 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', toggleUserTypeFields);
+    </script>
+}
