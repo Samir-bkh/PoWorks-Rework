@@ -254,37 +254,47 @@ namespace PoWorks_Rework.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> SetEnabled(string id, bool enabled)
+        public async Task<IActionResult> EnableUser(string id)
         {
             var user = await _userManager.FindByIdAsync(id);
             if (user == null || string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
                 return RedirectToAction(nameof(Index));
 
-            var lockoutEnabledResult = await _userManager.SetLockoutEnabledAsync(user, true);
-            if (!lockoutEnabledResult.Succeeded)
+            user.LockoutEnabled = true;
+            user.LockoutEnd = DateTimeOffset.UtcNow.AddSeconds(-1);
+            user.AccessFailedCount = 0;
+
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
             {
-                TempData["ErrorMessage"] = string.Join(" ", lockoutEnabledResult.Errors.Select(e => e.Description));
+                TempData["ErrorMessage"] = string.Join(" ", updateResult.Errors.Select(e => e.Description));
                 return RedirectToAction(nameof(Index));
             }
 
-            var lockoutEnd = enabled
-                ? DateTimeOffset.UtcNow.AddSeconds(-1)
-                : DateTimeOffset.UtcNow.AddYears(100);
-
-            var lockoutResult = await _userManager.SetLockoutEndDateAsync(user, lockoutEnd);
-            if (!lockoutResult.Succeeded)
-            {
-                TempData["ErrorMessage"] = string.Join(" ", lockoutResult.Errors.Select(e => e.Description));
-                return RedirectToAction(nameof(Index));
-            }
-
-            await _userManager.ResetAccessFailedCountAsync(user);
             await _userManager.UpdateSecurityStampAsync(user);
+            TempData["SuccessMessage"] = $"User '{user.UserName}' enabled.";
+            return RedirectToAction(nameof(Index));
+        }
 
-            TempData["SuccessMessage"] = enabled
-                ? $"User '{user.UserName}' enabled."
-                : $"User '{user.UserName}' disabled.";
+        [HttpPost]
+        public async Task<IActionResult> DisableUser(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null || string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
+                return RedirectToAction(nameof(Index));
 
+            user.LockoutEnabled = true;
+            user.LockoutEnd = DateTimeOffset.UtcNow.AddYears(100);
+
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+            {
+                TempData["ErrorMessage"] = string.Join(" ", updateResult.Errors.Select(e => e.Description));
+                return RedirectToAction(nameof(Index));
+            }
+
+            await _userManager.UpdateSecurityStampAsync(user);
+            TempData["SuccessMessage"] = $"User '{user.UserName}' disabled.";
             return RedirectToAction(nameof(Index));
         }
 
