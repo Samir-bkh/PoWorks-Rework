@@ -37,18 +37,9 @@
 
                         <div id="managementFields">
                             <div class="mb-3">
-                                <label for="companyId" class="form-label">Company / Project</label>
-                                <select asp-for="CompanyId" id="companyId" class="form-control" onchange="toggleNewCompanyField()">
-                                    @foreach (var item in (List<SelectListItem>)ViewBag.Companies)
-                                    {
-                                        <option value="@item.Value">@item.Text</option>
-                                    }
-                                </select>
-                            </div>
-
-                            <div class="mb-3" id="newCompanyField" style="display:none;">
-                                <label for="newCompanyName" class="form-label">New Company Name</label>
-                                <input type="text" asp-for="NewCompanyName" id="newCompanyName" class="form-control" placeholder="e.g. Central Hospital" />
+                                <label for="companyId" class="form-label">Company</label>
+                                <select asp-for="CompanyId" id="companyId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Companies"></select>
+                                <div class="form-text">Companies are created separately in Company Management.</div>
                             </div>
                         </div>
 
@@ -97,18 +88,11 @@
 
 @section Scripts {
     <script>
-        function toggleNewCompanyField() {
-            const companySelect = document.getElementById('companyId');
-            const field = document.getElementById('newCompanyField');
-            field.style.display = companySelect && companySelect.value === 'NEW' ? 'block' : 'none';
-        }
-
         function toggleUserTypeFields() {
             const isTenant = document.getElementById('userType').value === 'Tenant';
             document.getElementById('managementFields').style.display = isTenant ? 'none' : 'block';
             document.getElementById('permissionsBlock').style.display = isTenant ? 'none' : 'block';
             document.getElementById('tenantField').style.display = isTenant ? 'block' : 'none';
-            toggleNewCompanyField();
         }
 
         document.addEventListener("DOMContentLoaded", toggleUserTypeFields);
