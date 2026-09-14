@@ -37,9 +37,10 @@
 
                         <div id="managementFields">
                             <div class="mb-3">
-                                <label for="companyId" class="form-label">Company</label>
-                                <select asp-for="CompanyId" id="companyId" class="form-select" asp-items="(List<SelectListItem>)ViewBag.Companies"></select>
-                                <div class="form-text">Companies are created separately in Company Management.</div>
+                                <label class="form-label">Workspace</label>
+                                <input type="text" class="form-control" value="@ViewBag.CurrentWorkspaceName" readonly />
+                                <input type="hidden" asp-for="CompanyId" />
+                                <div class="form-text">Management users are created inside the currently selected workspace. Switch workspace from the top bar before creating the user if needed.</div>
                             </div>
                         </div>
 
