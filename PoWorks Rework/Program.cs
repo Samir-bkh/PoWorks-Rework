@@ -229,6 +229,28 @@ try
 
     Console.WriteLine("4f. UseAuthentication & UseAuthorization");
     app.UseAuthentication();
+
+    app.Use(async (context, next) =>
+    {
+        if (context.User.Identity?.IsAuthenticated == true &&
+            string.Equals(context.User.FindFirst("UserType")?.Value, "Tenant", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = context.Request.Path.Value ?? string.Empty;
+            var allowed = path == "/" ||
+                          path.StartsWith("/Home", StringComparison.OrdinalIgnoreCase) ||
+                          path.StartsWith("/Dashboard", StringComparison.OrdinalIgnoreCase) ||
+                          path.StartsWith("/Auth", StringComparison.OrdinalIgnoreCase);
+
+            if (!allowed)
+            {
+                context.Response.Redirect("/poworks/Auth/AccessDenied");
+                return;
+            }
+        }
+
+        await next();
+    });
+
     app.UseAuthorization();
 
     Console.WriteLine("4g. MapControllerRoutes");
