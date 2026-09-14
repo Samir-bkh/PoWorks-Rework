@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS "Bills" (
 CREATE TABLE IF NOT EXISTS "BillLineItems" (
     "LineItemId" SERIAL PRIMARY KEY,
     "BillId" INTEGER NOT NULL REFERENCES "Bills"("BillId") ON DELETE CASCADE,
-    "MeterId" INTEGER NOT NULL REFERENCES "Meters"("MeterId"),
+    "MeterId" INTEGER REFERENCES "Meters"("MeterId") ON DELETE SET NULL,
     "MeterName" VARCHAR(100),
     "Consumption" NUMERIC(12,3),
     "Unit" VARCHAR(20),
@@ -300,6 +300,19 @@ CREATE TABLE IF NOT EXISTS "BillLineItems" (
     "LineTotalHT" NUMERIC(10,2)
 );
 
+
+-- Ensure existing databases keep invoice history when a meter is deleted.
+ALTER TABLE "BillLineItems"
+    ALTER COLUMN "MeterId" DROP NOT NULL;
+
+ALTER TABLE "BillLineItems"
+    DROP CONSTRAINT IF EXISTS "BillLineItems_MeterId_fkey";
+
+ALTER TABLE "BillLineItems"
+    ADD CONSTRAINT "BillLineItems_MeterId_fkey"
+    FOREIGN KEY ("MeterId")
+    REFERENCES "Meters"("MeterId")
+    ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_bills_tenantid ON "Bills"("TenantID");
 CREATE INDEX IF NOT EXISTS idx_bills_status ON "Bills"("Status");
