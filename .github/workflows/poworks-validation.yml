@@ -2,11 +2,8 @@ name: PoWorks validation
 
 on:
   push:
-    branches:
-      - feature/tenant-user-management
   pull_request:
-    branches:
-      - master
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -30,5 +27,5 @@ jobs:
       - name: Restore tests
         run: dotnet restore "PoWorks Rework.Tests/PoWorks Rework.Tests.csproj"
 
-      - name: Run tests
+      - name: Run full regression suite
         run: dotnet test "PoWorks Rework.Tests/PoWorks Rework.Tests.csproj" --configuration Release --no-restore --verbosity normal
