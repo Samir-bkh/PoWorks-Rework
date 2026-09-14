@@ -1,4 +1,5 @@
 using PoWorks_Rework.Services;
+using Npgsql;
 using System;
 using System.Security.Authentication;
 using QuestPDF.Infrastructure;
@@ -229,6 +230,69 @@ try
 
     Console.WriteLine("4f. UseAuthentication & UseAuthorization");
     app.UseAuthentication();
+
+    app.Use(async (context, next) =>
+    {
+        if (context.User.Identity?.IsAuthenticated == true &&
+            !string.Equals(context.User.Identity?.Name, "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            var companyValue = context.User.FindFirst("CompanyId")?.Value;
+            var tenantValue = context.User.FindFirst("TenantId")?.Value;
+            var userType = context.User.FindFirst("UserType")?.Value;
+            var scopeIsActive = false;
+
+            if (int.TryParse(companyValue, out var companyId))
+            {
+                try
+                {
+                    var db = context.RequestServices.GetRequiredService<DatabaseService>();
+                    using var connection = db.CreateNewConnection();
+                    await connection.OpenAsync();
+
+                    if (string.Equals(userType, "Tenant", StringComparison.OrdinalIgnoreCase) &&
+                        int.TryParse(tenantValue, out var tenantId))
+                    {
+                        using var cmd = new NpgsqlCommand(@"
+                            SELECT COUNT(*)
+                            FROM ""Companies"" c
+                            INNER JOIN ""Tenants"" t ON t.""CompanyId"" = c.""CompanyId""
+                            INNER JOIN ""TenantDetails"" td ON td.""TenantID"" = t.""TenantID""
+                            WHERE c.""CompanyId"" = @companyId
+                              AND c.""Active"" = TRUE
+                              AND t.""TenantID"" = @tenantId
+                              AND td.""Active"" = TRUE", connection);
+                        cmd.Parameters.AddWithValue("companyId", companyId);
+                        cmd.Parameters.AddWithValue("tenantId", tenantId);
+                        scopeIsActive = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+                    }
+                    else
+                    {
+                        using var cmd = new NpgsqlCommand(@"
+                            SELECT COUNT(*)
+                            FROM ""Companies""
+                            WHERE ""CompanyId"" = @companyId
+                              AND ""Active"" = TRUE", connection);
+                        cmd.Parameters.AddWithValue("companyId", companyId);
+                        scopeIsActive = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+                    }
+                }
+                catch
+                {
+                    scopeIsActive = false;
+                }
+            }
+
+            if (!scopeIsActive)
+            {
+                var signInManager = context.RequestServices.GetRequiredService<SignInManager<IdentityUser>>();
+                await signInManager.SignOutAsync();
+                context.Response.Redirect($"{context.Request.PathBase}/Auth/Login?accessDisabled=1");
+                return;
+            }
+        }
+
+        await next();
+    });
 
     app.Use(async (context, next) =>
     {
