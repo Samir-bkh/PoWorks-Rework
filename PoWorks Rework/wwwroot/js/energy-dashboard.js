@@ -1384,8 +1384,11 @@
         let compareStart;
 
         if (preset === 'lastYear') {
-            compareStart = new Date(start);
-            compareStart.setFullYear(compareStart.getFullYear() - 1);
+            const shifted = chartCore.shiftIsoDateByYears(
+                valueOf('startDate'),
+                -1);
+            compareStart = parseLocalDate(shifted);
+            if (!compareStart) return null;
         } else if (preset === 'custom') {
             compareStart = parseLocalDate(valueOf('compareStartDate'));
             if (!compareStart) return null;
