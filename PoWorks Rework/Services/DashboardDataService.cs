@@ -62,8 +62,12 @@ namespace PoWorks_Rework.Services
                         reading_stats AS (
                             SELECT COUNT(*) as total_readings
                             FROM ""MeterReadings"" mr
-                            INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                            WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
+                            INNER JOIN ""Meters"" m
+                              ON mr.""MeterId"" = m.""MeterId""
+                             AND mr.""CompanyId"" = m.""CompanyId""
+                            WHERE m.""Active"" = true
+                            AND m.""CompanyId"" = @CompanyId
+                            AND mr.""CompanyId"" = @CompanyId
                             AND mr.""Timestamp"" >= @StartDate 
                             AND mr.""Timestamp"" <= @EndDate
                             {0}
@@ -267,9 +271,15 @@ namespace PoWorks_Rework.Services
                             MIN(mr.""Timestamp"") as ""FirstReading"",
                             MAX(mr.""Timestamp"") as ""LastReading""
                         FROM ""Meters"" m
-                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                        INNER JOIN ""MeterReadings"" mr ON m.""MeterId"" = mr.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
+                        LEFT JOIN ""Tenants"" t
+                          ON m.""TenantID"" = t.""TenantID""
+                         AND m.""CompanyId"" = t.""CompanyId""
+                        INNER JOIN ""MeterReadings"" mr
+                          ON m.""MeterId"" = mr.""MeterId""
+                         AND m.""CompanyId"" = mr.""CompanyId""
+                        WHERE m.""Active"" = true
+                        AND m.""CompanyId"" = @CompanyId
+                        AND mr.""CompanyId"" = @CompanyId
                         AND mr.""Timestamp"" >= @StartDate 
                         AND mr.""Timestamp"" <= @EndDate";
 
@@ -350,7 +360,9 @@ namespace PoWorks_Rework.Services
                                m.""Type"", m.""Active"", m.""LastReading"", m.""TenantID"",
                                COALESCE(t.""DisplayName"", '') as ""TenantName""
                         FROM ""Meters"" m
-                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                        LEFT JOIN ""Tenants"" t
+                          ON m.""TenantID"" = t.""TenantID""
+                         AND m.""CompanyId"" = t.""CompanyId""
                         WHERE m.""CompanyId"" = @CompanyId";
 
                     var whereConditions = new List<string>();
@@ -580,8 +592,12 @@ namespace PoWorks_Rework.Services
                                td.""CompanyName"" as Name,
                                td.""Active""
                         FROM ""Tenants"" t
-                        INNER JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                        WHERE td.""Active"" = true AND t.""CompanyId"" = @CompanyId
+                        INNER JOIN ""TenantDetails"" td
+                          ON t.""TenantID"" = td.""TenantID""
+                         AND t.""CompanyId"" = td.""CompanyId""
+                        WHERE td.""Active"" = true
+                          AND t.""CompanyId"" = @CompanyId
+                          AND td.""CompanyId"" = @CompanyId
                         ORDER BY td.""CompanyName""";
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
