@@ -331,6 +331,13 @@ namespace PoWorks_Rework.Models
         public string DateFilter { get; set; } = "daily";
         public int? TenantId { get; set; }
         public List<int> MeterIds { get; set; } = new();
+
+        /// <summary>
+        /// Optional internal stable series keys used to keep comparison charts
+        /// aligned with the exact series visible in the primary period.
+        /// </summary>
+        public List<string> SeriesKeys { get; set; } = new();
+
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public int MaxSeries { get; set; } = 10;
