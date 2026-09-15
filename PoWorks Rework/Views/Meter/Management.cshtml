@@ -277,7 +277,13 @@
                                 <td class="text-end">
                                     <a class="btn btn-sm btn-outline-primary py-0 px-2"
                                        asp-action="Management"
-                                       asp-route-id="@meter.Id">
+                                       asp-route-id="@meter.Id"
+                                       asp-route-searchField="@Model.SearchCriteria.SearchField"
+                                       asp-route-searchTerm="@Model.SearchCriteria.SearchTerm"
+                                       asp-route-statusFilter="@Model.SearchCriteria.StatusFilter"
+                                       asp-route-assignmentFilter="@Model.SearchCriteria.AssignmentFilter"
+                                       asp-route-page="@Model.CurrentPage"
+                                       asp-route-pageSize="@Model.PageSize">
                                         Open
                                     </a>
                                 </td>
