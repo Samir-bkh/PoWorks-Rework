@@ -50,13 +50,12 @@ public class MeterManagementTests
     [Fact]
     public void MeterController_RequiresManagementAccess()
     {
-        var attribute = typeof(MeterController)
+        var attributes = typeof(MeterController)
             .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
             .Cast<AuthorizeAttribute>()
-            .SingleOrDefault();
+            .ToList();
 
-        Assert.NotNull(attribute);
-        Assert.Equal("ManagementAccess", attribute!.Policy);
+        Assert.Contains(attributes, attribute => attribute.Policy == "ManagementAccess");
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class MeterManagementTests
     {
         var source = ReadSource("Controllers", "MeterController.cs");
 
-        Assert.Contains(@"""CompanyId"" = @CompanyId", source);
+        Assert.Contains("\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("ValidateTenantAssignmentAsync", source);
         Assert.Contains("ValidateParentAssignmentAsync", source);
         Assert.Contains("WITH RECURSIVE ancestors", source);
@@ -125,9 +124,9 @@ public class MeterManagementTests
     {
         var source = ReadSource("Repositories", "MeterRepository.cs");
 
-        Assert.Contains(@"p.""CompanyId"" = m.""CompanyId""", source);
-        Assert.Contains(@"t.""CompanyId"" = m.""CompanyId""", source);
-        Assert.Contains(@"t2.""CompanyId"" = @CompanyId", source);
+        Assert.Contains("p.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
+        Assert.Contains("t.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
+        Assert.Contains("t2.\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("GetMeterIdsAsync", source);
         Assert.Contains("StatusFilter", source);
         Assert.Contains("AssignmentFilter", source);
