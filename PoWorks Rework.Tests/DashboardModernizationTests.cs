@@ -252,7 +252,9 @@ public class DashboardModernizationTests
         Assert.Contains("function exportCsv()", script);
         Assert.Contains("text/csv;charset=utf-8", script);
         Assert.Contains("function csvCell(value)", script);
-        Assert.Contains("/^[=+\\-@]/", script);
+        Assert.Contains("typeof value === 'number' && Number.isFinite(value)", script);
+        Assert.Contains("/^[\\t\\r\\n ]*[=+\\-@]/", script);
+        Assert.Contains("'\\uFEFF'", script);
         Assert.Contains("lastAnalyticsPayload = null", script);
         Assert.Contains("Use automatic scope", script);
 
