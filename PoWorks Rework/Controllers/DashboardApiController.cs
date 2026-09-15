@@ -113,7 +113,8 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                var suggestions = await _dashboardDataService.GetDateRangeSuggestionsAsync();
+                var suggestions = await _dashboardDataService.GetDateRangeSuggestionsAsync(
+                    IsTenantUser ? CurrentTenantId : null);
 
                 return Json(new
                 {
@@ -152,7 +153,8 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
-                var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync();
+                var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync(
+                    IsTenantUser ? CurrentTenantId : null);
 
                 return Json(new
                 {
