@@ -425,6 +425,11 @@ CREATE TABLE IF NOT EXISTS "Payments" (
 
 
 ALTER TABLE "Meters" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+CREATE INDEX IF NOT EXISTS idx_meters_companyid ON "Meters"("CompanyId");
+CREATE INDEX IF NOT EXISTS idx_meters_company_tenant ON "Meters"("CompanyId", "TenantID");
+CREATE INDEX IF NOT EXISTS idx_meters_company_active ON "Meters"("CompanyId", "Active");
+CREATE INDEX IF NOT EXISTS idx_meters_company_parent ON "Meters"("CompanyId", "ParentId");
+
 ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
 ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "UserId" TEXT; 
 ALTER TABLE "Payments" ADD COLUMN IF NOT EXISTS "Notes" TEXT;
