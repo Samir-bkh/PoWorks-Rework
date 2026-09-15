@@ -26,6 +26,7 @@ namespace PoWorks_Rework.Controllers
             int? companyId,
             DateTime? from,
             DateTime? to,
+            bool showTechnical = false,
             int page = 1)
         {
             var model = new AuditLogPageViewModel
@@ -36,8 +37,9 @@ namespace PoWorks_Rework.Controllers
                 CompanyId = companyId,
                 From = from,
                 To = to,
+                ShowTechnical = showTechnical,
                 Page = Math.Max(1, page),
-                PageSize = 50,
+                PageSize = 20,
                 LogDirectory = FileDiagnostics.ResolveLogRoot(_configuration)
             };
 
@@ -49,6 +51,11 @@ namespace PoWorks_Rework.Controllers
 
             var where = new StringBuilder(" WHERE 1=1 ");
             var parameters = new List<NpgsqlParameter>();
+
+            if (!showTechnical && string.IsNullOrWhiteSpace(auditAction))
+            {
+                where.Append(@" AND ""Action"" NOT IN ('MUTATION', 'MUTATION_FAILED')");
+            }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -96,6 +103,9 @@ namespace PoWorks_Rework.Controllers
                 countCmd.Parameters.AddRange(parameters.Select(p => new NpgsqlParameter(p.ParameterName, p.Value)).ToArray());
                 model.TotalCount = Convert.ToInt32(countCmd.ExecuteScalar());
             }
+
+            if (model.Page > model.TotalPages)
+                model.Page = model.TotalPages;
 
             var offset = (model.Page - 1) * model.PageSize;
             var sql = @"
