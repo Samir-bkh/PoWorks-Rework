@@ -233,7 +233,11 @@ namespace PoWorks_Rework.Repositories
                 async (connection, transaction) =>
                 {
                     var meters = new List<Meter>();
-                    const string sql = @"
+                    var excludeClause = excludeMeterId.HasValue
+                        ? @" AND m.""MeterId"" <> @ExcludeMeterId"
+                        : "";
+
+                    var sql = $@"
                         SELECT
                             m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"",
                             m.""ParentId"", NULL::varchar AS ""ParentName"",
@@ -242,14 +246,14 @@ namespace PoWorks_Rework.Repositories
                         FROM ""Meters"" m
                         WHERE m.""CompanyId"" = @CompanyId
                           AND LOWER(m.""Type"") = 'main'
-                          AND (@ExcludeMeterId IS NULL OR m.""MeterId"" <> @ExcludeMeterId)
+                          {excludeClause}
                         ORDER BY COALESCE(NULLIF(m.""Label"", ''), m.""Name"")";
 
                     using var cmd = new NpgsqlCommand(sql, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", companyId);
-                    cmd.Parameters.AddWithValue(
-                        "@ExcludeMeterId",
-                        excludeMeterId.HasValue ? excludeMeterId.Value : DBNull.Value);
+
+                    if (excludeMeterId.HasValue)
+                        cmd.Parameters.AddWithValue("@ExcludeMeterId", excludeMeterId.Value);
 
                     using var reader = await cmd.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
