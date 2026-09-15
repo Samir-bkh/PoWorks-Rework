@@ -141,7 +141,7 @@ namespace PoWorks_Rework.Services
                           ON mr.""MeterId"" = m.""MeterId""
                          AND mr.""CompanyId"" = m.""CompanyId""
                         WHERE m.""Active"" = true
-                          AND m.""CompanyId"" = @CompanyId""
+                          AND m.""CompanyId"" = @CompanyId"
                         + tenantFilter;
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
