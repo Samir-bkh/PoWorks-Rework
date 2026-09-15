@@ -409,7 +409,7 @@ public class ConsumptionBillingConsistencyTests
             });
 
         Assert.Equal(42d, Assert.Single(unitlessRaw.ChartData.Datasets).Data.Single()!.Value, 6);
-        Assert.Equal("unit", unitlessRaw.Summary.Unit);
+        Assert.Equal("(unspecified)", unitlessRaw.Summary.Unit);
 
         var bill = await billingService.CalculateBillAsync(10, start, end);
 
