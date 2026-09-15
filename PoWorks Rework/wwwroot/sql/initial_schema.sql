@@ -448,6 +448,17 @@ FROM "Tenants" t
 WHERE td."TenantID" = t."TenantID"
   AND td."CompanyId" IS DISTINCT FROM t."CompanyId";
 
+-- Preserve information created by older PoWorks versions when introducing
+-- the structured tenant fields. Legacy tariff values remain synchronized by
+-- TenantManagementController for BillingService compatibility.
+UPDATE "TenantDetails"
+SET "Address1" = COALESCE("Address1", "CompanyAddress"),
+    "City" = COALESCE("City", "CompanyLocation"),
+    "Unit" = COALESCE("Unit", "CompanyMisc"),
+    "BaseRate" = COALESCE("Tarif_1"::numeric, "BaseRate", 0.5),
+    "Threshold1Rate" = COALESCE("Tarif_2"::numeric, "Threshold1Rate", 0.6),
+    "Threshold2Rate" = COALESCE("Tarif_3"::numeric, "Threshold2Rate", 0.8);
+
 CREATE INDEX IF NOT EXISTS idx_tenants_companyid ON "Tenants"("CompanyId");
 CREATE INDEX IF NOT EXISTS idx_tenantdetails_companyid ON "TenantDetails"("CompanyId");
 CREATE INDEX IF NOT EXISTS idx_tenantdetails_company_tenant ON "TenantDetails"("CompanyId", "TenantID");
