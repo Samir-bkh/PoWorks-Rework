@@ -103,12 +103,34 @@ namespace PoWorks_Rework.Controllers
             {
                 try
                 {
+                    var before = GetCompanyInfo();
                     SaveCompanyInfo(companyInfo);
+                    AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                    {
+                        Action = "UPDATE",
+                        EntityType = "CompanyInfo",
+                        EntityId = _companyContext.CurrentCompanyId.ToString(),
+                        CompanyId = _companyContext.CurrentCompanyId,
+                        Summary = "Company information updated.",
+                        Before = before,
+                        After = companyInfo
+                    }).GetAwaiter().GetResult();
+
                     TempData["SuccessMessage"] = "Company information saved successfully.";
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error saving company information");
+                    AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                    {
+                        Action = "UPDATE",
+                        EntityType = "CompanyInfo",
+                        EntityId = _companyContext.CurrentCompanyId.ToString(),
+                        CompanyId = _companyContext.CurrentCompanyId,
+                        Summary = "Company information update failed.",
+                        After = companyInfo,
+                        Success = false
+                    }).GetAwaiter().GetResult();
                     TempData["ErrorMessage"] = $"Error saving company information: {ex.Message}";
                 }
             }
@@ -330,6 +352,16 @@ namespace PoWorks_Rework.Controllers
 
             tx.Commit();
 
+            AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+            {
+                Action = "CREATE",
+                EntityType = "Workspace",
+                EntityId = newCompanyId.ToString(),
+                CompanyId = newCompanyId,
+                Summary = $"Workspace '{name}' created.",
+                After = new { CompanyId = newCompanyId, Name = name, Active = true }
+            }).GetAwaiter().GetResult();
+
             TempData["SuccessMessage"] = $"Company '{name}' created (ID {newCompanyId}).";
             return RedirectToAction(nameof(Management));
         }
@@ -342,6 +374,20 @@ namespace PoWorks_Rework.Controllers
             using var cmd = new NpgsqlCommand(@"UPDATE ""Companies"" SET ""Active"" = TRUE WHERE ""CompanyId"" = @companyId", connection);
             cmd.Parameters.AddWithValue("companyId", companyId);
             var rows = cmd.ExecuteNonQuery();
+
+            if (rows > 0)
+            {
+                AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "ENABLE",
+                    EntityType = "Workspace",
+                    EntityId = companyId.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Workspace enabled.",
+                    Before = new { Active = false },
+                    After = new { Active = true }
+                }).GetAwaiter().GetResult();
+            }
 
             TempData[rows > 0 ? "SuccessMessage" : "ErrorMessage"] =
                 rows > 0
@@ -381,6 +427,17 @@ namespace PoWorks_Rework.Controllers
                         SameSite = SameSiteMode.Lax
                     });
                 }
+
+                AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "DISABLE",
+                    EntityType = "Workspace",
+                    EntityId = companyId.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Workspace disabled.",
+                    Before = new { Active = true },
+                    After = new { Active = false }
+                }).GetAwaiter().GetResult();
 
                 TempData["SuccessMessage"] = "Workspace disabled. Login access and automatic imports are now blocked.";
             }
@@ -446,12 +503,32 @@ namespace PoWorks_Rework.Controllers
                 }
 
                 tx.Commit();
+
+                AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "DELETE",
+                    EntityType = "Workspace",
+                    EntityId = companyId.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Empty workspace permanently deleted.",
+                    Before = new { CompanyId = companyId }
+                }).GetAwaiter().GetResult();
+
                 TempData["SuccessMessage"] = "Empty company permanently deleted.";
             }
             catch (Exception ex)
             {
                 tx.Rollback();
                 _logger.LogError(ex, "Error deleting company {CompanyId}", companyId);
+                AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "DELETE",
+                    EntityType = "Workspace",
+                    EntityId = companyId.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Workspace deletion failed.",
+                    Success = false
+                }).GetAwaiter().GetResult();
                 TempData["ErrorMessage"] = "Company deletion failed.";
             }
 
@@ -510,6 +587,14 @@ namespace PoWorks_Rework.Controllers
                         HttpOnly = true,
                         SameSite = SameSiteMode.Lax
                     });
+                    AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                    {
+                        Action = "SWITCH",
+                        EntityType = "Workspace",
+                        EntityId = companyId.ToString(),
+                        CompanyId = companyId,
+                        Summary = "Admin switched active workspace."
+                    }).GetAwaiter().GetResult();
                 }
                 else
                 {

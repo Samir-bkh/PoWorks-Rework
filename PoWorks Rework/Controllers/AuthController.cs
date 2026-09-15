@@ -59,6 +59,15 @@ namespace PoWorks_Rework.Controllers
         {
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             {
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+                {
+                    Action = "LOGIN_FAILED",
+                    EntityType = "Authentication",
+                    EntityId = string.IsNullOrWhiteSpace(username) ? null : username,
+                    ActorUserName = string.IsNullOrWhiteSpace(username) ? "Unknown" : username,
+                    Summary = "Login failed because credentials were incomplete.",
+                    Success = false
+                });
                 ModelState.AddModelError(string.Empty, "Invalid username or password.");
                 return View();
             }
@@ -66,12 +75,30 @@ namespace PoWorks_Rework.Controllers
             var user = await _userManager.FindByNameAsync(username);
             if (user == null)
             {
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+                {
+                    Action = "LOGIN_FAILED",
+                    EntityType = "Authentication",
+                    EntityId = username,
+                    ActorUserName = username,
+                    Summary = "Login failed for an unknown username.",
+                    Success = false
+                });
                 ModelState.AddModelError(string.Empty, "Invalid username or password.");
                 return View();
             }
 
             if (!AccessRules.IsUserEnabled(user, DateTimeOffset.UtcNow))
             {
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+                {
+                    Action = "LOGIN_BLOCKED",
+                    EntityType = "Authentication",
+                    EntityId = user.Id,
+                    ActorUserName = user.UserName,
+                    Summary = "Login blocked because the account is disabled.",
+                    Success = false
+                });
                 ModelState.AddModelError(string.Empty, "This account is disabled. Contact an administrator.");
                 return View();
             }
@@ -104,11 +131,40 @@ namespace PoWorks_Rework.Controllers
 
             if (!result.Succeeded)
             {
+                var failedCompanyId = int.TryParse(claims.FirstOrDefault(x => x.Type == "CompanyId")?.Value, out var parsedFailedCompanyId)
+                    ? parsedFailedCompanyId
+                    : (int?)null;
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+                {
+                    Action = "LOGIN_FAILED",
+                    EntityType = "Authentication",
+                    EntityId = user.Id,
+                    ActorUserName = user.UserName,
+                    CompanyId = failedCompanyId,
+                    Summary = "Login failed because the password or sign-in validation was rejected.",
+                    Success = false
+                });
                 ModelState.AddModelError(string.Empty, "Invalid login attempt.");
                 return View();
             }
 
             await _signInManager.SignInWithClaimsAsync(user, rememberMe, claims);
+
+            var loginCompanyId = int.TryParse(claims.FirstOrDefault(x => x.Type == "CompanyId")?.Value, out var parsedLoginCompanyId)
+                ? parsedLoginCompanyId
+                : (int?)null;
+            await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+            {
+                Action = "LOGIN",
+                EntityType = "Authentication",
+                EntityId = user.Id,
+                ActorUserName = user.UserName,
+                ActorUserId = user.Id,
+                ActorUserType = isAdmin ? "Admin" : claims.FirstOrDefault(x => x.Type == "UserType")?.Value,
+                CompanyId = loginCompanyId,
+                Summary = $"User '{user.UserName}' signed in successfully."
+            });
 
             if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                 return LocalRedirect(returnUrl);
@@ -160,6 +216,25 @@ namespace PoWorks_Rework.Controllers
         /// <returns>A redirect result to the home page.</returns>
         public async Task<IActionResult> Logout()
         {
+            var userName = User.Identity?.Name ?? "Unknown";
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userType = User.FindFirst("UserType")?.Value;
+            var companyId = int.TryParse(User.FindFirst("CompanyId")?.Value, out var parsedCompanyId)
+                ? parsedCompanyId
+                : (int?)null;
+
+            await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+            {
+                Action = "LOGOUT",
+                EntityType = "Authentication",
+                EntityId = userId,
+                ActorUserName = userName,
+                ActorUserId = userId,
+                ActorUserType = AccessRules.IsAdmin(userName) ? "Admin" : userType,
+                CompanyId = companyId,
+                Summary = $"User '{userName}' signed out."
+            });
+
             await _signInManager.SignOutAsync();
             return LocalRedirect("~/");
         }

@@ -56,6 +56,33 @@ CREATE TABLE IF NOT EXISTS "CompanyInfo" (
 );
 
 --##########################################################
+--Audit / traceability
+--##########################################################
+
+CREATE TABLE IF NOT EXISTS "AuditLogs" (
+    "AuditLogId" BIGSERIAL PRIMARY KEY,
+    "TimestampUtc" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "UserId" VARCHAR(450),
+    "UserName" VARCHAR(256),
+    "UserType" VARCHAR(50),
+    "CompanyId" INTEGER,
+    "Action" VARCHAR(80) NOT NULL,
+    "EntityType" VARCHAR(80) NOT NULL,
+    "EntityId" VARCHAR(160),
+    "Summary" TEXT NOT NULL,
+    "BeforeJson" TEXT,
+    "AfterJson" TEXT,
+    "Success" BOOLEAN NOT NULL DEFAULT TRUE,
+    "IpAddress" VARCHAR(64),
+    "CorrelationId" VARCHAR(100)
+);
+
+CREATE INDEX IF NOT EXISTS idx_auditlogs_timestamp ON "AuditLogs"("TimestampUtc" DESC);
+CREATE INDEX IF NOT EXISTS idx_auditlogs_company ON "AuditLogs"("CompanyId", "TimestampUtc" DESC);
+CREATE INDEX IF NOT EXISTS idx_auditlogs_user ON "AuditLogs"("UserName", "TimestampUtc" DESC);
+CREATE INDEX IF NOT EXISTS idx_auditlogs_entity ON "AuditLogs"("EntityType", "EntityId", "TimestampUtc" DESC);
+
+--##########################################################
 --Meter Logic
 --##########################################################
 
