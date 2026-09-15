@@ -40,10 +40,15 @@
                 meterId: Number.isFinite(Number(dataset.meterId))
                     ? Number(dataset.meterId)
                     : datasetIndex + 1,
+                tenantId: dataset.tenantId ?? null,
+                seriesKey: dataset.seriesKey || ('meter:' + (dataset.meterId ?? datasetIndex + 1)),
                 label: dataset.label || meterName,
                 meterName,
                 tenantName,
                 unit,
+                measurementMetric: dataset.measurementMetric || 'energy',
+                isAggregate: dataset.isAggregate === true,
+                sourceCount: Number(dataset.sourceCount) || 1,
                 data: (dataset.data || []).map((value, index) => {
                     const numericValue =
                         value === null || value === undefined ? null : Number(value);
@@ -55,6 +60,8 @@
                         meterName,
                         tenantName,
                         unit,
+                        seriesKey: dataset.seriesKey || ('meter:' + (dataset.meterId ?? datasetIndex + 1)),
+                        measurementMetric: dataset.measurementMetric || 'energy',
                         seriesLabel: dataset.label || meterName,
                         periodLabel: effectivePeriod
                     };
@@ -117,15 +124,17 @@
 
         const commonUnit = getCommonUnit(datasets);
         if (datasets.length > 0 && !commonUnit)
-            errors.push('Incompatible measurement units cannot share one consumption axis.');
+            errors.push('Incompatible measurement units cannot share one chart axis.');
 
         datasets.forEach(dataset => {
             (dataset.data || []).forEach(point => {
                 if (!point || point.y === null || point.y === undefined) return;
                 if (!Number.isFinite(point.y))
                     errors.push('A chart point contains a non-numeric consumption value.');
-                else if (point.y < 0)
-                    errors.push('Consumption values cannot be negative.');
+                else if (
+                    point.y < 0 &&
+                    ['energy', 'volume'].includes(dataset.measurementMetric))
+                    errors.push('Consumption quantities cannot be negative.');
             });
         });
 
@@ -225,12 +234,8 @@
         const pairs = [];
 
         (currentFormatted?.datasets || []).forEach(current => {
-            if (current.isOthers) {
-                pairs.push(current);
-                return;
-            }
+            const pairKey = current.seriesKey || String(current.meterId);
 
-            const pairKey = String(current.meterId);
             pairs.push({
                 ...current,
                 label: current.label + ' · Current',
@@ -242,7 +247,8 @@
             });
 
             const compare = (compareFormatted.datasets || [])
-                .find(candidate => candidate.meterId === current.meterId);
+                .find(candidate =>
+                    (candidate.seriesKey || String(candidate.meterId)) === pairKey);
 
             if (!compare) return;
 
@@ -250,6 +256,7 @@
                 ...compare,
                 label: current.label + ' · Comparison',
                 pairKey,
+                seriesKey: pairKey,
                 isCompare: true,
                 data: (compare.data || []).map(point => ({
                     ...point,
