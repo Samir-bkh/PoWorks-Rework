@@ -30,7 +30,7 @@
                 </div>
                 <div class="col-lg-2">
                     <label class="form-label">Action</label>
-                    <input class="form-control" name="action" value="@Model.Action" placeholder="UPDATE, DELETE..." />
+                    <input class="form-control" name="auditAction" value="@Model.Action" placeholder="UPDATE, DELETE..." />
                 </div>
                 <div class="col-lg-2">
                     <label class="form-label">Entity</label>
@@ -157,7 +157,7 @@
                 <a class="btn btn-sm btn-outline-secondary @(Model.Page <= 1 ? "disabled" : "")"
                    asp-action="Index"
                    asp-route-search="@Model.Search"
-                   asp-route-action="@Model.Action"
+                   asp-route-auditAction="@Model.Action"
                    asp-route-entityType="@Model.EntityType"
                    asp-route-companyId="@Model.CompanyId"
                    asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
@@ -167,7 +167,7 @@
                 <a class="btn btn-sm btn-outline-secondary @(Model.Page >= Model.TotalPages ? "disabled" : "")"
                    asp-action="Index"
                    asp-route-search="@Model.Search"
-                   asp-route-action="@Model.Action"
+                   asp-route-auditAction="@Model.Action"
                    asp-route-entityType="@Model.EntityType"
                    asp-route-companyId="@Model.CompanyId"
                    asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
