@@ -21,7 +21,7 @@ namespace PoWorks_Rework.Controllers
 
         public IActionResult Index(
             string? search,
-            string? action,
+            [FromQuery(Name = "auditAction")] string? auditAction,
             string? entityType,
             int? companyId,
             DateTime? from,
@@ -31,7 +31,7 @@ namespace PoWorks_Rework.Controllers
             var model = new AuditLogPageViewModel
             {
                 Search = search,
-                Action = action,
+                Action = auditAction,
                 EntityType = entityType,
                 CompanyId = companyId,
                 From = from,
@@ -61,10 +61,10 @@ namespace PoWorks_Rework.Controllers
                 parameters.Add(new NpgsqlParameter("search", $"%{search.Trim()}%"));
             }
 
-            if (!string.IsNullOrWhiteSpace(action))
+            if (!string.IsNullOrWhiteSpace(auditAction))
             {
                 where.Append(@" AND ""Action"" = @action");
-                parameters.Add(new NpgsqlParameter("action", action));
+                parameters.Add(new NpgsqlParameter("action", auditAction));
             }
 
             if (!string.IsNullOrWhiteSpace(entityType))
