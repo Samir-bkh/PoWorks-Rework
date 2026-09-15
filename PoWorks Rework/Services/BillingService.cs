@@ -113,13 +113,13 @@ namespace PoWorks_Rework.Services
                 {
                     MeterId = meter.Id,
                     MeterName = meter.Name,
-                    Unit = meter.Unit,
+                    Unit = ConsumptionFormula.GetConsumptionUnit(meter.Unit),
                     Consumption = Math.Round(consumption, 3),
                     UnitPrice = effectiveUnitPrice,
                     LineTotalExclTax = lineTotal
                 });
 
-                if (ConsumptionFormula.IsCumulativeUnit(meter.Unit))
+                if (ConsumptionFormula.IsSupportedEnergyUnit(meter.Unit))
                     bill.TotalKWh += Math.Round(consumption, 3);
 
                 bill.AmountExclTax += lineTotal;
