@@ -38,7 +38,8 @@ document.addEventListener('DOMContentLoaded', function () {
             'threshold1Rate',
             'threshold2',
             'threshold2Rate',
-            'deposit'
+            'deposit',
+            'monthlyFee'
         ];
 
         for (const id of numericIds) {
