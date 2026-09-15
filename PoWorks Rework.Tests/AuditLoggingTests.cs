@@ -53,6 +53,21 @@ public class AuditLoggingTests
         Assert.DoesNotContain("name=\"action\"", view);
     }
 
+
+    [Fact]
+    public void AuditLogView_ShowsBrowserLocalTimeAndKeepsTechnicalIdsOutOfMainTable()
+    {
+        var view = ReadSource("Views", "AuditLog", "Index.cshtml");
+
+        Assert.Contains("Time (local)", view);
+        Assert.Contains("class=\"audit-local-time\"", view);
+        Assert.Contains("data-utc=", view);
+        Assert.Contains("new Date(utcValue)", view);
+        Assert.Contains("Guid.TryParse(item.EntityId", view);
+        Assert.Contains("Technical ID:", view);
+        Assert.Contains("UTC:", view);
+    }
+
     [Fact]
     public void ConfiguredLogDirectory_IsCreatedAndResolved()
     {
