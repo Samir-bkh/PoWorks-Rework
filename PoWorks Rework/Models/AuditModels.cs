@@ -42,8 +42,9 @@ namespace PoWorks_Rework.Models
         public int? CompanyId { get; set; }
         public DateTime? From { get; set; }
         public DateTime? To { get; set; }
+        public bool ShowTechnical { get; set; }
         public int Page { get; set; } = 1;
-        public int PageSize { get; set; } = 50;
+        public int PageSize { get; set; } = 20;
         public int TotalCount { get; set; }
         public int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
         public string LogDirectory { get; set; } = "";

@@ -3,74 +3,124 @@
     ViewData["Title"] = "Audit Logs";
 }
 
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-start mb-4">
+<style>
+    .audit-table-wrap {
+        max-height: 62vh;
+        overflow: auto;
+    }
+
+    .audit-table-wrap thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--bs-light);
+        box-shadow: inset 0 -1px 0 rgba(0,0,0,.08);
+    }
+
+    .audit-summary {
+        max-width: 520px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .audit-meta {
+        font-size: .78rem;
+        color: var(--bs-secondary-color);
+    }
+
+    .audit-detail-pre {
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: .375rem;
+        padding: .75rem;
+    }
+</style>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
-            <h2 class="mb-1">Audit Logs</h2>
-            <p class="text-muted mb-0">Trace administrative and configuration changes across PoWorks.</p>
+            <h3 class="mb-1">Audit Logs</h3>
+            <p class="text-muted mb-0">Important administrative and configuration events.</p>
         </div>
-        <div class="text-end small text-muted">
-            <div><strong>Offline files:</strong></div>
-            <code>@Model.LogDirectory</code>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#auditStorageInfo">
+            <i class="bi bi-hdd"></i> Storage info
+        </button>
+    </div>
+
+    <div class="collapse mb-3" id="auditStorageInfo">
+        <div class="alert alert-light border py-2 mb-0 small">
+            Audit events are stored in PostgreSQL and daily JSONL files. General diagnostics are kept in
+            <code>poworks-YYYY-MM-DD.log</code> under <code>@Model.LogDirectory</code>.
         </div>
     </div>
 
-    <div class="alert alert-info py-2">
-        Audit events are stored in PostgreSQL <strong>and</strong> written to daily JSONL files.
-        General application errors are also written to daily <code>poworks-YYYY-MM-DD.log</code> files in the same directory,
-        so diagnostics remain available even when the PoWorks web interface cannot be opened.
-    </div>
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-xl-3 col-md-6">
+                    <label class="form-label small mb-1">Search</label>
+                    <input class="form-control form-control-sm" name="search" value="@Model.Search" placeholder="User, entity, summary..." />
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label class="form-label small mb-1">Action</label>
+                    <input class="form-control form-control-sm" name="auditAction" value="@Model.Action" placeholder="UPDATE, DELETE..." />
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label class="form-label small mb-1">Entity</label>
+                    <input class="form-control form-control-sm" name="entityType" value="@Model.EntityType" placeholder="Tenant, User..." />
+                </div>
+                <div class="col-xl-1 col-md-3">
+                    <label class="form-label small mb-1">Workspace</label>
+                    <input class="form-control form-control-sm" type="number" name="companyId" value="@Model.CompanyId" min="1" />
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label class="form-label small mb-1">From</label>
+                    <input class="form-control form-control-sm" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" />
+                </div>
+                <div class="col-xl-2 col-md-3">
+                    <label class="form-label small mb-1">To</label>
+                    <input class="form-control form-control-sm" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" />
+                </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-lg-3">
-                    <label class="form-label">Search</label>
-                    <input class="form-control" name="search" value="@Model.Search" placeholder="User, entity, summary..." />
-                </div>
-                <div class="col-lg-2">
-                    <label class="form-label">Action</label>
-                    <input class="form-control" name="auditAction" value="@Model.Action" placeholder="UPDATE, DELETE..." />
-                </div>
-                <div class="col-lg-2">
-                    <label class="form-label">Entity</label>
-                    <input class="form-control" name="entityType" value="@Model.EntityType" placeholder="User, Workspace..." />
-                </div>
-                <div class="col-lg-1">
-                    <label class="form-label">Workspace</label>
-                    <input class="form-control" type="number" name="companyId" value="@Model.CompanyId" min="1" />
-                </div>
-                <div class="col-lg-2">
-                    <label class="form-label">From</label>
-                    <input class="form-control" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" />
-                </div>
-                <div class="col-lg-2">
-                    <label class="form-label">To</label>
-                    <input class="form-control" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" />
-                </div>
-                <div class="col-12">
-                    <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> Filter</button>
-                    <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
+                <div class="col-xl-7 col-md-9 d-flex flex-wrap align-items-center gap-2 pt-1">
+                    <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-search"></i> Filter</button>
+                    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Reset</a>
+                    <div class="form-check ms-xl-2">
+                        <input class="form-check-input" type="checkbox" name="showTechnical" value="true" id="showTechnical" @(Model.ShowTechnical ? "checked" : "") />
+                        <label class="form-check-label small" for="showTechnical">Show technical MUTATION events</label>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
     <div class="card shadow-sm">
-        <div class="card-header bg-white d-flex justify-content-between">
-            <strong>@Model.TotalCount event(s)</strong>
-            <span class="text-muted">Page @Model.Page / @Model.TotalPages</span>
+        <div class="card-header bg-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <strong>@Model.TotalCount event(s)</strong>
+                @if (!Model.ShowTechnical && string.IsNullOrWhiteSpace(Model.Action))
+                {
+                    <span class="badge text-bg-light border ms-2">Technical duplicates hidden</span>
+                }
+            </div>
+            <span class="text-muted small">Page @Model.Page / @Model.TotalPages · @Model.PageSize per page</span>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+
+        <div class="table-responsive audit-table-wrap">
+            <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="min-width:165px">Time (local)</th>
-                        <th>User</th>
-                        <th>Workspace</th>
+                        <th style="min-width:145px">Time (local)</th>
+                        <th style="min-width:110px">User</th>
+                        <th class="text-center">WS</th>
                         <th>Action</th>
-                        <th>Entity</th>
-                        <th>Summary</th>
+                        <th style="min-width:130px">Entity</th>
+                        <th style="min-width:320px">Summary</th>
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -94,74 +144,88 @@
                             !string.IsNullOrWhiteSpace(item.IpAddress) ||
                             !string.IsNullOrWhiteSpace(item.CorrelationId);
 
+                        var actionClass = item.Action switch
+                        {
+                            "CREATE" => "text-bg-primary",
+                            "UPDATE" => "text-bg-info",
+                            "DELETE" => "text-bg-danger",
+                            "DELETE_BLOCKED" => "text-bg-warning",
+                            "ENABLE" => "text-bg-success",
+                            "DISABLE" => "text-bg-warning",
+                            "LOGIN" => "text-bg-success",
+                            "LOGOUT" => "text-bg-secondary",
+                            _ => "text-bg-secondary"
+                        };
+
                         <tr>
-                            <td>
-                                <small class="audit-local-time"
-                                       data-utc="@item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")"
-                                       title="UTC: @item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")">
+                            <td class="small">
+                                <span class="audit-local-time"
+                                      data-utc="@item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")"
+                                      title="UTC: @item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")">
                                     @item.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-                                </small>
+                                </span>
                             </td>
                             <td>
-                                <div>@(item.UserName ?? "System")</div>
-                                @if (!string.IsNullOrWhiteSpace(item.UserType))
+                                <div class="small fw-semibold">@(item.UserName ?? "System")</div>
+                                @if (!string.IsNullOrWhiteSpace(item.UserType) && !string.Equals(item.UserType, item.UserName, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    <small class="text-muted">@item.UserType</small>
+                                    <div class="audit-meta">@item.UserType</div>
                                 }
                             </td>
-                            <td>@(item.CompanyId?.ToString() ?? "—")</td>
-                            <td><span class="badge bg-secondary">@item.Action</span></td>
+                            <td class="text-center small">@(item.CompanyId?.ToString() ?? "—")</td>
+                            <td><span class="badge @actionClass">@item.Action</span></td>
                             <td>
-                                <div>@item.EntityType</div>
+                                <div class="small fw-semibold">@item.EntityType</div>
                                 @if (!string.IsNullOrWhiteSpace(item.EntityId) && !hasGuidEntityId)
                                 {
-                                    <small class="text-muted">#@item.EntityId</small>
+                                    <div class="audit-meta">#@item.EntityId</div>
                                 }
                             </td>
-                            <td style="min-width:260px">@item.Summary</td>
+                            <td><div class="audit-summary small" title="@item.Summary">@item.Summary</div></td>
                             <td>
                                 @if (item.Success)
                                 {
-                                    <span class="badge bg-success">Success</span>
+                                    <span class="badge text-bg-success">OK</span>
                                 }
                                 else
                                 {
-                                    <span class="badge bg-danger">Failed</span>
+                                    <span class="badge text-bg-danger">Failed</span>
                                 }
                             </td>
-                            <td>
+                            <td class="text-end">
                                 @if (hasTechnicalDetails)
                                 {
-                                    <button class="btn btn-sm btn-outline-secondary" type="button"
-                                            data-bs-toggle="collapse" data-bs-target="#audit-@item.AuditLogId">
-                                        Details
+                                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#audit-@item.AuditLogId"
+                                            aria-label="Show audit details">
+                                        <i class="bi bi-chevron-down"></i>
                                     </button>
                                 }
                             </td>
                         </tr>
+
                         @if (hasTechnicalDetails)
                         {
                             <tr class="collapse" id="audit-@item.AuditLogId">
-                                <td colspan="8" class="bg-light">
+                                <td colspan="8" class="bg-light p-3">
                                     <div class="row g-3">
                                         @if (!string.IsNullOrWhiteSpace(item.BeforeJson) || !string.IsNullOrWhiteSpace(item.AfterJson))
                                         {
                                             <div class="col-lg-6">
-                                                <strong>Before</strong>
-                                                <pre class="small mt-2 mb-0 text-wrap">@(!string.IsNullOrWhiteSpace(item.BeforeJson) ? item.BeforeJson : "—")</pre>
+                                                <strong class="small">Before</strong>
+                                                <pre class="audit-detail-pre small mt-1 mb-0">@(!string.IsNullOrWhiteSpace(item.BeforeJson) ? item.BeforeJson : "—")</pre>
                                             </div>
                                             <div class="col-lg-6">
-                                                <strong>After</strong>
-                                                <pre class="small mt-2 mb-0 text-wrap">@(!string.IsNullOrWhiteSpace(item.AfterJson) ? item.AfterJson : "—")</pre>
+                                                <strong class="small">After</strong>
+                                                <pre class="audit-detail-pre small mt-1 mb-0">@(!string.IsNullOrWhiteSpace(item.AfterJson) ? item.AfterJson : "—")</pre>
                                             </div>
                                         }
-                                        <div class="col-12 small text-muted">
+                                        <div class="col-12 audit-meta">
                                             @if (!string.IsNullOrWhiteSpace(item.EntityId))
                                             {
                                                 <span>Technical ID: @item.EntityId · </span>
                                             }
-                                            IP: @(item.IpAddress ?? "—") · Correlation: @(item.CorrelationId ?? "—") ·
-                                            UTC: @item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                                            IP: @(item.IpAddress ?? "—") · Correlation: @(item.CorrelationId ?? "—") · UTC: @item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")
                                         </div>
                                     </div>
                                 </td>
@@ -173,33 +237,33 @@
             </table>
         </div>
 
-        @if (Model.TotalPages > 1)
-        {
-            <div class="card-footer bg-white d-flex justify-content-between">
-                <a class="btn btn-sm btn-outline-secondary @(Model.Page <= 1 ? "disabled" : "")"
-                   asp-action="Index"
-                   asp-route-search="@Model.Search"
-                   asp-route-auditAction="@Model.Action"
-                   asp-route-entityType="@Model.EntityType"
-                   asp-route-companyId="@Model.CompanyId"
-                   asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
-                   asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
-                   asp-route-page="@(Model.Page - 1)">Previous</a>
+        <div class="card-footer bg-white py-2 d-flex justify-content-between align-items-center">
+            <a class="btn btn-sm btn-outline-secondary @(Model.Page <= 1 ? "disabled" : "")"
+               asp-action="Index"
+               asp-route-search="@Model.Search"
+               asp-route-auditAction="@Model.Action"
+               asp-route-entityType="@Model.EntityType"
+               asp-route-companyId="@Model.CompanyId"
+               asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+               asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+               asp-route-showTechnical="@Model.ShowTechnical"
+               asp-route-page="@(Model.Page - 1)">Previous</a>
 
-                <a class="btn btn-sm btn-outline-secondary @(Model.Page >= Model.TotalPages ? "disabled" : "")"
-                   asp-action="Index"
-                   asp-route-search="@Model.Search"
-                   asp-route-auditAction="@Model.Action"
-                   asp-route-entityType="@Model.EntityType"
-                   asp-route-companyId="@Model.CompanyId"
-                   asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
-                   asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
-                   asp-route-page="@(Model.Page + 1)">Next</a>
-            </div>
-        }
+            <span class="small text-muted">@Model.Page / @Model.TotalPages</span>
+
+            <a class="btn btn-sm btn-outline-secondary @(Model.Page >= Model.TotalPages ? "disabled" : "")"
+               asp-action="Index"
+               asp-route-search="@Model.Search"
+               asp-route-auditAction="@Model.Action"
+               asp-route-entityType="@Model.EntityType"
+               asp-route-companyId="@Model.CompanyId"
+               asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+               asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+               asp-route-showTechnical="@Model.ShowTechnical"
+               asp-route-page="@(Model.Page + 1)">Next</a>
+        </div>
     </div>
 </div>
-
 
 <script>
     (() => {
@@ -209,9 +273,7 @@
             const utcValue = element.getAttribute('data-utc');
             const date = new Date(utcValue);
 
-            if (Number.isNaN(date.getTime())) {
-                return;
-            }
+            if (Number.isNaN(date.getTime())) return;
 
             element.textContent =
                 date.getFullYear() + '-' +
