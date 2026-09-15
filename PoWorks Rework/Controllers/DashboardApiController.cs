@@ -13,6 +13,7 @@ namespace PoWorks_Rework.Controllers
     {
         private readonly ILogger<DashboardController> _logger;
         private readonly DashboardDataService _dashboardDataService;
+        private readonly DashboardAnalyticsService _dashboardAnalyticsService;
 
         /// <summary>
         /// Initializes the dashboard controller with database, logging, and data service dependencies.
@@ -20,11 +21,13 @@ namespace PoWorks_Rework.Controllers
         public DashboardController(
             DatabaseService databaseService,
             ILogger<DashboardController> logger,
-            DashboardDataService dashboardDataService)
+            DashboardDataService dashboardDataService,
+            DashboardAnalyticsService dashboardAnalyticsService)
             : base(databaseService)
         {
             _logger = logger;
             _dashboardDataService = dashboardDataService;
+            _dashboardAnalyticsService = dashboardAnalyticsService;
         }
 
         /// <summary>
@@ -73,6 +76,28 @@ namespace PoWorks_Rework.Controllers
                 return Json(new List<object>());
             }
         }
+        /// <summary>
+        /// Returns the measurement catalogue used to drive metric-specific dashboard controls.
+        /// </summary>
+        [HttpGet]
+        public IActionResult GetAnalyticsCatalog()
+        {
+            var metrics = MeasurementSemantics.GetDefinitions()
+                .Select(definition => new
+                {
+                    key = definition.Key,
+                    label = definition.Label,
+                    canonicalUnit = definition.CanonicalUnit,
+                    valueKind = definition.ValueKind,
+                    defaultAggregation = definition.DefaultAggregation,
+                    allowedAggregations = definition.AllowedAggregations,
+                    description = definition.Description
+                })
+                .ToList();
+
+            return Json(new { success = true, metrics });
+        }
+
         /// <summary>
         /// Returns suggested date ranges for the dashboard based on available reading data.
         /// </summary>
@@ -158,7 +183,7 @@ namespace PoWorks_Rework.Controllers
                     StartDate = request.StartDate,
                     EndDate = adjustedEndDate,
                     TenantId = IsTenantUser ? CurrentTenantId : request.TenantId,
-                    Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
+                    Limit = Math.Max(1, Math.Min(request.Limit ?? 250, 2000)),
                     Offset = Math.Max(0, request.Offset ?? 0),
                     IncludeNullTenants = request.IncludeNullTenants ?? true,
                     ActiveOnly = true
@@ -178,7 +203,9 @@ namespace PoWorks_Rework.Controllers
                         type = m.Type,
                         active = m.Active,
                         tenantName = m.TenantName,
-                        displayName = m.FullDisplayName
+                        displayName = m.FullDisplayName,
+                        measurementFamily = MeasurementSemantics.GetFamilyForUnit(m.Unit),
+                        compatibleMetrics = MeasurementSemantics.GetCompatibleMetrics(m.Unit)
                     }).ToList(),
                     limit = filters.Limit,
                     offset = filters.Offset,
@@ -283,132 +310,146 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// Returns consumption chart data and summary statistics for the requested filters.
-        /// Supports period-vs-period comparison when compare dates are provided.
+        /// Returns measurement-aware dashboard analytics. The default scope is one
+        /// aggregate line, as requested for the building-owner view, while tenant
+        /// and individual-meter breakdowns remain available to the user.
         /// </summary>
-        /// <param name="request">The dashboard filter request containing date range, meters, and comparison range.</param>
-        /// <returns>JSON with chart data, summary statistics, and optional comparison data.</returns>
         [HttpPost]
-        public async Task<IActionResult> GetConsumptionData([FromBody] DashboardFilterRequest request)
+        public async Task<IActionResult> GetConsumptionData(
+            [FromBody] DashboardFilterRequest request)
         {
             try
             {
                 if (!_databaseService.IsInitialized)
                 {
-                    return Json(_dashboardDataService.GenerateDemoChartData("Database not configured. Showing demo data."));
-                }
-
-                DateTime? adjustedEndDate = request.EndDate.HasValue ? request.EndDate.Value.Date.AddDays(1).AddTicks(-1) : null;
-
-                var filters = new MeterReadingFilters
-                {
-                    DateFilter = request.DateFilter ?? "monthly",
-                    TenantId = IsTenantUser ? CurrentTenantId : request.TenantId,
-                    MeterIds = request.MeterIds ?? new List<int>(),
-                    StartDate = request.StartDate,
-                    EndDate = adjustedEndDate,
-                    Limit = Math.Max(1, Math.Min(request.Limit ?? 5, 100)),
-                    ActiveOnly = true,
-                    IncludeNullTenants = true,
-                    // NOTE: the old weekday-grouping "IsComparisonMode" query path is no longer
-                    // driven by the frontend - period-vs-period comparison (below) replaces it.
-                    IsComparisonMode = false,
-                    GroupBy = request.GroupBy
-                };
-
-                var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
-
-
-                if (!filters.MeterIds.Any())
-                {
-                    var topMeters = await _dashboardDataService.GetActiveMetersWithDataAsync(filters);
-                    filters.MeterIds = topMeters.Select(m => m.MeterId).ToList();
-                }
-
-                var consumptionData = await _dashboardDataService.GetMeterReadingsAsync(filters);
-
-                if (!consumptionData.Any())
-                {
                     return Json(new
                     {
-                        chartData = new { labels = new List<string>(), datasets = new List<object>() },
-                        summary = new
-                        {
-                            totalConsumption = 0,
-                            averageDaily = 0,
-                            peakUsage = 0,
-                            activeMeters = 0,
-                            totalMeters = availability.ActiveMeterCount,
-                            periodDays = request.StartDate.HasValue && request.EndDate.HasValue
-                                ? Math.Max(1, (request.EndDate.Value.Date - request.StartDate.Value.Date).Days + 1)
-                                : 0,
-                            unit = "—",
-                            hasMixedUnits = false,
-                            peakPeriodLabel = "No data",
-                            dataBuckets = 0
-                        },
-                        message = "No consumption data found.",
+                        success = false,
+                        message = "Database is not configured.",
                         noDataInRange = true
                     });
                 }
 
-                var chartData = _dashboardDataService.ProcessChartData(consumptionData);
-                var summary = _dashboardDataService.CalculateSummary(consumptionData, filters);
-                summary.TotalMeters = availability.ActiveMeterCount;
+                var startDate = (request.StartDate ?? DateTime.Now.AddDays(-30)).Date;
+                var endDate = (request.EndDate ?? DateTime.Now).Date
+                    .AddDays(1)
+                    .AddTicks(-1);
 
-                // NEW: period-vs-period comparison. Re-run the exact same query (same meters,
-                // same granularity) on the comparison date range provided by the frontend, so
-                // both periods are directly comparable meter-by-meter.
-                object compareChartDataResponse = null;
-                object compareSummaryResponse = null;
-
-                if (request.CompareStartDate.HasValue && request.CompareEndDate.HasValue)
+                var query = new DashboardAnalyticsQuery
                 {
-                    DateTime compareAdjustedEndDate = request.CompareEndDate.Value.Date.AddDays(1).AddTicks(-1);
+                    Metric = request.Metric,
+                    ScopeMode = request.ScopeMode,
+                    Aggregation = request.Aggregation,
+                    DateFilter = request.DateFilter ?? "daily",
+                    TenantId = IsTenantUser
+                        ? CurrentTenantId
+                        : request.TenantId,
+                    MeterIds = request.MeterIds ?? new List<int>(),
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    MaxSeries = Math.Clamp(request.MaxSeries ?? 10, 1, 50),
+                    RankingLimit = Math.Clamp(request.Limit ?? 5, 1, 25)
+                };
 
-                    var compareFilters = new MeterReadingFilters
+                var current = await _dashboardAnalyticsService
+                    .GetAnalyticsAsync(query);
+
+                DashboardAnalyticsResult? comparison = null;
+                DateTime? compareStart = null;
+                DateTime? compareEnd = null;
+
+                if (request.CompareStartDate.HasValue)
+                {
+                    // The meeting explicitly requested equal-duration comparisons.
+                    // Only the comparison start is user-selected; the end is derived.
+                    var inclusiveDays = Math.Max(
+                        1,
+                        (endDate.Date - startDate.Date).Days + 1);
+
+                    compareStart = request.CompareStartDate.Value.Date;
+                    compareEnd = compareStart.Value
+                        .AddDays(inclusiveDays)
+                        .AddTicks(-1);
+
+                    var compareQuery = new DashboardAnalyticsQuery
                     {
-                        DateFilter = filters.DateFilter,
-                        TenantId = filters.TenantId,
-                        MeterIds = filters.MeterIds, // identical meter selection as the current period
-                        StartDate = request.CompareStartDate,
-                        EndDate = compareAdjustedEndDate,
-                        Limit = filters.Limit,
-                        ActiveOnly = true,
-                        IncludeNullTenants = true,
-                        IsComparisonMode = false,
-                        GroupBy = filters.GroupBy
+                        Metric = query.Metric,
+                        ScopeMode = query.ScopeMode,
+                        Aggregation = query.Aggregation,
+                        DateFilter = query.DateFilter,
+                        TenantId = query.TenantId,
+                        MeterIds = query.MeterIds.ToList(),
+                        StartDate = compareStart.Value,
+                        EndDate = compareEnd.Value,
+                        MaxSeries = query.MaxSeries,
+                        RankingLimit = query.RankingLimit
                     };
 
-                    var compareData = await _dashboardDataService.GetMeterReadingsAsync(compareFilters);
-                    if (compareData.Any())
-                    {
-                        var compareChartData = _dashboardDataService.ProcessChartData(compareData);
-                        var compareSummary = _dashboardDataService.CalculateSummary(compareData, compareFilters);
-                        compareChartDataResponse = compareChartData.ToApiResponse();
-                        compareSummaryResponse = compareSummary.ToDisplayObject();
-                    }
+                    comparison = await _dashboardAnalyticsService
+                        .GetAnalyticsAsync(compareQuery);
                 }
+
+                var noData = current.ChartData.Datasets.Count == 0;
 
                 return Json(new
                 {
-                    chartData = chartData.ToApiResponse(),
-                    compareChartData = compareChartDataResponse,
-                    summary = summary.ToDisplayObject(),
-                    compareSummary = compareSummaryResponse,
-                    message = $"Showing data for {summary.ActiveMeters} meters.",
-                    dataInfo = new
+                    success = true,
+                    chartData = current.ChartData.ToApiResponse(),
+                    summary = current.Summary.ToApiResponse(),
+                    metadata = current.Metadata.ToApiResponse(),
+                    ranking = current.Ranking
+                        .Select(item => item.ToApiResponse())
+                        .ToList(),
+                    compareChartData = comparison?.ChartData.ToApiResponse(),
+                    compareSummary = comparison?.Summary.ToApiResponse(),
+                    compareMetadata = comparison?.Metadata.ToApiResponse(),
+                    comparison = compareStart.HasValue && compareEnd.HasValue
+                        ? new
+                        {
+                            startDate = compareStart.Value.ToString("yyyy-MM-dd"),
+                            endDate = compareEnd.Value.ToString("yyyy-MM-dd"),
+                            durationDays = (compareEnd.Value.Date - compareStart.Value.Date).Days + 1
+                        }
+                        : null,
+                    noDataInRange = noData,
+                    message = noData
+                        ? "No compatible readings were found for this analytical view."
+                        : $"Analysing {current.Summary.ActiveMeters} meter(s) as {current.Metadata.MetricLabel}."
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Dashboard analytics validation rejected the selected scope.");
+
+                return Json(new
+                {
+                    success = false,
+                    validationError = true,
+                    message = ex.Message,
+                    chartData = new
                     {
-                        availableMeters = availability.ActiveMeterCount,
-                        shownMeters = summary.ActiveMeters,
-                        totalReadings = availability.TotalReadings
-                    }
+                        labels = Array.Empty<string>(),
+                        datasets = Array.Empty<object>()
+                    },
+                    noDataInRange = true
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "ERROR in GetConsumptionData: {Message}", ex.Message);
-                return Json(_dashboardDataService.GenerateDemoChartData($"Error loading data: {ex.Message}"));
+                _logger.LogError(
+                    ex,
+                    "ERROR in GetConsumptionData: {Message}",
+                    ex.Message);
+
+                return Json(new
+                {
+                    success = false,
+                    message = "Unable to calculate dashboard analytics.",
+                    error = ex.Message,
+                    noDataInRange = true
+                });
             }
         }
 
@@ -479,6 +520,27 @@ namespace PoWorks_Rework.Controllers
         /// The date aggregation filter (e.g. monthly, daily).
         /// </summary>
         public string DateFilter { get; set; } = "monthly";
+
+        /// <summary>
+        /// Analytical measurement: energy, power, volume, flow, temperature,
+        /// pressure, percentage or raw.
+        /// </summary>
+        public string Metric { get; set; } = "energy";
+
+        /// <summary>
+        /// Series scope: aggregate, tenant or meter.
+        /// </summary>
+        public string ScopeMode { get; set; } = "aggregate";
+
+        /// <summary>
+        /// Cross-meter aggregation. "auto" resolves to the metric's safe default.
+        /// </summary>
+        public string Aggregation { get; set; } = "auto";
+
+        /// <summary>
+        /// Maximum visible series for tenant/meter breakdown modes.
+        /// </summary>
+        public int? MaxSeries { get; set; } = 10;
 
         /// <summary>
         /// The tenant ID to filter meters by, if any.
