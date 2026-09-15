@@ -47,9 +47,6 @@ CREATE TABLE IF NOT EXISTS "TenantDetails" (
 );
 -- Create index for faster tenant-related queries
 CREATE INDEX IF NOT EXISTS idx_tenantdetails_tenantid ON "TenantDetails"("TenantID");
-CREATE INDEX IF NOT EXISTS idx_tenants_companyid ON "Tenants"("CompanyId");
-CREATE INDEX IF NOT EXISTS idx_tenantdetails_companyid ON "TenantDetails"("CompanyId");
-CREATE INDEX IF NOT EXISTS idx_tenantdetails_company_tenant ON "TenantDetails"("CompanyId", "TenantID");
 
 --##########################################################
 --Company Logic
