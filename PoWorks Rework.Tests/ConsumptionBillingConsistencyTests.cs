@@ -296,6 +296,7 @@ public class ConsumptionBillingConsistencyTests
         Assert.Contains(visibleMeters, meter => meter.MeterId == 107);
         Assert.Contains(visibleMeters, meter => meter.MeterId == 108);
         Assert.Contains(visibleMeters, meter => meter.MeterId == 109 && meter.Unit == string.Empty);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 110);
         Assert.DoesNotContain(visibleMeters, meter => meter.MeterId == 201);
 
         var temperature = await analyticsService.GetAnalyticsAsync(
@@ -410,6 +411,23 @@ public class ConsumptionBillingConsistencyTests
 
         Assert.Equal(42d, Assert.Single(unitlessRaw.ChartData.Datasets).Data.Single()!.Value, 6);
         Assert.Equal("(unspecified)", unitlessRaw.Summary.Unit);
+
+        var nbspEnergy = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "energy",
+                ScopeMode = "aggregate",
+                Aggregation = "sum",
+                MeterIds = new List<int> { 110 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily"
+            });
+
+        Assert.Equal(
+            20d,
+            Assert.Single(nbspEnergy.ChartData.Datasets).Data.Single()!.Value,
+            6);
 
         var bill = await billingService.CalculateBillAsync(10, start, end);
 
@@ -566,6 +584,7 @@ public class ConsumptionBillingConsistencyTests
                 (107, 'Water.Flow', 'L/min', TRUE, 10, 1),
                 (108, 'Motor.Speed', 'rpm', TRUE, 10, 1),
                 (109, 'Legacy.Unspecified', '', TRUE, 10, 1),
+                (110, 'Legacy.NbspEnergy', 'k' || CHR(160) || 'Wh', TRUE, NULL, 1),
                 (201, 'OtherWorkspace.kWh', 'kWh', TRUE, 20, 2);
 
             INSERT INTO ""MeterReadings"" (
@@ -601,6 +620,9 @@ public class ConsumptionBillingConsistencyTests
                 (109, '2026-09-01 00:00:00', 40, 1),
                 (109, '2026-09-01 01:00:00', 42, 1),
                 (109, '2026-09-01 02:00:00', 44, 1),
+                (110, '2026-09-01 00:00:00', 10, 1),
+                (110, '2026-09-01 01:00:00', 20, 1),
+                (110, '2026-09-01 02:00:00', 30, 1),
                 (201, '2026-09-01 00:00:00', 1000, 2),
                 (201, '2026-09-01 01:00:00', 9000, 2);";
 
