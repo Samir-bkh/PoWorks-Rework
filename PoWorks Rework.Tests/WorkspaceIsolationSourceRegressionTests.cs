@@ -56,7 +56,7 @@ public class WorkspaceIsolationSourceRegressionTests
 
         Assert.Contains("m.\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("mr.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
-        Assert.Contains("t.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
+        Assert.Contains("m.\"\"CompanyId\"\" = t.\"\"CompanyId\"\"", source);
         Assert.Contains("td.\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("WHERE \"\"CompanyId\"\" = @CompanyId AND \"\"TenantID\"\" = @TenantId", source);
 
