@@ -344,37 +344,63 @@ namespace PoWorks_Rework.Services
 
             if (definition.ValueKind == "quantity")
             {
-                var total = values.Sum();
+                var isTotalScope = string.Equals(
+                    aggregation,
+                    "sum",
+                    StringComparison.OrdinalIgnoreCase);
+
+                var periodValue = isTotalScope
+                    ? values.Sum()
+                    : AggregateValues(
+                        rows
+                            .GroupBy(row => row.MeterId)
+                            .Select(group => group.Sum(row => row.Value)),
+                        aggregation);
+
+                var aggregationLabel = aggregation switch
+                {
+                    "average" => "Average",
+                    "min" => "Lowest",
+                    "max" => "Highest",
+                    _ => "Total"
+                };
+
                 var bucketLabel = query.DateFilter?.ToLowerInvariant() switch
                 {
-                    "hourly" => "Highest hourly value",
-                    "monthly" => "Highest monthly value",
-                    "yearly" => "Highest annual value",
-                    _ => "Highest daily value"
+                    "hourly" => "Highest hourly displayed value",
+                    "monthly" => "Highest monthly displayed value",
+                    "yearly" => "Highest annual displayed value",
+                    _ => "Highest daily displayed value"
                 };
 
                 summary.Kpis.Add(new DashboardKpi
                 {
                     Key = "total",
-                    Label = definition.Key == "volume"
-                        ? "Total volume"
-                        : "Total consumption",
-                    Value = total,
+                    Label = isTotalScope
+                        ? definition.Key == "volume"
+                            ? "Total volume"
+                            : "Total consumption"
+                        : $"{aggregationLabel} source total",
+                    Value = periodValue,
                     Unit = unit,
-                    Detail = "Across the complete selected period"
+                    Detail = isTotalScope
+                        ? "Across the complete selected period"
+                        : $"{aggregationLabel} of each source's complete-period total"
                 });
                 summary.Kpis.Add(new DashboardKpi
                 {
                     Key = "dailyAverage",
-                    Label = "Average per day",
-                    Value = total / periodDays,
+                    Label = isTotalScope
+                        ? "Average per day"
+                        : $"{aggregationLabel} source per day",
+                    Value = periodValue / periodDays,
                     Unit = $"{unit}/day",
                     Detail = $"Normalized over {periodDays} calendar day(s)"
                 });
                 summary.Kpis.Add(new DashboardKpi
                 {
                     Key = "peak",
-                    Label = "Peak period",
+                    Label = "Peak displayed period",
                     Value = maximum,
                     Unit = unit,
                     Detail = bucketLabel
