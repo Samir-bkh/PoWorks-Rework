@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using PoWorks_Rework.Services;
+using PoWorks_Rework.Controllers;
 using Xunit;
 
 namespace PoWorks_Rework.Tests;
@@ -32,6 +33,24 @@ public class AuditLoggingTests
 
         Assert.False(AuditRequestClassifier.ShouldAudit(login.Request));
         Assert.True(AuditRequestClassifier.ShouldAudit(meterUpdate.Request));
+    }
+
+
+    [Fact]
+    public void AuditLogFilter_DoesNotReuseMvcActionRouteValue()
+    {
+        var method = typeof(AuditLogController).GetMethod(nameof(AuditLogController.Index));
+        Assert.NotNull(method);
+
+        var parameterNames = method!.GetParameters().Select(p => p.Name).ToList();
+
+        Assert.Contains("auditAction", parameterNames);
+        Assert.DoesNotContain("action", parameterNames);
+
+        var view = ReadSource("Views", "AuditLog", "Index.cshtml");
+        Assert.Contains("name=\"auditAction\"", view);
+        Assert.Contains("asp-route-auditAction", view);
+        Assert.DoesNotContain("name=\"action\"", view);
     }
 
     [Fact]
