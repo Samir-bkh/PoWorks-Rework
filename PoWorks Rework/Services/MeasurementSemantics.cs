@@ -118,6 +118,7 @@ namespace PoWorks_Rework.Services
                 .Trim()
                 .ToLowerInvariant()
                 .Replace(" ", string.Empty)
+                .Replace("\u00A0", string.Empty)
                 .Replace("³", "3")
                 .Replace("°", string.Empty);
         }
@@ -279,7 +280,7 @@ namespace PoWorks_Rework.Services
         }
 
         public static string SqlNormalizedUnit(string columnSql) =>
-            $"LOWER(REPLACE(REPLACE(REPLACE(COALESCE({columnSql}, ''), ' ', ''), '³', '3'), '°', ''))";
+            $"LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE({columnSql}, ''), ' ', ''), CHR(160), ''), '³', '3'), '°', ''))";
 
         public static string SqlMetricPredicate(string? metric, string unitColumnSql)
         {
