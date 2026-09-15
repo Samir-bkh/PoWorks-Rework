@@ -177,6 +177,8 @@ public class DashboardModernizationTests
         Assert.Contains(".dashboard-meter-item.is-incompatible", css);
         Assert.Contains(".dashboard-quality-pill", css);
         Assert.Contains(".dashboard-kpi-compare", css);
+        Assert.Contains(".dashboard-ranking-row.is-actionable", css);
+        Assert.Contains(":focus-visible", css);
     }
 
     [Fact]
@@ -251,6 +253,14 @@ public class DashboardModernizationTests
         Assert.Contains("text/csv;charset=utf-8", script);
         Assert.Contains("function csvCell(value)", script);
         Assert.Contains("/^[=+\\-@]/", script);
+        Assert.Contains("lastAnalyticsPayload = null", script);
+        Assert.Contains("Use automatic scope", script);
+
+        // Rankings are navigation, not decorative lists.
+        Assert.Contains("function drillIntoRanking(key)", script);
+        Assert.Contains("data-ranking-key", script);
+        Assert.Contains("tenant:facility", script);
+        Assert.Contains("event.key !== 'Enter' && event.key !== ' '", script);
     }
 
     private static DashboardDataService CreateDashboardService() =>
