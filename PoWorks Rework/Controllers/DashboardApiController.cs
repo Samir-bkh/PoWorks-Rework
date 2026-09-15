@@ -95,7 +95,13 @@ namespace PoWorks_Rework.Controllers
                 })
                 .ToList();
 
-            return Json(new { success = true, metrics });
+            return Json(new
+            {
+                success = true,
+                metrics,
+                tenantLocked = IsTenantUser,
+                currentTenantId = IsTenantUser ? CurrentTenantId : null
+            });
         }
 
         /// <summary>
