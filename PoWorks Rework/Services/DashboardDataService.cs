@@ -49,10 +49,7 @@ namespace PoWorks_Rework.Services
                 {
                     var (startDate, endDate) = filters.GetDateRange();
 
-                    var supportedEnergyUnit =
-                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
-
-                    var query = $@"
+                    var query = @"
                         WITH meter_stats AS (
                             SELECT 
                                 COUNT(*) as total_active,
@@ -60,18 +57,16 @@ namespace PoWorks_Rework.Services
                                 COUNT(CASE WHEN m.""TenantID"" IS NULL THEN 1 END) as without_tenants
                             FROM ""Meters"" m
                             WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            AND {supportedEnergyUnit}
-                            {{0}}
+                            {0}
                         ),
                         reading_stats AS (
                             SELECT COUNT(*) as total_readings
                             FROM ""MeterReadings"" mr
                             INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
                             WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            AND {supportedEnergyUnit}
                             AND mr.""Timestamp"" >= @StartDate 
                             AND mr.""Timestamp"" <= @EndDate
-                            {{0}}
+                            {0}
                         )
                         SELECT 
                             m.total_active,
@@ -130,10 +125,7 @@ namespace PoWorks_Rework.Services
 
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
                 {
-                    var supportedEnergyUnit =
-                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
-
-                    var query = $@"
+                    var query = @"
                         SELECT 
                             MIN(mr.""Timestamp"") as earliest_reading,
                             MAX(mr.""Timestamp"") as latest_reading,
@@ -142,8 +134,7 @@ namespace PoWorks_Rework.Services
                             COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data
                         FROM ""MeterReadings"" mr
                         INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                        AND {supportedEnergyUnit}";
+                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId";
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
@@ -249,10 +240,7 @@ namespace PoWorks_Rework.Services
                 {
                     var (startDate, endDate) = filters.GetDateRange();
 
-                    var supportedEnergyUnit =
-                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
-
-                    var query = $@"
+                    var query = @"
                         SELECT DISTINCT
                             m.""MeterId"", 
                             m.""Name"", 
@@ -270,7 +258,6 @@ namespace PoWorks_Rework.Services
                         LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
                         INNER JOIN ""MeterReadings"" mr ON m.""MeterId"" = mr.""MeterId""
                         WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                        AND {supportedEnergyUnit}
                         AND mr.""Timestamp"" >= @StartDate 
                         AND mr.""Timestamp"" <= @EndDate";
 
