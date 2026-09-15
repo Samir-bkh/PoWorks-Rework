@@ -92,9 +92,7 @@
                     <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Reset</a>
                     <div class="form-check ms-xl-2">
                         <input class="form-check-input" type="checkbox" name="showTechnical" value="true" id="showTechnical" @(Model.ShowTechnical ? "checked" : "") />
-                        <label class="form-check-label small" for="showTechnical">
-                            Show technical MUTATION events
-                        </label>
+                        <label class="form-check-label small" for="showTechnical">Show technical MUTATION events</label>
                     </div>
                 </div>
             </form>
@@ -117,7 +115,7 @@
             <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="min-width:145px">Time</th>
+                        <th style="min-width:145px">Time (local)</th>
                         <th style="min-width:110px">User</th>
                         <th class="text-center">WS</th>
                         <th>Action</th>
@@ -160,8 +158,8 @@
                         };
 
                         <tr>
-                            <td>
-                                <span class="audit-local-time small"
+                            <td class="small">
+                                <span class="audit-local-time"
                                       data-utc="@item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")"
                                       title="UTC: @item.TimestampUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")">
                                     @item.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
@@ -183,9 +181,7 @@
                                     <div class="audit-meta">#@item.EntityId</div>
                                 }
                             </td>
-                            <td>
-                                <div class="audit-summary small" title="@item.Summary">@item.Summary</div>
-                            </td>
+                            <td><div class="audit-summary small" title="@item.Summary">@item.Summary</div></td>
                             <td>
                                 @if (item.Success)
                                 {
@@ -277,9 +273,7 @@
             const utcValue = element.getAttribute('data-utc');
             const date = new Date(utcValue);
 
-            if (Number.isNaN(date.getTime())) {
-                return;
-            }
+            if (Number.isNaN(date.getTime())) return;
 
             element.textContent =
                 date.getFullYear() + '-' +
