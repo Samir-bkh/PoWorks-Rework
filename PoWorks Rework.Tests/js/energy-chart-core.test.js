@@ -45,6 +45,23 @@ test('toTimeSeries preserves metadata and missing buckets as null instead of zer
     assert.equal(dataset.data[1].y, null);
 });
 
+test('toTimeSeries never invents kWh for an unspecified unit', () => {
+    const result = core.toTimeSeries({
+        labels: ['2026-09-15'],
+        datasets: [{
+            meterId: 99,
+            seriesKey: 'meter:99',
+            label: 'Untyped source',
+            measurementMetric: 'raw',
+            unit: '',
+            data: [42]
+        }]
+    });
+
+    assert.equal(result.datasets[0].unit, 'unit');
+    assert.equal(result.datasets[0].data[0].unit, 'unit');
+});
+
 test('validateData rejects mixed units on one axis', () => {
     const mixed = core.validateData({
         datasets: [
