@@ -134,8 +134,10 @@ public class DashboardModernizationTests
         Assert.Contains("Previous period (same duration)", view);
         Assert.Contains("Same period last year", view);
 
-        Assert.Contains("radial-gradient", css);
-        Assert.Contains("backdrop-filter", css);
+        Assert.DoesNotContain("radial-gradient", css);
+        Assert.DoesNotContain("linear-gradient(115deg", css);
+        Assert.Contains("background: #ffffff", css);
+        Assert.Contains("border-left: 4px solid var(--pw-primary)", css);
         Assert.Contains(".dashboard-kpi", css);
         Assert.Contains(".dashboard-ranking-row", css);
     }
@@ -149,6 +151,11 @@ public class DashboardModernizationTests
         Assert.Contains("{valueY.formatNumber('#,###.00')} {unit}", script);
         Assert.Contains("Consumption ($" + "{axisUnit})", script);
         Assert.Contains("cursor.set('snapToSeries'", script);
+        Assert.Contains("cursor.set('maxTooltipDistance', -1)", script);
+        Assert.Contains("fill: am5.color(0xFFFFFF)", script);
+        Assert.Contains("maxWidth: 250", script);
+        Assert.DoesNotContain("pointerOrientation: 'vertical'", script);
+        Assert.DoesNotContain("tooltip: am5.Tooltip.new(root, {})", script);
         Assert.Contains("setChartEmpty", script);
         Assert.Contains("Intl.NumberFormat", script);
     }
