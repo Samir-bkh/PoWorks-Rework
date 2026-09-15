@@ -608,17 +608,20 @@ namespace PoWorks_Rework.Services
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
                 {
                     var query = @"
-                        SELECT t.""TenantID"" as Id, 
-                               td.""CompanyName"" as Name,
-                               td.""Active""
+                        SELECT
+                            t.""TenantID"" AS Id,
+                            COALESCE(
+                                NULLIF(TRIM(td.""CompanyName""), ''),
+                                NULLIF(TRIM(t.""DisplayName""), ''),
+                                'Tenant ' || t.""TenantID""::text
+                            ) AS Name
                         FROM ""Tenants"" t
-                        INNER JOIN ""TenantDetails"" td
+                        LEFT JOIN ""TenantDetails"" td
                           ON t.""TenantID"" = td.""TenantID""
                          AND t.""CompanyId"" = td.""CompanyId""
-                        WHERE td.""Active"" = true
-                          AND t.""CompanyId"" = @CompanyId
-                          AND td.""CompanyId"" = @CompanyId
-                        ORDER BY td.""CompanyName""";
+                        WHERE t.""CompanyId"" = @CompanyId
+                          AND COALESCE(td.""Active"", TRUE) = TRUE
+                        ORDER BY Name";
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
