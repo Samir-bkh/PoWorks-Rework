@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS "MeterReadings" (
 -- Add indices for better performance
 CREATE INDEX IF NOT EXISTS idx_meterreadings_meterid ON "MeterReadings"("MeterId");
 CREATE INDEX IF NOT EXISTS idx_meterreadings_timestamp ON "MeterReadings"("Timestamp");
+CREATE INDEX IF NOT EXISTS idx_meterreadings_company_meter_timestamp
+    ON "MeterReadings"("CompanyId", "MeterId", "Timestamp");
 
 ALTER TABLE "MeterReadings" 
 DROP CONSTRAINT IF EXISTS unique_meter_timestamp;
