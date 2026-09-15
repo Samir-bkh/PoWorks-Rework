@@ -309,7 +309,7 @@ namespace PoWorks_Rework.Services
                 "temperature" => $"{unit} IN ({In(TemperatureUnits)})",
                 "pressure" => $"{unit} IN ({In(PressureUnits)})",
                 "percentage" => $"{unit} IN ({In(PercentageUnits)})",
-                "raw" => $"({unit} <> '' AND {unit} NOT IN ({In(recognized)}))",
+                "raw" => $"{unit} NOT IN ({In(recognized)})",
                 _ => $"{unit} IN ({In(EnergyCounterUnits.Concat(PowerUnits))})"
             };
         }
