@@ -95,6 +95,7 @@
     function getBounds(datasets) {
         let minX = Infinity;
         let maxX = -Infinity;
+        let minY = Infinity;
         let maxY = -Infinity;
         let count = 0;
 
@@ -105,6 +106,7 @@
 
                 minX = Math.min(minX, point.x);
                 maxX = Math.max(maxX, point.x);
+                minY = Math.min(minY, point.y);
                 maxY = Math.max(maxY, point.y);
                 count++;
             });
@@ -112,7 +114,7 @@
 
         return count === 0
             ? null
-            : { minX, maxX, maxY, count };
+            : { minX, maxX, minY, maxY, count };
     }
 
     function validateData(data) {
