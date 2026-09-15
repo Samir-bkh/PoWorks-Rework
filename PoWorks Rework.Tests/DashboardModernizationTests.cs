@@ -261,7 +261,7 @@ public class DashboardModernizationTests
         // Rankings are navigation, not decorative lists.
         Assert.Contains("function drillIntoRanking(key)", script);
         Assert.Contains("data-ranking-key", script);
-        Assert.Contains("tenant:facility", script);
+        Assert.Contains("tenantToken === 'facility'", script);
         Assert.Contains("event.key !== 'Enter' && event.key !== ' '", script);
     }
 
