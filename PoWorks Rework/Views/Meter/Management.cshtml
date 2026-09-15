@@ -399,7 +399,7 @@
                                     @foreach (var option in Model.TenantOptions)
                                     {
                                         <option value="@option.Value"
-                                                disabled="@(option.Disabled ? "disabled" : null)"
+                                                disabled="@(option.Disabled && option.Value != selected.TenantId ? "disabled" : null)"
                                                 selected="@(option.Value == selected.TenantId)">
                                             @option.Text
                                         </option>
@@ -413,7 +413,7 @@
                                     @foreach (var option in Model.ParentMeterOptions.Where(o => o.Value != selected.Id.ToString()))
                                     {
                                         <option value="@option.Value"
-                                                disabled="@(option.Disabled ? "disabled" : null)"
+                                                disabled="@(option.Disabled && option.Value != selected.ParentMeterId ? "disabled" : null)"
                                                 selected="@(option.Value == selected.ParentMeterId)">
                                             @option.Text
                                         </option>
