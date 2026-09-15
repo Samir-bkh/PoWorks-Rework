@@ -332,14 +332,28 @@ namespace PoWorks_Rework.Controllers
                     return Json(new
                     {
                         chartData = new { labels = new List<string>(), datasets = new List<object>() },
-                        summary = new { totalConsumption = 0, averageDaily = 0, peakUsage = 0, activeMeters = 0 },
+                        summary = new
+                        {
+                            totalConsumption = 0,
+                            averageDaily = 0,
+                            peakUsage = 0,
+                            activeMeters = 0,
+                            totalMeters = availability.ActiveMeterCount,
+                            periodDays = request.StartDate.HasValue && request.EndDate.HasValue
+                                ? Math.Max(1, (request.EndDate.Value.Date - request.StartDate.Value.Date).Days + 1)
+                                : 0,
+                            unit = "—",
+                            hasMixedUnits = false,
+                            peakPeriodLabel = "No data",
+                            dataBuckets = 0
+                        },
                         message = "No consumption data found.",
                         noDataInRange = true
                     });
                 }
 
                 var chartData = _dashboardDataService.ProcessChartData(consumptionData);
-                var summary = _dashboardDataService.CalculateSummary(consumptionData);
+                var summary = _dashboardDataService.CalculateSummary(consumptionData, filters);
                 summary.TotalMeters = availability.ActiveMeterCount;
 
                 // NEW: period-vs-period comparison. Re-run the exact same query (same meters,
@@ -370,7 +384,7 @@ namespace PoWorks_Rework.Controllers
                     if (compareData.Any())
                     {
                         var compareChartData = _dashboardDataService.ProcessChartData(compareData);
-                        var compareSummary = _dashboardDataService.CalculateSummary(compareData);
+                        var compareSummary = _dashboardDataService.CalculateSummary(compareData, compareFilters);
                         compareChartDataResponse = compareChartData.ToApiResponse();
                         compareSummaryResponse = compareSummary.ToDisplayObject();
                     }
