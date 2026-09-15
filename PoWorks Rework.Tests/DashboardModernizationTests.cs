@@ -212,6 +212,8 @@ public class DashboardModernizationTests
         Assert.Contains("DashboardComparisonPeriodResolver.Resolve", controller);
         Assert.Contains("request.CompareStartDate.Value", controller);
         Assert.Contains("resolvedComparison.EndDate", controller);
+        Assert.Contains("SeriesKeys = current.ChartData.Datasets", controller);
+        Assert.Contains("dataset.SeriesKey", controller);
         Assert.DoesNotContain("id=\"compareEndDate\"", view);
 
         // Client can choose global aggregate, tenant breakdown or individual meters.
