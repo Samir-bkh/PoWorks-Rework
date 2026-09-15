@@ -14,6 +14,7 @@ namespace PoWorks_Rework.Controllers
         private readonly ILogger<DashboardController> _logger;
         private readonly DashboardDataService _dashboardDataService;
         private readonly DashboardAnalyticsService _dashboardAnalyticsService;
+        private readonly ICompanyContext _companyContext;
 
         /// <summary>
         /// Initializes the dashboard controller with database, logging, and data service dependencies.
@@ -22,12 +23,14 @@ namespace PoWorks_Rework.Controllers
             DatabaseService databaseService,
             ILogger<DashboardController> logger,
             DashboardDataService dashboardDataService,
-            DashboardAnalyticsService dashboardAnalyticsService)
+            DashboardAnalyticsService dashboardAnalyticsService,
+            ICompanyContext companyContext)
             : base(databaseService)
         {
             _logger = logger;
             _dashboardDataService = dashboardDataService;
             _dashboardAnalyticsService = dashboardAnalyticsService;
+            _companyContext = companyContext;
         }
 
         /// <summary>
@@ -45,11 +48,15 @@ namespace PoWorks_Rework.Controllers
 
                     using var cmd = new NpgsqlCommand(@"
                         SELECT t.""TenantID"",
-                               COALESCE(td.""CompanyName"", t.""DisplayName"") AS ""TenantName""
+                               COALESCE(NULLIF(td.""CompanyName"", ''), t.""DisplayName"") AS ""TenantName""
                         FROM ""Tenants"" t
-                        LEFT JOIN ""TenantDetails"" td ON td.""TenantID"" = t.""TenantID""
-                        WHERE t.""TenantID"" = @TenantId", connection);
+                        LEFT JOIN ""TenantDetails"" td
+                          ON td.""TenantID"" = t.""TenantID""
+                         AND td.""CompanyId"" = t.""CompanyId""
+                        WHERE t.""TenantID"" = @TenantId
+                          AND t.""CompanyId"" = @CompanyId", connection);
                     cmd.Parameters.AddWithValue("TenantId", CurrentTenantId.Value);
+                    cmd.Parameters.AddWithValue("CompanyId", _companyContext.CurrentCompanyId);
 
                     using var reader = await cmd.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
