@@ -309,11 +309,17 @@ namespace PoWorks_Rework.Services
             var periodDays = Math.Max(
                 1,
                 (query.EndDate.Date - query.StartDate.Date).Days + 1);
-            var expectedCells = Math.Max(1, activeMeters * Math.Max(1, bucketCount));
+            var expectedBucketCount = ExpectedBucketCount(
+                query.StartDate,
+                query.EndDate,
+                query.DateFilter);
+            var expectedCells = Math.Max(
+                1,
+                activeMeters * Math.Max(1, expectedBucketCount));
             var actualCells = rows
                 .GroupBy(row => new { row.MeterId, row.ReadingDate })
                 .Count();
-            var coverage = activeMeters == 0 || bucketCount == 0
+            var coverage = activeMeters == 0
                 ? 0d
                 : Math.Min(100d, actualCells * 100d / expectedCells);
 
@@ -426,6 +432,34 @@ namespace PoWorks_Rework.Services
             });
 
             return summary;
+        }
+
+        private static int ExpectedBucketCount(
+            DateTime startDate,
+            DateTime endDate,
+            string? dateFilter)
+        {
+            if (endDate < startDate)
+                return 0;
+
+            return dateFilter?.Trim().ToLowerInvariant() switch
+            {
+                "hourly" => Math.Max(
+                    1,
+                    (int)Math.Floor((endDate - startDate).TotalHours) + 1),
+                "monthly" => Math.Max(
+                    1,
+                    ((endDate.Year - startDate.Year) * 12)
+                    + endDate.Month
+                    - startDate.Month
+                    + 1),
+                "yearly" => Math.Max(
+                    1,
+                    endDate.Year - startDate.Year + 1),
+                _ => Math.Max(
+                    1,
+                    (endDate.Date - startDate.Date).Days + 1)
+            };
         }
 
         private static IEnumerable<DashboardRankingItem> BuildRanking(
