@@ -1,394 +1,325 @@
-﻿@*
-    Energy Consumption Dashboard View (PoWorks)
-
-Provides an interactive analytics dashboard for monitoring, comparing, and analyzing
-    energy consumption across workspace tenants and meters.
-    Features dynamic timeframes (Daily, Monthly, Annual), custom date range filters, multi-meter
-    comparison with maximum curve safeguards, amCharts integration, top consumer rankings,
-    and key performance metrics (KPI cards).
-*@
-
 @{
-    ViewData["Title"] = "Energy Consumption Dashboard";
+    ViewData["Title"] = "Energy Dashboard";
     Layout = "_Layout";
 }
 
-@* Workspace Context Banner *@
-<div class="alert alert-info shadow-sm mb-4">
-    <i class="bi bi-building"></i> <strong>Active Workspace :</strong> @ViewData["CurrentTenant"]
-</div>
+<link rel="stylesheet" href="~/css/dashboard-modern.css" asp-append-version="true" />
 
-@* Dashboard View Layout & Fullscreen Chart Styles *@
-<style>
-    /* Fullscreen Mode Layout Overrides for amCharts Container */
-    .chart-fullscreen {
-        position: fixed !important;
-        top: 0;
-        left: 0;
-        width: 100vw !important;
-        height: 100vh !important;
-        z-index: 9999;
-        margin: 0;
-        border-radius: 0;
-    }
-
-        .chart-fullscreen .card-body {
-            height: calc(100vh - 70px) !important;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chart-fullscreen #chartdiv {
-            max-height: none !important;
-            height: 100% !important;
-            flex-grow: 1;
-        }
-</style>
-
-<div class="container-fluid mt-4">
-    @* System / Data Warning Alerts *@
+<div class="dashboard-shell">
     @if (TempData["WarningMessage"] != null)
     {
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            @TempData["WarningMessage"]
+        <div class="alert alert-warning alert-dismissible fade show shadow-sm" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>@TempData["WarningMessage"]
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     }
 
-    @* Page Title *@
-    <div class="row">
-        <div class="col-12">
-            <h2>Energy Consumption Analytics</h2>
-        </div>
-    </div>
-
-    @* SECTION 1: Analytics Filters & Controls *@
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Filters</h5>
+    <section class="dashboard-hero mb-3" aria-labelledby="dashboardTitle">
+        <div class="position-relative" style="z-index:1">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="text-uppercase small fw-bold mb-2" style="letter-spacing:.12em;color:rgba(255,255,255,.66)">PoWorks Analytics</div>
+                    <h1 class="dashboard-title" id="dashboardTitle">Energy Dashboard</h1>
+                    <p class="dashboard-subtitle">
+                        Monitor tenant consumption, explore historical trends and compare periods from one consistent source of truth.
+                    </p>
                 </div>
-                <div class="card-body">
-                    <div class="row">
-                        @* Hidden Legacy Date Range Selector *@
-                        <div class="col-md-2 d-none">
-                            <div class="form-group">
-                                <label for="dateFilter">Date Range</label>
-                                <select id="dateFilter" class="form-control">
-                                    <option value="daily" selected>Daily</option>
-                                    <option value="monthly">Monthly</option>
-                                    <option value="yearly">Yearly</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        @* Tenant Filter (Optional Scope Restriction) *@
-                        <div class="col-md-2">
-                            <div class="form-group">
-                                <label for="tenantFilter">Tenant (Optional)</label>
-                                <select id="tenantFilter" class="form-control">
-                                    <option value="">All Tenants</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        @* Multi-Select Meter Filter Dropdown with Search Support *@
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label>Meters to compare</label>
-                                <div class="dropdown w-100">
-                                    <button class="form-control text-start d-flex justify-content-between align-items-center bg-white"
-                                            type="button" id="meterDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside" style="cursor: pointer;">
-                                        <span id="meterDropdownText" class="text-truncate text-muted">Default (Top 5)</span>
-                                        <i class="bi bi-chevron-down text-muted"></i>
-                                    </button>
-                                    <ul class="dropdown-menu w-100 p-2 shadow" aria-labelledby="meterDropdownBtn" style="max-height: 350px; overflow-y: auto;" id="meterFilterContainer">
-                                        <li><span class="dropdown-item-text text-muted">Loading meters...</span></li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-
-                        @* Default Consumer View Limit *@
-                        <div class="col-md-2">
-                            <div class="form-group">
-                                <label for="meterLimit">Default View</label>
-                                <select id="meterLimit" class="form-control">
-                                    <option value="3">Top 3 Consumers</option>
-                                    <option value="5" selected>Top 5 Consumers</option>
-                                    <option value="10">Top 10 Consumers</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        @* Visualization Chart Type *@
-                        <div class="col-md-2">
-                            <div class="form-group">
-                                <label for="chartType">Chart Type</label>
-                                <select id="chartType" class="form-control">
-                                    <option value="area" selected>Area Chart</option>
-                                    <option value="line">Line Chart</option>
-                                    <option value="bar">Bar Chart</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        @* Refresh Quick Action Button *@
-                        <div class="col-md-1">
-                            <div class="form-group">
-                                <label>&nbsp;</label>
-                                <div class="d-flex flex-column">
-                                    <button id="refreshMeters" class="btn btn-sm btn-outline-info mb-1" title="Refresh Meter List">
-                                        <i class="bi bi-arrow-clockwise"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    @* Date Range & Visual Limits Controls *@
-                    <div class="row mt-3">
-                        @* Custom Date Range Selection *@
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label for="dateRange">Date Range</label>
-                                <div class="input-group">
-                                    <input type="date" id="startDate" class="form-control" />
-                                    <div class="input-group-text">to</div>
-                                    <input type="date" id="endDate" class="form-control" />
-                                </div>
-                            </div>
-                        </div>
-
-                        @* Maximum Visual Curve Threshold Selector (Prevents chart cluttering) *@
-                        <div class="col-md-2">
-                            <div class="form-group">
-                                <label for="maxCurves" title="Beyond this number, the remaining meters are grouped into an 'Others' curve">
-                                    Max curves <i class="bi bi-info-circle text-muted"></i>
-                                </label>
-                                <select id="maxCurves" class="form-control">
-                                    <option value="3">3</option>
-                                    <option value="5">5</option>
-                                    <option value="10" selected>10</option>
-                                    <option value="20">20</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        @* Filter Trigger Actions *@
-                        <div class="col-md-6 d-flex align-items-end">
-                            <button id="applyFilters" class="btn btn-primary mr-2">Apply Filters</button>
-                            <button id="resetFilters" class="btn btn-secondary">Reset</button>
-                        </div>
-                    </div>
-
-                    @* Comparison Mode Period Options (Toggled via JavaScript) *@
-                    <div class="row mt-3 d-none" id="comparisonOptions">
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label for="comparePreset">Comparer à</label>
-                                <select id="comparePreset" class="form-control">
-                                    <option value="previous" selected>Période précédente (même durée)</option>
-                                    <option value="lastYear">Même période l'an dernier</option>
-                                    <option value="custom">Période personnalisée</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4 d-none" id="compareCustomDates">
-                            <div class="form-group">
-                                <label for="compareDateRange">Comparison Dates</label>
-                                <div class="input-group">
-                                    <input type="date" id="compareStartDate" class="form-control" />
-                                    <div class="input-group-text">to</div>
-                                    <input type="date" id="compareEndDate" class="form-control" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    @* Dynamic Data Loading & Status Status Indicator *@
-                    <div class="row mt-2">
-                        <div class="col-12">
-                            <div id="dataStatus" class="alert alert-info" style="display: none;">
-                                <small id="dataStatusText">Loading meter information...</small>
-                            </div>
-                        </div>
-                    </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button id="autoRefresh" class="btn btn-sm btn-light dashboard-action" type="button" title="Auto refresh every 30 seconds">
+                        <i class="bi bi-broadcast-pin me-1"></i> Live refresh
+                    </button>
+                    <button id="exportChart" class="btn btn-sm btn-outline-light dashboard-action" type="button" title="Export chart as PNG">
+                        <i class="bi bi-download me-1"></i> Export
+                    </button>
                 </div>
             </div>
+
+            <div class="dashboard-context">
+                <span class="dashboard-context-chip">
+                    <i class="bi bi-building"></i>
+                    Workspace <strong id="dashboardWorkspaceContext">@ViewData["CurrentTenant"]</strong>
+                </span>
+                <span class="dashboard-context-chip">
+                    <i class="bi bi-person-badge"></i>
+                    Tenant <strong id="dashboardTenantContext">All tenants</strong>
+                </span>
+                <span class="dashboard-context-chip">
+                    <i class="bi bi-speedometer2"></i>
+                    Meters <strong id="dashboardMeterContext">Loading…</strong>
+                </span>
+                <span class="dashboard-context-chip">
+                    <i class="bi bi-calendar-range"></i>
+                    Period <strong id="dashboardPeriodContext">Loading…</strong>
+                </span>
+                <span class="dashboard-context-chip">
+                    <i class="bi bi-rulers"></i>
+                    Unit <strong id="dashboardUnitContext">—</strong>
+                </span>
+            </div>
         </div>
-    </div>
+    </section>
 
-    @* SECTION 2: Chart Analytics Container *@
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card">
-                @* Chart Toolbar: Display Mode & Quick Action Controls *@
-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div class="d-flex align-items-center gap-3">
-                        <h5 class="mb-0">Energy Consumption</h5>
-
-                        @* Standard vs Comparison View Mode Toggle *@
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Display mode">
-                            <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
-                            <label class="btn btn-outline-primary" for="modeStandard"><i class="bi bi-graph-up"></i> Standard</label>
-
-                            <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="modeComparison"><i class="bi bi-layers"></i> Comparison</label>
-                        </div>
+    <section class="row g-3 mb-3" aria-label="Energy KPIs">
+        <div class="col-12 col-md-6 col-xl-3">
+            <article class="dashboard-kpi">
+                <div class="dashboard-kpi-top">
+                    <div>
+                        <div class="dashboard-kpi-label">Total Consumption</div>
+                        <div class="dashboard-kpi-value" id="totalConsumption">—</div>
                     </div>
+                    <div class="dashboard-kpi-icon primary"><i class="bi bi-lightning-charge-fill"></i></div>
+                </div>
+                <small id="totalConsumptionDetail" class="dashboard-kpi-detail">For selected period</small>
+            </article>
+        </div>
 
-                    @* Chart Navigation Tools *@
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button id="resetZoomBtn" class="btn btn-outline-secondary" type="button" title="Reset the zoom">
-                            <i class="bi bi-arrows-angle-expand"></i> Zoom
+        <div class="col-12 col-md-6 col-xl-3">
+            <article class="dashboard-kpi">
+                <div class="dashboard-kpi-top">
+                    <div>
+                        <div class="dashboard-kpi-label">Average per Day</div>
+                        <div class="dashboard-kpi-value" id="avgDaily">—</div>
+                    </div>
+                    <div class="dashboard-kpi-icon success"><i class="bi bi-calendar2-week-fill"></i></div>
+                </div>
+                <small id="avgDailyDetail" class="dashboard-kpi-detail">Across the full selected date range</small>
+            </article>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <article class="dashboard-kpi">
+                <div class="dashboard-kpi-top">
+                    <div>
+                        <div class="dashboard-kpi-label">Peak Period Consumption</div>
+                        <div class="dashboard-kpi-value" id="peakUsage">—</div>
+                    </div>
+                    <div class="dashboard-kpi-icon warning"><i class="bi bi-graph-up-arrow"></i></div>
+                </div>
+                <small id="peakUsageDetail" class="dashboard-kpi-detail">Highest visible period bucket</small>
+            </article>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <article class="dashboard-kpi">
+                <div class="dashboard-kpi-top">
+                    <div>
+                        <div class="dashboard-kpi-label">Active Meters</div>
+                        <div class="dashboard-kpi-value" id="activeMeters">—</div>
+                    </div>
+                    <div class="dashboard-kpi-icon info"><i class="bi bi-speedometer2"></i></div>
+                </div>
+                <small id="activeMetersDetail" class="dashboard-kpi-detail">Meters contributing to this view</small>
+            </article>
+        </div>
+    </section>
+
+    <section class="card dashboard-card dashboard-filter-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <div class="fw-bold"><i class="bi bi-sliders2 me-2 text-primary"></i>Analytics filters</div>
+                <div class="dashboard-note mt-1">Scope the tenant, meters and historical period before analysing consumption.</div>
+            </div>
+            <button id="refreshMeters" class="btn btn-sm btn-outline-secondary dashboard-action" type="button">
+                <i class="bi bi-arrow-clockwise me-1"></i> Refresh meters
+            </button>
+        </div>
+
+        <div class="card-body">
+            <select id="dateFilter" class="d-none" aria-hidden="true">
+                <option value="daily" selected>Daily</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+            </select>
+
+            <div class="row g-3">
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label class="dashboard-filter-label" for="tenantFilter">Tenant</label>
+                    <select id="tenantFilter" class="form-select">
+                        <option value="">All tenants</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label class="dashboard-filter-label">Meters</label>
+                    <div class="dropdown w-100">
+                        <button class="form-control text-start d-flex justify-content-between align-items-center bg-white"
+                                type="button"
+                                id="meterDropdownBtn"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false"
+                                data-bs-auto-close="outside">
+                            <span id="meterDropdownText" class="text-truncate text-muted">Default view (Top 5)</span>
+                            <i class="bi bi-chevron-down text-muted"></i>
                         </button>
-                        <button id="autoRefresh" class="btn btn-outline-secondary" type="button" title="Auto Refresh (30s)">
-                            <i class="bi bi-arrow-repeat"></i>
-                        </button>
-                        <button id="exportChart" class="btn btn-outline-secondary" type="button" title="Export Chart">
-                            <i class="bi bi-download"></i>
-                        </button>
-                        <button id="fullscreenChart" class="btn btn-outline-secondary" type="button" title="Full Screen">
-                            <i class="bi bi-arrows-fullscreen"></i>
-                        </button>
+                        <ul class="dropdown-menu w-100 p-2 shadow border-0"
+                            aria-labelledby="meterDropdownBtn"
+                            style="max-height:360px;overflow-y:auto;border-radius:14px"
+                            id="meterFilterContainer">
+                            <li><span class="dropdown-item-text text-muted">Loading meters…</span></li>
+                        </ul>
                     </div>
                 </div>
 
-                <div class="card-body">
-                    @* Timeframe Granularity Tabs *@
-                    <div class="row mb-3">
-                        <div class="col-12 d-flex justify-content-center">
-                            <div class="btn-group shadow-sm" role="group">
-                                <button type="button" class="btn btn-outline-primary active" id="tabDaily" style="min-width: 150px; font-weight: bold;">DAILY</button>
-                                <button type="button" class="btn btn-outline-primary" id="tabMonthly" style="min-width: 150px; font-weight: bold;">MONTHLY</button>
-                                <button type="button" class="btn btn-outline-primary" id="tabYearly" style="min-width: 150px; font-weight: bold;">ANNUAL</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    @* Curve Exceeded Warning Banner *@
-                    <div id="curveLimitWarning" class="alert alert-warning d-none mb-3">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <span id="curveLimitWarningText"></span>
-                    </div>
-
-                    @* Chart Loading Spinner *@
-                    <div id="loadingSpinner" class="text-center d-none">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2 text-muted">Loading chart data...</p>
-                    </div>
-
-                    @* Main amCharts Rendering Target *@
-                    <div id="chartdiv" style="width: 100%; height: 450px;"></div>
+                <div class="col-6 col-md-3 col-xl-2">
+                    <label class="dashboard-filter-label" for="meterLimit">Default ranking</label>
+                    <select id="meterLimit" class="form-select">
+                        <option value="3">Top 3</option>
+                        <option value="5" selected>Top 5</option>
+                        <option value="10">Top 10</option>
+                    </select>
                 </div>
-            </div>
-        </div>
-    </div>
 
-    @* SECTION 3: Top Consumers Leaderboard *@
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h5 id="topConsumersTitle" class="mb-0 text-danger"><i class="bi bi-fire"></i> Top 5 Counters (Overview)</h5>
+                <div class="col-6 col-md-3 col-xl-2">
+                    <label class="dashboard-filter-label" for="chartType">Visualisation</label>
+                    <select id="chartType" class="form-select">
+                        <option value="area" selected>Area</option>
+                        <option value="line">Line</option>
+                        <option value="bar">Bar</option>
+                    </select>
                 </div>
-                <div class="card-body">
-                    <div id="topConsumersList">
-                        <p class="text-muted text-center">Loading the ranking</p>
+
+                <div class="col-12 col-xl-2">
+                    <label class="dashboard-filter-label" for="maxCurves">Max visible curves</label>
+                    <select id="maxCurves" class="form-select" title="Additional meters are grouped into an Others series">
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-lg-6">
+                    <label class="dashboard-filter-label">Date range</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                        <input type="date" id="startDate" class="form-control" aria-label="Start date" />
+                        <span class="input-group-text">to</span>
+                        <input type="date" id="endDate" class="form-control" aria-label="End date" />
                     </div>
+                </div>
+
+                <div class="col-12 col-lg-6 d-flex align-items-end gap-2 flex-wrap">
+                    <button id="applyFilters" class="btn btn-primary dashboard-action px-4" type="button">
+                        <i class="bi bi-funnel-fill me-1"></i> Apply filters
+                    </button>
+                    <button id="resetFilters" class="btn btn-outline-secondary dashboard-action px-4" type="button">
+                        Reset
+                    </button>
                 </div>
             </div>
-        </div>
-    </div>
 
-    @* SECTION 4: Key Performance Indicator (KPI) Summary Cards *@
-    <div class="row mt-4">
-        @* KPI 1: Total Consumption *@
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted fw-normal mb-2">Total Consumption</h6>
-                            <h4 class="mb-0 fw-bold text-dark" id="totalConsumption">0 kWh</h4>
-                            <small id="totalConsumptionDetail" class="text-muted mt-1 d-block"></small>
-                        </div>
-                        <div class="bg-primary bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
-                            <i class="bi bi-lightning-charge-fill text-primary fs-5"></i>
-                        </div>
+            <div class="row g-3 mt-1 d-none" id="comparisonOptions">
+                <div class="col-12 col-md-5">
+                    <label class="dashboard-filter-label" for="comparePreset">Compare with</label>
+                    <select id="comparePreset" class="form-select">
+                        <option value="previous" selected>Previous period (same duration)</option>
+                        <option value="lastYear">Same period last year</option>
+                        <option value="custom">Custom period</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-7 d-none" id="compareCustomDates">
+                    <label class="dashboard-filter-label">Comparison period</label>
+                    <div class="input-group">
+                        <input type="date" id="compareStartDate" class="form-control" />
+                        <span class="input-group-text">to</span>
+                        <input type="date" id="compareEndDate" class="form-control" />
                     </div>
                 </div>
             </div>
+
+            <div id="dataStatus" class="dashboard-status alert alert-info mb-0">
+                <span id="dataStatusText">Loading meter information…</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="card dashboard-card chart-card mb-3">
+        <div class="card-header chart-toolbar">
+            <div class="chart-title-wrap">
+                <div>
+                    <h2 class="chart-title">Energy Consumption</h2>
+                    <div class="dashboard-note mt-1">Hover a point for exact meter, tenant, date and consumption.</div>
+                </div>
+                <span class="chart-unit-pill" id="chartUnitBadge">
+                    <i class="bi bi-rulers"></i><span>—</span>
+                </span>
+
+                <div class="dashboard-segmented ms-lg-2" role="group" aria-label="Display mode">
+                    <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
+                    <label class="btn btn-sm" for="modeStandard"><i class="bi bi-graph-up me-1"></i>Standard</label>
+
+                    <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
+                    <label class="btn btn-sm" for="modeComparison"><i class="bi bi-layers me-1"></i>Comparison</label>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 chart-tools">
+                <button id="resetZoomBtn" class="btn btn-sm" type="button" title="Reset zoom">
+                    <i class="bi bi-arrow-counterclockwise"></i><span class="d-none d-xl-inline ms-1">Reset zoom</span>
+                </button>
+                <button id="fullscreenChart" class="btn btn-sm" type="button" title="Full screen">
+                    <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+            </div>
         </div>
 
-        @* KPI 2: Average Daily Usage *@
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted fw-normal mb-2">Average Daily</h6>
-                            <h4 class="mb-0 fw-bold text-dark" id="avgDaily">0 kWh</h4>
-                            <small id="avgDailyDetail" class="text-muted mt-1 d-block">Per day average</small>
-                        </div>
-                        <div class="bg-success bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
-                            <i class="bi bi-calendar-event-fill text-success fs-5"></i>
-                        </div>
+        <div class="card-body pt-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div class="dashboard-segmented" role="group" aria-label="Aggregation">
+                    <button type="button" class="btn btn-sm active" id="tabDaily">Daily</button>
+                    <button type="button" class="btn btn-sm" id="tabMonthly">Monthly</button>
+                    <button type="button" class="btn btn-sm" id="tabYearly">Annual</button>
+                </div>
+                <div class="dashboard-note">
+                    <i class="bi bi-mouse me-1"></i>Scroll to zoom · drag scrollbar to explore history
+                </div>
+            </div>
+
+            <div id="curveLimitWarning" class="alert alert-warning d-none mb-3">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                <span id="curveLimitWarningText"></span>
+            </div>
+
+            <div class="chart-stage">
+                <div id="chartdiv"></div>
+
+                <div id="loadingSpinner" class="chart-loading-overlay d-none">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
+                        <div class="fw-semibold mt-3">Loading consumption data</div>
+                        <div class="dashboard-note mt-1">Preparing the selected meters and period…</div>
+                    </div>
+                </div>
+
+                <div id="chartEmptyState" class="chart-empty-state d-none">
+                    <div class="chart-empty-content">
+                        <div class="chart-empty-icon"><i class="bi bi-bar-chart-line"></i></div>
+                        <h5 class="mb-2">No consumption data</h5>
+                        <p class="text-muted mb-0">Adjust the tenant, meters or date range to display historical consumption.</p>
                     </div>
                 </div>
             </div>
         </div>
+    </section>
 
-        @* KPI 3: Peak Usage Record *@
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted fw-normal mb-2">Peak Usage</h6>
-                            <h4 class="mb-0 fw-bold text-dark" id="peakUsage">0 kWh</h4>
-                            <small id="peakUsageDetail" class="text-muted mt-1 d-block">Maximum recorded</small>
-                        </div>
-                        <div class="bg-warning bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
-                            <i class="bi bi-graph-up-arrow text-warning fs-5"></i>
-                        </div>
-                    </div>
-                </div>
+    <section class="card dashboard-card mb-3">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <div class="fw-bold" id="topConsumersTitle"><i class="bi bi-trophy me-2 text-warning"></i>Top 5 meters</div>
+                <div class="dashboard-note mt-1">Largest consumers in the currently displayed period.</div>
             </div>
+            <span class="badge rounded-pill text-bg-light border" id="rankingScopeBadge">Selected scope</span>
         </div>
-
-        @* KPI 4: Active Meters Count *@
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted fw-normal mb-2">Active Meters</h6>
-                            <h4 class="mb-0 fw-bold text-dark" id="activeMeters">0</h4>
-                            <small id="activeMetersDetail" class="text-muted mt-1 d-block">Out of total available</small>
-                        </div>
-                        <div class="bg-info bg-opacity-10 p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
-                            <i class="bi bi-speedometer2 text-info fs-5"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="card-body" id="topConsumersList">
+            <div class="text-center text-muted py-3">Loading ranking…</div>
         </div>
-    </div>
+    </section>
 </div>
 
-@* SECTION 5: External Dependencies & Dashboard Scripts *@
 @section Scripts {
-    @* amCharts 5 Visualization Engine *@
     <script src="~/lib/amcharts/lib/5/index.js"></script>
     <script src="~/lib/amcharts/lib/5/xy.js"></script>
     <script src="~/lib/amcharts/lib/5/themes/Animated.js"></script>
     <script src="~/lib/amcharts/lib/5/plugins/exporting.js"></script>
-
-    @* Custom Dashboard Logic *@
     <script src="~/js/energy-dashboard.js" asp-append-version="true"></script>
 }
