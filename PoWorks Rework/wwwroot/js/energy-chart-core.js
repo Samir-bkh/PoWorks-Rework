@@ -24,6 +24,26 @@
         return new Date(value).getTime();
     }
 
+    function shiftIsoDateByYears(dateString, deltaYears) {
+        if (typeof dateString !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateString))
+            return null;
+
+        const parts = dateString.split('-').map(Number);
+        const year = parts[0] + Number(deltaYears || 0);
+        const monthIndex = parts[1] - 1;
+        const day = parts[2];
+
+        if (!Number.isInteger(year) || monthIndex < 0 || monthIndex > 11 || day < 1)
+            return null;
+
+        const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+        const clampedDay = Math.min(day, lastDay);
+        const month = String(monthIndex + 1).padStart(2, '0');
+        const dayText = String(clampedDay).padStart(2, '0');
+
+        return year + '-' + month + '-' + dayText;
+    }
+
     function toTimeSeries(chartData, periodLabel) {
         if (!chartData || !Array.isArray(chartData.labels))
             return { datasets: [] };
@@ -273,6 +293,7 @@
 
     return {
         parseBucketTimestamp,
+        shiftIsoDateByYears,
         toTimeSeries,
         sumDataset,
         getCommonUnit,
