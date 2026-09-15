@@ -360,6 +360,7 @@ namespace PoWorks_Rework.Controllers
                     ""StartDate"" = @startDate,
                     ""Period"" = @period,
                     ""Deposit"" = CAST(@deposit AS numeric)::money,
+                    ""AbonnementMensuel"" = @monthlyFee,
                     ""Active"" = @active,
                     ""EmailAlert"" = @emailAlert,
                     ""PrintBill"" = @printBill,
@@ -373,7 +374,7 @@ namespace PoWorks_Rework.Controllers
                     ""CompanyName"", ""CompanyAddress"", ""CompanyLocation"", ""CompanyMisc"",
                     ""Address1"", ""Address2"", ""PostCode"", ""City"", ""Unit"",
                     ""TariffType"", ""BaseRate"", ""Threshold1"", ""Threshold1Rate"", ""Threshold2"", ""Threshold2Rate"",
-                    ""Tarif_1"", ""Tarif_2"", ""Tarif_3"", ""StartDate"", ""Period"", ""Deposit"",
+                    ""Tarif_1"", ""Tarif_2"", ""Tarif_3"", ""StartDate"", ""Period"", ""Deposit"", ""AbonnementMensuel"",
                     ""Active"", ""EmailAlert"", ""PrintBill"", ""EmailBill"")
                 VALUES (
                     @tenantId, @companyId, @contactName, @contactPhone, @contactEmail,
@@ -381,7 +382,7 @@ namespace PoWorks_Rework.Controllers
                     @address1, @address2, @postCode, @city, @unit,
                     @tariffType, @baseRate, @threshold1, @threshold1Rate, @threshold2, @threshold2Rate,
                     CAST(@baseRate AS numeric)::money, CAST(@threshold1Rate AS numeric)::money, CAST(@threshold2Rate AS numeric)::money,
-                    @startDate, @period, CAST(@deposit AS numeric)::money,
+                    @startDate, @period, CAST(@deposit AS numeric)::money, @monthlyFee,
                     @active, @emailAlert, @printBill, @emailBill)";
 
             using var update = new NpgsqlCommand(updateSql, connection, transaction);
@@ -424,6 +425,7 @@ namespace PoWorks_Rework.Controllers
             command.Parameters.AddWithValue("startDate", startDate.Date);
             command.Parameters.AddWithValue("period", tenant.Period);
             command.Parameters.AddWithValue("deposit", tenant.Deposit);
+            command.Parameters.AddWithValue("monthlyFee", tenant.MonthlyFee);
             command.Parameters.AddWithValue("active", tenant.Active);
             command.Parameters.AddWithValue("emailAlert", tenant.EmailAlert);
             command.Parameters.AddWithValue("printBill", tenant.PrintBill);
@@ -497,7 +499,7 @@ namespace PoWorks_Rework.Controllers
                     td.""Address1"", td.""Address2"", td.""PostCode"", td.""City"", td.""Unit"",
                     td.""TariffType"", td.""BaseRate"", td.""Threshold1"", td.""Threshold1Rate"",
                     td.""Threshold2"", td.""Threshold2Rate"", td.""StartDate"", td.""Period"",
-                    td.""Deposit""::numeric, td.""Active"", td.""EmailAlert"", td.""PrintBill"", td.""EmailBill""
+                    td.""Deposit""::numeric, td.""AbonnementMensuel"", td.""Active"", td.""EmailAlert"", td.""PrintBill"", td.""EmailBill""
                 FROM ""Tenants"" t
                 LEFT JOIN ""TenantDetails"" td
                   ON td.""TenantID"" = t.""TenantID""
@@ -534,10 +536,11 @@ namespace PoWorks_Rework.Controllers
                 StartDate = reader.IsDBNull(16) ? null : reader.GetDateTime(16).ToString("yyyy-MM-dd"),
                 Period = reader.IsDBNull(17) ? null : reader.GetString(17),
                 Deposit = reader.IsDBNull(18) ? (decimal?)null : reader.GetDecimal(18),
-                Active = reader.IsDBNull(19) || reader.GetBoolean(19),
-                EmailAlert = reader.IsDBNull(20) || reader.GetBoolean(20),
-                PrintBill = reader.IsDBNull(21) || reader.GetBoolean(21),
-                EmailBill = reader.IsDBNull(22) || reader.GetBoolean(22)
+                MonthlyFee = reader.IsDBNull(19) ? (decimal?)null : reader.GetDecimal(19),
+                Active = reader.IsDBNull(20) || reader.GetBoolean(20),
+                EmailAlert = reader.IsDBNull(21) || reader.GetBoolean(21),
+                PrintBill = reader.IsDBNull(22) || reader.GetBoolean(22),
+                EmailBill = reader.IsDBNull(23) || reader.GetBoolean(23)
             };
         }
 
