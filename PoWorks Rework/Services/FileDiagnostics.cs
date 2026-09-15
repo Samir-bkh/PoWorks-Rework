@@ -18,6 +18,26 @@ namespace PoWorks_Rework.Services
                 return Path.GetFullPath(expanded);
             }
 
+            // On Windows, keep diagnostics outside the application directory so logs survive
+            // an application update/redeployment and remain available even when PoWorks cannot start.
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                    if (!string.IsNullOrWhiteSpace(programData))
+                    {
+                        var persistent = Path.Combine(programData, "PoWorks", "Logs");
+                        Directory.CreateDirectory(persistent);
+                        return persistent;
+                    }
+                }
+                catch
+                {
+                    // Fall through to an application-local directory if ProgramData is unavailable.
+                }
+            }
+
             var local = Path.Combine(AppContext.BaseDirectory, "logs");
             try
             {
@@ -26,13 +46,9 @@ namespace PoWorks_Rework.Services
             }
             catch
             {
-                var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-                var fallback = Path.Combine(
-                    string.IsNullOrWhiteSpace(programData) ? AppContext.BaseDirectory : programData,
-                    "PoWorks",
-                    "Logs");
-                Directory.CreateDirectory(fallback);
-                return fallback;
+                var temp = Path.Combine(Path.GetTempPath(), "PoWorks", "Logs");
+                Directory.CreateDirectory(temp);
+                return temp;
             }
         }
 
@@ -82,15 +98,24 @@ namespace PoWorks_Rework.Services
             try
             {
                 var threshold = DateTime.UtcNow.Date.AddDays(-_retentionDays);
-                foreach (var file in Directory.EnumerateFiles(_root, "poworks-*.log"))
-                {
-                    if (File.GetLastWriteTimeUtc(file) < threshold)
-                        File.Delete(file);
-                }
+                DeleteOlderThan(_root, "poworks-*.log", threshold);
+
+                var auditDirectory = Path.Combine(_root, "audit");
+                if (Directory.Exists(auditDirectory))
+                    DeleteOlderThan(auditDirectory, "audit-*.jsonl", threshold);
             }
             catch
             {
                 // Logging cleanup is best effort only.
+            }
+        }
+
+        private static void DeleteOlderThan(string directory, string pattern, DateTime threshold)
+        {
+            foreach (var file in Directory.EnumerateFiles(directory, pattern))
+            {
+                if (File.GetLastWriteTimeUtc(file) < threshold)
+                    File.Delete(file);
             }
         }
     }
