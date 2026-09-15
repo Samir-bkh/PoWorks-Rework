@@ -242,6 +242,7 @@ namespace PoWorks_Rework.Controllers
                     COALESCE(td.""StartDate"", CURRENT_DATE),
                     COALESCE(td.""Period"", 'Monthly'),
                     COALESCE(td.""Deposit""::numeric, 0),
+                    COALESCE(td.""AbonnementMensuel"", 0),
                     COALESCE(td.""Active"", TRUE),
                     COALESCE(td.""EmailAlert"", TRUE),
                     COALESCE(td.""PrintBill"", TRUE),
@@ -282,10 +283,11 @@ namespace PoWorks_Rework.Controllers
                 StartDate = reader.GetDateTime(16).ToString("yyyy-MM-dd"),
                 Period = reader.GetString(17),
                 Deposit = reader.GetDecimal(18),
-                Active = reader.GetBoolean(19),
-                EmailAlert = reader.GetBoolean(20),
-                PrintBill = reader.GetBoolean(21),
-                EmailBill = reader.GetBoolean(22)
+                MonthlyFee = reader.GetDecimal(19),
+                Active = reader.GetBoolean(20),
+                EmailAlert = reader.GetBoolean(21),
+                PrintBill = reader.GetBoolean(22),
+                EmailBill = reader.GetBoolean(23)
             };
         }
 
