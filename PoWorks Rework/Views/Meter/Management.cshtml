@@ -12,13 +12,39 @@
     .meter-table-wrap {
         max-height: 58vh;
         overflow: auto;
+        background: #ffffff;
+    }
+
+    .meter-table-wrap table {
+        border-collapse: separate;
+        border-spacing: 0;
     }
 
     .meter-table-wrap thead th {
         position: sticky;
         top: 0;
-        z-index: 2;
-        background: var(--bs-tertiary-bg);
+        z-index: 20;
+        height: 44px;
+        padding: .65rem .5rem;
+        vertical-align: middle;
+        white-space: nowrap;
+        background: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 700;
+        border-bottom: 1px solid #cfd4da !important;
+        box-shadow: 0 2px 4px rgba(33, 37, 41, .08);
+    }
+
+    .meter-table-wrap tbody td {
+        position: relative;
+        z-index: 0;
+        vertical-align: middle;
+        background-clip: padding-box;
+    }
+
+    .meter-table-wrap tbody tr.table-primary > td {
+        background-color: #dbeafe !important;
+        color: #212529 !important;
     }
 
     .meter-name {
@@ -31,10 +57,57 @@
         white-space: nowrap;
     }
 
+    .meter-type-badge {
+        display: inline-flex;
+        align-items: center;
+        min-width: 52px;
+        justify-content: center;
+        background: #e9ecef !important;
+        color: #212529 !important;
+        border: 1px solid #ced4da !important;
+        font-weight: 600;
+    }
+
+    .meter-status-active {
+        background: #d1e7dd !important;
+        color: #0f5132 !important;
+        border: 1px solid #a3cfbb !important;
+        font-weight: 600;
+    }
+
+    .meter-status-disabled {
+        background: #e2e3e5 !important;
+        color: #41464b !important;
+        border: 1px solid #c4c8cb !important;
+        font-weight: 600;
+    }
+
     .meter-bulk-bar {
         position: sticky;
         bottom: 0;
-        z-index: 3;
+        z-index: 10;
+        background: #ffffff !important;
+        color: #212529 !important;
+        border-top: 1px solid #dee2e6 !important;
+        box-shadow: 0 -4px 14px rgba(33, 37, 41, .10);
+        padding: .75rem 1rem !important;
+    }
+
+    .meter-bulk-label {
+        color: #495057;
+        font-weight: 600;
+    }
+
+    .meter-selection-badge {
+        background: #e7f1ff !important;
+        color: #084298 !important;
+        border: 1px solid #b6d4fe !important;
+        font-weight: 700;
+    }
+
+    .meter-bulk-actions .btn {
+        min-width: 118px;
+        background-color: #ffffff;
     }
 </style>
 
@@ -246,7 +319,7 @@
                                     }
                                 </td>
                                 <td>
-                                    <span class="badge text-bg-light border">@meter.Type</span>
+                                    <span class="badge rounded-pill meter-type-badge">@meter.Type</span>
                                     @if (!string.IsNullOrWhiteSpace(meter.ParentMeterName))
                                     {
                                         <div class="small text-muted mt-1">@meter.ParentMeterName</div>
@@ -266,11 +339,11 @@
                                 <td>
                                     @if (meter.Active)
                                     {
-                                        <span class="badge text-bg-success">Active</span>
+                                        <span class="badge rounded-pill meter-status-active">Active</span>
                                     }
                                     else
                                     {
-                                        <span class="badge text-bg-secondary">Disabled</span>
+                                        <span class="badge rounded-pill meter-status-disabled">Disabled</span>
                                     }
                                 </td>
                                 <td>@meter.LastReading</td>
@@ -300,30 +373,31 @@
             </table>
         </div>
 
-        <div id="bulkActionBar" class="meter-bulk-bar border-top bg-body p-2 d-none">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div>
-                    <span class="badge text-bg-primary"><span id="selectedCount">0</span> selected</span>
-                    <span id="allMatchingLabel" class="small text-muted ms-2 d-none">across all filtered pages</span>
+        <div id="bulkActionBar" class="meter-bulk-bar d-none">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="meter-bulk-label"><i class="bi bi-check2-square me-1"></i>Actions for selected meters</span>
+                    <span class="badge rounded-pill meter-selection-badge"><span id="selectedCount">0</span> selected</span>
+                    <span id="allMatchingLabel" class="small text-muted d-none">across all filtered pages</span>
                 </div>
-                <div class="d-flex flex-wrap gap-2">
-                    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#bulkEditModal">
-                        <i class="bi bi-pencil-square"></i> Edit
+                <div class="d-flex flex-wrap gap-2 meter-bulk-actions">
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#bulkEditModal">
+                        <i class="bi bi-pencil-square"></i> Edit selected
                     </button>
                     <button class="btn btn-sm btn-outline-primary" type="button" onclick="quickAssignSelected()">
-                        <i class="bi bi-person-check"></i> Assign
+                        <i class="bi bi-person-check"></i> Assign selected
                     </button>
                     <button class="btn btn-sm btn-outline-secondary" type="button" onclick="unassignBulkTenant()">
-                        <i class="bi bi-person-x"></i> Unassign
+                        <i class="bi bi-person-x"></i> Unassign selected
                     </button>
                     <button class="btn btn-sm btn-outline-success" type="button" onclick="setBulkMetersActive(true)">
-                        Enable
+                        <i class="bi bi-play-circle"></i> Enable selected
                     </button>
-                    <button class="btn btn-sm btn-outline-warning" type="button" onclick="setBulkMetersActive(false)">
-                        Disable
+                    <button class="btn btn-sm btn-outline-warning text-dark" type="button" onclick="setBulkMetersActive(false)">
+                        <i class="bi bi-pause-circle"></i> Disable selected
                     </button>
                     <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteBulkMeters()">
-                        Delete
+                        <i class="bi bi-trash"></i> Delete selected
                     </button>
                 </div>
             </div>

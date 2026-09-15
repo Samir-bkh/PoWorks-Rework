@@ -160,6 +160,36 @@ public class MeterManagementTests
     }
 
     [Fact]
+    public void MeterView_HasReadableStickyHeadersAndProfessionalBulkToolbar()
+    {
+        var view = ReadSource("Views", "Meter", "Management.cshtml");
+
+        Assert.Contains("border-collapse: separate", view);
+        Assert.Contains("z-index: 20", view);
+        Assert.Contains("background: #f8f9fa !important", view);
+        Assert.Contains("color: #212529 !important", view);
+
+        Assert.Contains("meter-type-badge", view);
+        Assert.Contains("meter-status-active", view);
+        Assert.Contains("meter-status-disabled", view);
+        Assert.Contains("background: #e9ecef !important", view);
+        Assert.Contains("background: #d1e7dd !important", view);
+
+        Assert.Contains("background: #ffffff !important", view);
+        Assert.Contains("box-shadow: 0 -4px 14px", view);
+        Assert.Contains("Actions for selected meters", view);
+        Assert.Contains("Edit selected", view);
+        Assert.Contains("Assign selected", view);
+        Assert.Contains("Unassign selected", view);
+        Assert.Contains("Enable selected", view);
+        Assert.Contains("Disable selected", view);
+        Assert.Contains("Delete selected", view);
+
+        Assert.DoesNotContain("class=\"badge text-bg-light border\">@meter.Type", view);
+        Assert.DoesNotContain("> Disable\n", view);
+    }
+
+    [Fact]
     public void Schema_HasWorkspaceMeterIndexes()
     {
         var schema = ReadSource("wwwroot", "sql", "initial_schema.sql");
