@@ -132,7 +132,7 @@ public class DashboardModernizationTests
         };
 
         var result = service.ProcessChartData(data);
-        var meterB = Assert.Single(result.Datasets.Where(d => d.MeterName == "Electricity B"));
+        var meterB = Assert.Single(result.Datasets, d => d.MeterName == "Electricity B");
 
         Assert.Equal(2, meterB.Data.Count);
         Assert.Equal(8d, meterB.Data[0]);
