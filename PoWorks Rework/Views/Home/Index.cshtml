@@ -239,7 +239,7 @@
             <div class="chart-title-wrap">
                 <div>
                     <h2 class="chart-title">Energy Consumption</h2>
-                    <div class="dashboard-note mt-1">Hover close to a curve for the exact measured bucket, meter, tenant and consumption.</div>
+                    <div class="dashboard-note mt-1">Hover a measured bucket on a curve to inspect the exact kWh value, meter, tenant and period.</div>
                 </div>
                 <span class="chart-unit-pill" id="chartUnitBadge">
                     <i class="bi bi-rulers"></i><span>—</span>
@@ -323,5 +323,6 @@
     <script src="~/lib/amcharts/lib/5/xy.js"></script>
     <script src="~/lib/amcharts/lib/5/themes/Animated.js"></script>
     <script src="~/lib/amcharts/lib/5/plugins/exporting.js"></script>
+    <script src="~/js/energy-chart-core.js" asp-append-version="true"></script>
     <script src="~/js/energy-dashboard.js" asp-append-version="true"></script>
 }
