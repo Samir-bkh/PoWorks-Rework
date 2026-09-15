@@ -1449,7 +1449,10 @@
         } catch {
         }
 
-        document.getElementById('tenantFilter').value = '';
+        document.getElementById('tenantFilter').value =
+            dashboardAccess.tenantLocked && dashboardAccess.currentTenantId !== null
+                ? String(dashboardAccess.currentTenantId)
+                : '';
         document.getElementById('measurementMetric').value = 'energy';
         document.getElementById('scopeMode').value = 'aggregate';
         document.getElementById('chartType').value = 'line';
