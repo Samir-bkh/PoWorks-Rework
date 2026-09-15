@@ -456,6 +456,7 @@
         appendMeterGroup(container, 'Other measurements', incompatible, remembered, true);
 
         updateMeterDropdownText();
+        enforceRawUnitSelection();
 
         const searchInput = document.getElementById('meterSearchInput');
         searchInput?.addEventListener('click', function (event) { event.stopPropagation(); });
@@ -470,6 +471,7 @@
 
         container.querySelectorAll('.meter-checkbox').forEach(function (checkbox) {
             checkbox.addEventListener('change', function () {
+                enforceRawUnitSelection();
                 updateMeterDropdownText();
                 scheduleChartReload();
             });
@@ -477,6 +479,19 @@
 
         document.getElementById('selectAllMeters')?.addEventListener('click', function (event) {
             event.preventDefault();
+
+            if (valueOf('measurementMetric', 'energy') === 'raw') {
+                const selectedUnit = selectedRawUnit();
+                const rawUnits = availableRawUnits();
+
+                if (!selectedUnit && rawUnits.length > 1) {
+                    showNotification(
+                        'Raw measurements with different units cannot share one axis. Select one raw source first, then “Select compatible” will select the same unit.',
+                        'warning');
+                    return;
+                }
+            }
+
             let changed = false;
             container.querySelectorAll('.meter-checkbox:not(:disabled)').forEach(function (checkbox) {
                 const item = checkbox.closest('.dashboard-meter-item');
@@ -486,6 +501,7 @@
                 }
             });
             if (changed) {
+                enforceRawUnitSelection();
                 updateMeterDropdownText();
                 scheduleChartReload();
             }
@@ -582,6 +598,71 @@
             .filter(Number.isFinite);
     }
 
+    function availableRawUnits() {
+        if (valueOf('measurementMetric', 'energy') !== 'raw') return [];
+
+        return Array.from(new Set(
+            meters
+                .filter(function (meter) {
+                    return (meter.compatibleMetrics || []).includes('raw');
+                })
+                .map(function (meter) {
+                    return String(meter.unit || '').trim();
+                })
+                .filter(Boolean)
+        )).sort();
+    }
+
+    function selectedRawUnit() {
+        if (valueOf('measurementMetric', 'energy') !== 'raw') return null;
+
+        const selected = selectedMeterIds();
+        const units = new Set(
+            selected
+                .map(function (id) {
+                    const meter = meters.find(function (item) {
+                        return Number(item.id) === id;
+                    });
+                    return String(meter?.unit || '').trim();
+                })
+                .filter(Boolean)
+        );
+
+        return units.size === 1 ? Array.from(units)[0] : null;
+    }
+
+    function enforceRawUnitSelection() {
+        if (valueOf('measurementMetric', 'energy') !== 'raw') return;
+
+        const unit = selectedRawUnit();
+        if (!unit) return;
+
+        document.querySelectorAll('.meter-checkbox').forEach(function (checkbox) {
+            const meter = meters.find(function (item) {
+                return Number(item.id) === Number(checkbox.value);
+            });
+            if (!meter || !(meter.compatibleMetrics || []).includes('raw')) return;
+
+            const sameUnit = String(meter.unit || '').trim() === unit;
+            if (!sameUnit && checkbox.checked) checkbox.checked = false;
+            checkbox.disabled = !sameUnit;
+            checkbox.closest('.dashboard-meter-item')?.classList.toggle('is-incompatible', !sameUnit);
+        });
+
+        const hint = document.getElementById('meterCompatibilityHint');
+        if (hint) {
+            hint.textContent =
+                'Raw mode is locked to unit “' + unit +
+                '” for this selection. Clear the selection to choose another raw unit.';
+        }
+    }
+
+    function rawSelectionNeedsChoice() {
+        return valueOf('measurementMetric', 'energy') === 'raw' &&
+            selectedMeterIds().length === 0 &&
+            availableRawUnits().length > 1;
+    }
+
     function updateMeterDropdownText() {
         const selected = selectedMeterIds();
         const button = document.getElementById('meterDropdownText');
@@ -644,6 +725,20 @@
 
     async function loadChartData() {
         if (!validateDateRange()) return;
+
+        if (rawSelectionNeedsChoice()) {
+            disposeChart();
+            clearSummary();
+            clearRanking();
+            setChartEmpty(
+                true,
+                'Choose a raw measurement unit',
+                'Several unclassified units are available. Select one source first so incompatible raw units are never combined on one axis.');
+            updateDataStatus(
+                'Raw measurements require one common unit. Select a source to choose the unit.',
+                'warning');
+            return;
+        }
 
         showLoading(true);
         setChartEmpty(false);
