@@ -1299,7 +1299,9 @@
                     ? item.meterCount + ' meters'
                     : '';
 
-            return '<div class="dashboard-ranking-row">' +
+            return '<div class="dashboard-ranking-row is-actionable" role="button" tabindex="0" ' +
+                'data-ranking-key="' + escapeHtml(item.key || '') + '" ' +
+                'aria-label="Drill down into ' + escapeHtml(item.name) + '">' +
                 '<div class="dashboard-ranking-name" title="' + escapeHtml(item.name) + '">' +
                 '<span class="text-muted me-2">#' + (index + 1) + '</span>' + escapeHtml(item.name) +
                 (subtext ? '<div class="dashboard-ranking-subtext ms-4">' + subtext + '</div>' : '') +
@@ -1310,6 +1312,124 @@
                 '<div class="dashboard-ranking-value">' + formatMetric(numeric, item.unit) + '</div>' +
                 '</div>';
         }).join('');
+
+        container.querySelectorAll('[data-ranking-key]').forEach(function (row) {
+            const activate = async function () {
+                await drillIntoRanking(row.dataset.rankingKey || '');
+            };
+
+            row.addEventListener('click', activate);
+            row.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                activate();
+            });
+        });
+    }
+
+    async function drillIntoRanking(key) {
+        if (!key) return;
+
+        if (key.startsWith('tenant:')) {
+            const tenantToken = key.substring('tenant:'.length);
+
+            if (tenantToken === 'facility') {
+                if (dashboardAccess.tenantLocked) return;
+
+                const tenantSelect = document.getElementById('tenantFilter');
+                if (tenantSelect) tenantSelect.value = '';
+
+                await loadMetersForCurrentDateRange();
+
+                let selected = 0;
+                document.querySelectorAll('.meter-checkbox').forEach(function (checkbox) {
+                    const meter = meters.find(function (item) {
+                        return Number(item.id) === Number(checkbox.value);
+                    });
+                    const isFacility =
+                        meter &&
+                        (meter.tenantName === null ||
+                         meter.tenantName === undefined ||
+                         String(meter.tenantName).trim() === '');
+
+                    checkbox.checked = Boolean(isFacility) && !checkbox.disabled;
+                    if (checkbox.checked) selected++;
+                });
+
+                document.getElementById('scopeMode').value = 'aggregate';
+                updateScopeDescription();
+                updateAdvancedControlState();
+                updateMeterDropdownText();
+                savePreferences();
+
+                if (selected === 0) {
+                    showNotification(
+                        'No compatible facility meter is available in the current period.',
+                        'warning');
+                    return;
+                }
+
+                await loadChartData();
+                return;
+            }
+
+            const tenantId = Number(tenantToken);
+            if (!Number.isFinite(tenantId)) return;
+
+            const tenantSelect = document.getElementById('tenantFilter');
+            if (!dashboardAccess.tenantLocked && tenantSelect) {
+                const optionExists = Array.from(tenantSelect.options)
+                    .some(function (option) {
+                        return Number(option.value) === tenantId;
+                    });
+
+                if (optionExists) tenantSelect.value = String(tenantId);
+            }
+
+            document.getElementById('scopeMode').value = 'aggregate';
+            updateScopeDescription();
+            updateAdvancedControlState();
+
+            await loadMetersForCurrentDateRange();
+
+            // Empty explicit selection means all compatible sources within
+            // the now-selected tenant scope.
+            document.querySelectorAll('.meter-checkbox').forEach(function (checkbox) {
+                checkbox.checked = false;
+            });
+            updateMeterDropdownText();
+            savePreferences();
+            await loadChartData();
+            return;
+        }
+
+        if (key.startsWith('meter:')) {
+            const meterId = Number(key.substring('meter:'.length));
+            if (!Number.isFinite(meterId)) return;
+
+            const target = Array.from(document.querySelectorAll('.meter-checkbox'))
+                .find(function (checkbox) {
+                    return Number(checkbox.value) === meterId;
+                });
+
+            if (!target || target.disabled) {
+                showNotification(
+                    'This meter is not available in the current analytical scope.',
+                    'warning');
+                return;
+            }
+
+            document.getElementById('scopeMode').value = 'meter';
+            document.querySelectorAll('.meter-checkbox').forEach(function (checkbox) {
+                checkbox.checked = Number(checkbox.value) === meterId;
+            });
+
+            updateScopeDescription();
+            updateAdvancedControlState();
+            updateMeterDropdownText();
+            savePreferences();
+            await loadChartData();
+        }
     }
 
     function clearRanking() {
