@@ -1,202 +1,152 @@
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace PoWorks_Rework.Services
 {
     /// <summary>
-    /// Service for billing calculations and invoice generation.
-    /// Handles consumption-based bill calculation with tiered pricing and tax application.
-    /// Supports multiple meters per tenant with flexible rate structures.
+    /// Calculates and persists tenant bills.
+    /// Consumption is delegated to ConsumptionCalculationService so invoices
+    /// use the exact same meter/date semantics as the dashboard.
     /// </summary>
     public class BillingService
     {
-        private readonly DatabaseService _databaseService;
-        private readonly ICompanyContext _companyContext;
-        private readonly ILogger<BillingService> _logger;
-        /// <summary>
-        /// Malaysia Service and Sales Tax (SST) rate (8%)
-        /// </summary>
         private const decimal MALAYSIA_SST_RATE = 0.08m;
 
-        /// <summary>
-        /// Initializes the billing service with database and logging dependencies.
-        /// </summary>
-        public BillingService(DatabaseService databaseService, ICompanyContext companyContext, ILogger<BillingService> logger)
+        private readonly DatabaseService _databaseService;
+        private readonly ICompanyContext _companyContext;
+        private readonly ConsumptionCalculationService _consumptionCalculationService;
+        private readonly ILogger<BillingService> _logger;
+
+        public BillingService(
+            DatabaseService databaseService,
+            ICompanyContext companyContext,
+            ConsumptionCalculationService consumptionCalculationService,
+            ILogger<BillingService> logger)
         {
             _databaseService = databaseService;
             _companyContext = companyContext;
+            _consumptionCalculationService = consumptionCalculationService;
             _logger = logger;
         }
 
         /// <summary>
         /// Calculates a complete bill for a tenant over a specified date range.
-        /// Queries all active meters, calculates consumption, applies rates, and computes tax.
+        /// Each active assigned meter uses the shared consumption engine, then
+        /// the tenant's progressive tariff is applied to that meter's consumption.
         /// </summary>
-        public async Task<BillEntity> CalculateBillAsync(int tenantId, DateTime startDate, DateTime endDate)
+        public async Task<BillEntity> CalculateBillAsync(
+            int tenantId,
+            DateTime startDate,
+            DateTime endDate)
         {
-      
-            DateTime adjustedEndDate = endDate.Date.AddDays(1).AddTicks(-1);
+            if (tenantId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(tenantId));
 
-            _logger.LogInformation("Calculating bill for Tenant {TenantId} from {Start} to {End}", tenantId, startDate, adjustedEndDate);
+            if (endDate.Date < startDate.Date)
+                throw new ArgumentException("Billing end date cannot be before the start date.");
+
+            var adjustedStartDate = startDate.Date;
+            var adjustedEndDate = endDate.Date.AddDays(1).AddTicks(-1);
+            var companyId = _companyContext.CurrentCompanyId;
+
+            _logger.LogInformation(
+                "Calculating bill for Tenant {TenantId} in workspace {CompanyId} from {Start} to {End}",
+                tenantId,
+                companyId,
+                adjustedStartDate,
+                adjustedEndDate);
 
             var bill = new BillEntity
             {
                 TenantID = tenantId,
-                PeriodStart = startDate,
-                PeriodEnd = endDate, 
+                PeriodStart = adjustedStartDate,
+                PeriodEnd = endDate.Date,
                 GeneratedAt = DateTime.Now,
                 Status = "Draft"
             };
 
-            int companyId = _companyContext.CurrentCompanyId;
-            var connection = _databaseService.GetConnection();
-            if (connection.State == System.Data.ConnectionState.Closed)
+            TenantTariff tariff;
+            List<BillingMeter> meters;
+
+            await using (var connection = _databaseService.CreateNewConnection())
             {
                 await connection.OpenAsync();
+
+                tariff = await LoadTenantTariffAsync(
+                    connection,
+                    tenantId,
+                    companyId);
+
+                bill.TenantName = tariff.TenantName;
+
+                meters = await LoadActiveTenantMetersAsync(
+                    connection,
+                    tenantId,
+                    companyId);
             }
-            string tenantQuery = @"
-                SELECT t.""DisplayName"", td.""Tarif_1"", td.""AbonnementMensuel"" 
-                FROM ""Tenants"" t
-                LEFT JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                WHERE t.""TenantID"" = @tenantId
-                  AND t.""CompanyId"" = @companyId";
 
-            using var cmdTenant = new NpgsqlCommand(tenantQuery, connection);
-            cmdTenant.Parameters.AddWithValue("tenantId", tenantId);
-            cmdTenant.Parameters.AddWithValue("companyId", companyId);
+            var consumptionByMeter =
+                await _consumptionCalculationService.GetMeterConsumptionTotalsAsync(
+                    meters.Select(m => m.Id).ToArray(),
+                    adjustedStartDate,
+                    adjustedEndDate);
 
-            decimal unitPriceRM = 0;
-            decimal monthlyFeeRM = 0;
-
-            using (var reader = await cmdTenant.ExecuteReaderAsync())
-            {
-                if (await reader.ReadAsync())
-                {
-                    bill.TenantName = reader.GetString(0);
-                    unitPriceRM = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1);
-                    monthlyFeeRM = reader.IsDBNull(2) ? 0 : reader.GetDecimal(2);
-                }
-                else
-                {
-                    throw new Exception($"Tenant not found (ID: {tenantId})");
-                }
-            }
-            string metersQuery = @"SELECT ""MeterId"", ""Name"", ""Unit"" FROM ""Meters"" WHERE ""TenantID"" = @tenantId AND ""CompanyId"" = @companyId AND ""Active"" = true";
-            using var cmdMeters = new NpgsqlCommand(metersQuery, connection);
-            cmdMeters.Parameters.AddWithValue("tenantId", tenantId);
-            cmdMeters.Parameters.AddWithValue("companyId", companyId);
-
-            var meters = new List<(int Id, string Name, string Unit)>();
-            using (var reader = await cmdMeters.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                {
-                    meters.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
-                }
-            }
             foreach (var meter in meters)
             {
-                decimal consumption = await CalculateMeterConsumptionAsync(connection, meter.Id, meter.Unit, startDate, adjustedEndDate, companyId);
+                var consumption = consumptionByMeter.GetValueOrDefault(meter.Id);
+                if (consumption <= 0m)
+                    continue;
 
-                if (consumption > 0)
+                var lineTotal = BillingCalculationEngine.CalculateTieredCharge(
+                    consumption,
+                    tariff.BaseRate,
+                    tariff.Threshold1,
+                    tariff.Threshold1Rate,
+                    tariff.Threshold2,
+                    tariff.Threshold2Rate);
+
+                var effectiveUnitPrice = consumption > 0m
+                    ? Math.Round(lineTotal / consumption, 4)
+                    : 0m;
+
+                bill.LineItems.Add(new BillLineItemEntity
                 {
-                    var lineItem = new BillLineItemEntity
-                    {
-                        MeterId = meter.Id,
-                        MeterName = meter.Name,
-                        Unit = meter.Unit,
-                        Consumption = consumption,
-                        UnitPrice = unitPriceRM,
-                        LineTotalExclTax = Math.Round(consumption * unitPriceRM, 2)
-                    };
+                    MeterId = meter.Id,
+                    MeterName = meter.Name,
+                    Unit = meter.Unit,
+                    Consumption = Math.Round(consumption, 3),
+                    UnitPrice = effectiveUnitPrice,
+                    LineTotalExclTax = lineTotal
+                });
 
-                    bill.LineItems.Add(lineItem);
-                    bill.TotalKWh += consumption;
-                    bill.AmountExclTax += lineItem.LineTotalExclTax;
-                }
+                if (ConsumptionFormula.IsCumulativeUnit(meter.Unit))
+                    bill.TotalKWh += Math.Round(consumption, 3);
+
+                bill.AmountExclTax += lineTotal;
             }
-            bill.AmountExclTax += monthlyFeeRM;
-            bill.TaxAmount = Math.Round(bill.AmountExclTax * MALAYSIA_SST_RATE, 2);
-            bill.AmountInclTax = bill.AmountExclTax + bill.TaxAmount;
+
+            bill.AmountExclTax =
+                Math.Round(bill.AmountExclTax + tariff.MonthlyFee, 2);
+            bill.TaxAmount = BillingCalculationEngine.CalculateTax(
+                bill.AmountExclTax,
+                MALAYSIA_SST_RATE);
+            bill.AmountInclTax =
+                Math.Round(bill.AmountExclTax + bill.TaxAmount, 2);
 
             return bill;
         }
 
-        /// <summary>
-        /// Calculates the consumption for a single meter over the given period.
-        /// For kWh meters, uses the difference between max and min readings.
-        /// For other units, integrates the value over time using hour deltas.
-        /// </summary>
-        /// <param name="connection">The database connection to use.</param>
-        /// <param name="meterId">The meter ID to calculate consumption for.</param>
-        /// <param name="unit">The meter's unit of measurement.</param>
-        /// <param name="start">The start of the billing period.</param>
-        /// <param name="end">The end of the billing period.</param>
-        /// <returns>The calculated consumption value.</returns>
-        private async Task<decimal> CalculateMeterConsumptionAsync(NpgsqlConnection connection, int meterId, string unit, DateTime start, DateTime end, int companyId)
-        {
-            if (unit.Equals("kWh", StringComparison.OrdinalIgnoreCase))
-            {
-                string query = @"
-                    SELECT COALESCE(MAX(""Value"") - MIN(""Value""), 0) 
-                    FROM ""MeterReadings"" 
-                    WHERE ""MeterId"" = @meterId
-                    AND ""CompanyId"" = @companyId
-                    AND ""Timestamp"" >= @start AND ""Timestamp"" <= @end";
-
-                using var cmd = new NpgsqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("meterId", meterId);
-                cmd.Parameters.AddWithValue("companyId", companyId);
-                cmd.Parameters.AddWithValue("start", start);
-                cmd.Parameters.AddWithValue("end", end);
-
-                var result = await cmd.ExecuteScalarAsync();
-                return result != DBNull.Value ? Convert.ToDecimal(result) : 0;
-            }
-            else
-            {
-                string query = @"
-                    WITH DataWithDelta AS (
-                        SELECT ""Value"", 
-                               EXTRACT(EPOCH FROM (LEAD(""Timestamp"") OVER (ORDER BY ""Timestamp"") - ""Timestamp"")) / 3600.0 AS HoursDelta
-                        FROM ""MeterReadings""
-                        WHERE ""MeterId"" = @meterId AND ""CompanyId"" = @companyId AND ""Timestamp"" >= @start AND ""Timestamp"" <= @end
-                    )
-                    SELECT COALESCE(SUM(""Value"" * HoursDelta), 0) FROM DataWithDelta WHERE HoursDelta IS NOT NULL;";
-
-                using var cmd = new NpgsqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("meterId", meterId);
-                cmd.Parameters.AddWithValue("companyId", companyId);
-                cmd.Parameters.AddWithValue("start", start);
-                cmd.Parameters.AddWithValue("end", end);
-
-                var result = await cmd.ExecuteScalarAsync();
-                return result != DBNull.Value ? Math.Round(Convert.ToDecimal(result), 3) : 0;
-            }
-        }
-
-
-        /// <summary>
-        /// Saves a calculated bill and its line items to the database in a transaction.
-        /// </summary>
-        /// <param name="bill">The bill entity to persist.</param>
-        /// <returns>The newly created bill ID.</returns>
         public async Task<int> SaveBillAsync(BillEntity bill)
         {
-            int companyId = _companyContext.CurrentCompanyId;
-            var connection = _databaseService.GetConnection();
-            if (connection.State == System.Data.ConnectionState.Closed)
-            {
-                await connection.OpenAsync();
-            }
-            using var transaction = await connection.BeginTransactionAsync();
+            var companyId = _companyContext.CurrentCompanyId;
+
+            await using var connection = _databaseService.CreateNewConnection();
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+
             try
             {
-                using (var tenantGuard = new NpgsqlCommand(@"
+                await using (var tenantGuard = new NpgsqlCommand(@"
                     SELECT COUNT(*)
                     FROM ""Tenants""
                     WHERE ""TenantID"" = @tenantId
@@ -204,24 +154,35 @@ namespace PoWorks_Rework.Services
                 {
                     tenantGuard.Parameters.AddWithValue("tenantId", bill.TenantID);
                     tenantGuard.Parameters.AddWithValue("companyId", companyId);
-                    var tenantCount = Convert.ToInt32(await tenantGuard.ExecuteScalarAsync());
+
+                    var tenantCount =
+                        Convert.ToInt32(await tenantGuard.ExecuteScalarAsync());
+
                     if (tenantCount == 0)
-                        throw new InvalidOperationException("Tenant does not belong to the current workspace.");
+                    {
+                        throw new InvalidOperationException(
+                            "Tenant does not belong to the current workspace.");
+                    }
                 }
 
-                string insertBillQuery = @"
-    INSERT INTO ""Bills"" (
-        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"",
-        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"", ""GrandTotal"", ""Status"", ""CompanyId""
-    )
-    VALUES (
-        @tenantId, @billNumber, @start, @end,
-        @totalKwh, @subTotal, @tax, @grandTotal, @grandTotal, 'Draft', @companyId
-    ) RETURNING ""BillId"";";
+                const string insertBillQuery = @"
+                    INSERT INTO ""Bills"" (
+                        ""TenantID"", ""BillNumber"", ""PeriodStart"", ""PeriodEnd"",
+                        ""TotalKWh"", ""MontantHT"", ""MontantTVA"", ""MontantTTC"",
+                        ""GrandTotal"", ""Status"", ""CompanyId"")
+                    VALUES (
+                        @tenantId, @billNumber, @start, @end,
+                        @totalKwh, @subTotal, @tax, @grandTotal,
+                        @grandTotal, 'Draft', @companyId)
+                    RETURNING ""BillId"";";
 
-                using var cmdBill = new NpgsqlCommand(insertBillQuery, connection, transaction);
+                await using var cmdBill =
+                    new NpgsqlCommand(insertBillQuery, connection, transaction);
+
                 cmdBill.Parameters.AddWithValue("tenantId", bill.TenantID);
-                cmdBill.Parameters.AddWithValue("billNumber", $"BILL-{bill.TenantID}-{DateTime.Now:yyyyMMddHHmmss}");
+                cmdBill.Parameters.AddWithValue(
+                    "billNumber",
+                    $"BILL-{bill.TenantID}-{DateTime.UtcNow:yyyyMMddHHmmssfff}");
                 cmdBill.Parameters.AddWithValue("start", bill.PeriodStart);
                 cmdBill.Parameters.AddWithValue("end", bill.PeriodEnd);
                 cmdBill.Parameters.AddWithValue("totalKwh", bill.TotalKWh);
@@ -229,20 +190,23 @@ namespace PoWorks_Rework.Services
                 cmdBill.Parameters.AddWithValue("tax", bill.TaxAmount);
                 cmdBill.Parameters.AddWithValue("grandTotal", bill.AmountInclTax);
                 cmdBill.Parameters.AddWithValue("companyId", companyId);
-                int newBillId = Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
-                string insertLineQuery = @"
-    INSERT INTO ""BillLineItems"" (
-        ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"", 
-        ""Unit"", ""UnitPrice"", ""LineTotalHT""
-    ) 
-    VALUES (
-        @billId, @meterId, @meterName, @consumption, 
-        @unit, @unitPrice, @lineTotal
-    );";
+
+                var newBillId =
+                    Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
+
+                const string insertLineQuery = @"
+                    INSERT INTO ""BillLineItems"" (
+                        ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"",
+                        ""Unit"", ""UnitPrice"", ""LineTotalHT"")
+                    VALUES (
+                        @billId, @meterId, @meterName, @consumption,
+                        @unit, @unitPrice, @lineTotal);";
 
                 foreach (var item in bill.LineItems)
                 {
-                    using var cmdLine = new NpgsqlCommand(insertLineQuery, connection, transaction);
+                    await using var cmdLine =
+                        new NpgsqlCommand(insertLineQuery, connection, transaction);
+
                     cmdLine.Parameters.AddWithValue("billId", newBillId);
                     cmdLine.Parameters.AddWithValue("meterId", item.MeterId);
                     cmdLine.Parameters.AddWithValue("meterName", item.MeterName);
@@ -253,15 +217,113 @@ namespace PoWorks_Rework.Services
 
                     await cmdLine.ExecuteNonQueryAsync();
                 }
+
                 await transaction.CommitAsync();
                 return newBillId;
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error saving the invoice");
+                _logger.LogError(
+                    ex,
+                    "Error saving invoice for tenant {TenantId} in workspace {CompanyId}",
+                    bill.TenantID,
+                    companyId);
                 throw;
             }
         }
+
+        private static async Task<TenantTariff> LoadTenantTariffAsync(
+            NpgsqlConnection connection,
+            int tenantId,
+            int companyId)
+        {
+            const string sql = @"
+                SELECT
+                    COALESCE(NULLIF(td.""CompanyName"", ''), t.""DisplayName""),
+                    COALESCE(td.""BaseRate"", td.""Tarif_1""::numeric, 0),
+                    COALESCE(td.""Threshold1"", 0),
+                    COALESCE(
+                        td.""Threshold1Rate"",
+                        td.""Tarif_2""::numeric,
+                        td.""BaseRate"",
+                        td.""Tarif_1""::numeric,
+                        0),
+                    COALESCE(td.""Threshold2"", td.""Threshold1"", 0),
+                    COALESCE(
+                        td.""Threshold2Rate"",
+                        td.""Tarif_3""::numeric,
+                        td.""Threshold1Rate"",
+                        td.""Tarif_2""::numeric,
+                        td.""BaseRate"",
+                        td.""Tarif_1""::numeric,
+                        0),
+                    COALESCE(td.""AbonnementMensuel"", 0)
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""TenantID"" = @tenantId
+                  AND t.""CompanyId"" = @companyId";
+
+            await using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("tenantId", tenantId);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                throw new InvalidOperationException($"Tenant not found (ID: {tenantId}).");
+
+            return new TenantTariff(
+                TenantName: reader.GetString(0),
+                BaseRate: reader.GetDecimal(1),
+                Threshold1: reader.GetDecimal(2),
+                Threshold1Rate: reader.GetDecimal(3),
+                Threshold2: reader.GetDecimal(4),
+                Threshold2Rate: reader.GetDecimal(5),
+                MonthlyFee: reader.GetDecimal(6));
+        }
+
+        private static async Task<List<BillingMeter>> LoadActiveTenantMetersAsync(
+            NpgsqlConnection connection,
+            int tenantId,
+            int companyId)
+        {
+            const string sql = @"
+                SELECT ""MeterId"", ""Name"", COALESCE(""Unit"", '')
+                FROM ""Meters""
+                WHERE ""TenantID"" = @tenantId
+                  AND ""CompanyId"" = @companyId
+                  AND ""Active"" = TRUE
+                ORDER BY ""MeterId""";
+
+            await using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("tenantId", tenantId);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+
+            var meters = new List<BillingMeter>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                meters.Add(new BillingMeter(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.GetString(2)));
+            }
+
+            return meters;
+        }
+
+        private sealed record BillingMeter(int Id, string Name, string Unit);
+
+        private sealed record TenantTariff(
+            string TenantName,
+            decimal BaseRate,
+            decimal Threshold1,
+            decimal Threshold1Rate,
+            decimal Threshold2,
+            decimal Threshold2Rate,
+            decimal MonthlyFee);
     }
 }
