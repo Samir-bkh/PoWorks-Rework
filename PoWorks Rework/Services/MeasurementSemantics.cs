@@ -226,13 +226,15 @@ namespace PoWorks_Rework.Services
                     ? currentValue - previousValue.Value
                     : Math.Max(0m, currentValue);
 
-                return delta * normalized switch
+                var factor = normalized switch
                 {
                     "wh" => 0.001m,
                     "kwh" => 1m,
                     "mwh" => 1000m,
                     _ => 0m
                 };
+
+                return delta * factor;
             }
 
             if (key == "volume" && VolumeCounterUnits.Contains(normalized))
@@ -241,13 +243,15 @@ namespace PoWorks_Rework.Services
                     ? currentValue - previousValue.Value
                     : Math.Max(0m, currentValue);
 
-                return delta * normalized switch
+                var factor = normalized switch
                 {
                     "ml" => 0.000001m,
                     "l" or "liter" or "litre" => 0.001m,
                     "m3" => 1m,
                     _ => 0m
                 };
+
+                return delta * factor;
             }
 
             if (!previousTimestamp.HasValue || currentTimestamp <= previousTimestamp.Value)
