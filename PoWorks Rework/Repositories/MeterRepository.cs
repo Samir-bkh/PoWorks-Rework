@@ -70,6 +70,34 @@ namespace PoWorks_Rework.Repositories
                 });
         }
 
+        public async Task<List<int>> GetMeterIdsAsync(MeterSearchCriteria criteria)
+        {
+            var companyId = _companyContext.CurrentCompanyId;
+
+            return await _databaseService.ExecuteWithCompanyIsolationAsync(
+                companyId,
+                async (connection, transaction) =>
+                {
+                    var ids = new List<int>();
+                    var where = BuildWhereClause(criteria);
+                    var sql = $@"
+                        SELECT m.""MeterId""
+                        FROM ""Meters"" m
+                        WHERE m.""CompanyId"" = @CompanyId
+                        {where}
+                        ORDER BY m.""MeterId""";
+
+                    using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                    AddSearchParameters(cmd, criteria, companyId);
+                    using var reader = await cmd.ExecuteReaderAsync();
+
+                    while (await reader.ReadAsync())
+                        ids.Add(reader.GetInt32(0));
+
+                    return ids;
+                });
+        }
+
         public async Task<int> GetTotalMetersCountAsync(MeterSearchCriteria criteria)
         {
             var companyId = _companyContext.CurrentCompanyId;
