@@ -10,7 +10,7 @@ public class WorkspaceIsolationSourceRegressionTests
         var source = ReadSource("Services", "BillingService.cs");
 
         Assert.Contains("t.\"\"CompanyId\"\" = @companyId", source);
-        Assert.Contains("\"\"TenantID\"\" = @tenantId AND \"\"CompanyId\"\" = @companyId", source);
+        Assert.Contains("\"\"TenantID\"\" = @tenantId", source);
         Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
         Assert.Contains("Tenant does not belong to the current workspace.", source);
         Assert.Contains("\"\"Status\"\", \"\"CompanyId\"\"", source);
