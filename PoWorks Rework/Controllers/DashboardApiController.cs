@@ -16,6 +16,11 @@ namespace PoWorks_Rework.Controllers
         private readonly DashboardAnalyticsService _dashboardAnalyticsService;
         private readonly ICompanyContext _companyContext;
 
+        // Tenant accounts must never fall back to workspace-wide queries when
+        // their authorization claim is absent or malformed.
+        private bool HasInvalidTenantScope =>
+            IsTenantUser && !CurrentTenantId.HasValue;
+
         /// <summary>
         /// Initializes the dashboard controller with database, logging, and data service dependencies.
         /// </summary>
@@ -41,6 +46,9 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (HasInvalidTenantScope)
+                    return Forbid();
+
                 if (IsTenantUser && CurrentTenantId.HasValue)
                 {
                     using var connection = GetDatabaseConnection();
@@ -120,6 +128,9 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (HasInvalidTenantScope)
+                    return Forbid();
+
                 var suggestions = await _dashboardDataService.GetDateRangeSuggestionsAsync(
                     IsTenantUser ? CurrentTenantId : null);
 
@@ -160,6 +171,9 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (HasInvalidTenantScope)
+                    return Forbid();
+
                 var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync(
                     IsTenantUser ? CurrentTenantId : null);
 
@@ -190,6 +204,8 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (HasInvalidTenantScope)
+                    return Forbid();
 
                 DateTime? adjustedEndDate = request.EndDate.HasValue ? request.EndDate.Value.Date.AddDays(1).AddTicks(-1) : null;
 
@@ -335,6 +351,9 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (HasInvalidTenantScope)
+                    return Forbid();
+
                 if (!_databaseService.IsInitialized)
                 {
                     return Json(new
@@ -484,6 +503,8 @@ namespace PoWorks_Rework.Controllers
         {
             try
             {
+                if (HasInvalidTenantScope)
+                    return Forbid();
 
                 DateTime? adjustedEndDate = endDate.HasValue ? endDate.Value.Date.AddDays(1).AddTicks(-1) : null;
 
@@ -498,7 +519,8 @@ namespace PoWorks_Rework.Controllers
 
 
                 var availability = await _dashboardDataService.CheckDataAvailabilityAsync(filters);
-                var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync();
+                var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync(
+                    IsTenantUser ? CurrentTenantId : null);
 
                 return Json(new
                 {
