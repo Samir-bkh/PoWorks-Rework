@@ -91,7 +91,7 @@ namespace PoWorks_Rework.Services
                     @"o.""Value""");
 
             var canonicalUnitExpression = metric == "raw"
-                ? @"n.""SourceUnit"""
+                ? @"COALESCE(NULLIF(TRIM(n.""SourceUnit""), ''), 'unit')"
                 : $"'{definition.CanonicalUnit.Replace("'", "''")}'";
 
             var bucketAggregate = quantityMetric
