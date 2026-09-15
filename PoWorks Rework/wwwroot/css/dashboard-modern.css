@@ -1,6 +1,6 @@
 :root {
     --pw-bg: #f5f7fb;
-    --pw-card: rgba(255, 255, 255, .94);
+    --pw-card: #ffffff;
     --pw-card-solid: #ffffff;
     --pw-border: #e7eaf0;
     --pw-text: #111827;
@@ -12,42 +12,31 @@
     --pw-danger: #dc2626;
     --pw-radius-lg: 22px;
     --pw-radius-md: 16px;
-    --pw-shadow: 0 14px 38px rgba(15, 23, 42, .08);
-    --pw-shadow-soft: 0 8px 22px rgba(15, 23, 42, .06);
+    --pw-shadow: 0 10px 26px rgba(15, 23, 42, .06);
+    --pw-shadow-soft: 0 5px 16px rgba(15, 23, 42, .05);
 }
 
 .dashboard-shell {
-    background:
-        radial-gradient(circle at 0% 0%, rgba(37, 99, 235, .08), transparent 32%),
-        radial-gradient(circle at 100% 18%, rgba(14, 165, 233, .07), transparent 28%),
-        var(--pw-bg);
+    background: #f6f7f9;
     min-height: calc(100vh - 72px);
     padding: 1.25rem;
-    border-radius: 24px 0 0 0;
+    border-radius: 18px 0 0 0;
 }
 
 .dashboard-hero {
     position: relative;
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,.6);
-    border-radius: var(--pw-radius-lg);
-    background:
-        linear-gradient(115deg, rgba(15, 23, 42, .97), rgba(30, 64, 175, .94) 70%, rgba(14, 165, 233, .90));
-    color: #fff;
-    box-shadow: var(--pw-shadow);
-    padding: 1.4rem 1.55rem;
+    border: 1px solid #e2e6ec;
+    border-left: 4px solid var(--pw-primary);
+    border-radius: 14px;
+    background: #ffffff;
+    color: var(--pw-text);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .045);
+    padding: 1.35rem 1.45rem;
 }
 
 .dashboard-hero::after {
-    content: "";
-    position: absolute;
-    width: 260px;
-    height: 260px;
-    right: -80px;
-    top: -120px;
-    border-radius: 50%;
-    background: rgba(255,255,255,.10);
-    filter: blur(2px);
+    display: none;
 }
 
 .dashboard-title {
@@ -58,7 +47,7 @@
 }
 
 .dashboard-subtitle {
-    color: rgba(255,255,255,.78);
+    color: var(--pw-muted);
     margin: .35rem 0 0;
     max-width: 740px;
 }
@@ -74,13 +63,17 @@
     display: inline-flex;
     align-items: center;
     gap: .42rem;
-    padding: .48rem .7rem;
-    border-radius: 999px;
-    background: rgba(255,255,255,.12);
-    border: 1px solid rgba(255,255,255,.18);
-    color: rgba(255,255,255,.94);
+    padding: .44rem .68rem;
+    border-radius: 9px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #475569;
     font-size: .82rem;
-    backdrop-filter: blur(12px);
+}
+
+.dashboard-context-chip strong {
+    color: #0f172a;
+    font-weight: 700;
 }
 
 .dashboard-card {
@@ -97,7 +90,7 @@
 }
 
 .dashboard-filter-card {
-    backdrop-filter: blur(12px);
+    background: #ffffff;
 }
 
 .dashboard-filter-label {
