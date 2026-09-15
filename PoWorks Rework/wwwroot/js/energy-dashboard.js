@@ -25,8 +25,11 @@
         bindEvents();
 
         try {
+            // Resolve authorization context first. Tenant visibility depends on
+            // the catalogue response, so loading both concurrently creates a race where
+            // a tenant account can briefly receive the unrestricted selector UI.
+            await loadAnalyticsCatalog();
             await Promise.all([
-                loadAnalyticsCatalog(),
                 loadTenants(),
                 loadDateRangeSuggestions()
             ]);
