@@ -60,12 +60,46 @@ public class AuditLoggingTests
         var view = ReadSource("Views", "AuditLog", "Index.cshtml");
 
         Assert.Contains("Time (local)", view);
-        Assert.Contains("class=\"audit-local-time\"", view);
+        Assert.Contains("audit-local-time", view);
         Assert.Contains("data-utc=", view);
         Assert.Contains("new Date(utcValue)", view);
         Assert.Contains("Guid.TryParse(item.EntityId", view);
         Assert.Contains("Technical ID:", view);
         Assert.Contains("UTC:", view);
+    }
+
+    [Fact]
+    public void AuditLogPage_DefaultsToCompactMeaningfulEvents()
+    {
+        var method = typeof(AuditLogController).GetMethod(nameof(AuditLogController.Index));
+        Assert.NotNull(method);
+
+        var parameters = method!.GetParameters().ToDictionary(p => p.Name!);
+
+        Assert.Equal(false, parameters["showTechnical"].DefaultValue);
+        Assert.Equal(15, parameters["pageSize"].DefaultValue);
+
+        var controller = ReadSource("Controllers", "AuditLogController.cs");
+        Assert.Contains("if (!showTechnical)", controller);
+        Assert.Contains("'MUTATION'", controller);
+        Assert.Contains(@"""""Success"""" = TRUE", controller);
+        Assert.DoesNotContain("'MUTATION_FAILED' AND", controller);
+        Assert.Contains("NormalizePageSize", controller);
+    }
+
+    [Fact]
+    public void AuditLogView_IsCompactAndPreservesDisplayOptions()
+    {
+        var view = ReadSource("Views", "AuditLog", "Index.cshtml");
+
+        Assert.Contains("table-sm table-hover audit-table", view);
+        Assert.Contains("audit-summary", view);
+        Assert.Contains("name=\"pageSize\"", view);
+        Assert.Contains("name=\"showTechnical\"", view);
+        Assert.Contains("Technical MUTATION events hidden", view);
+        Assert.Contains("asp-route-showTechnical", view);
+        Assert.Contains("asp-route-pageSize", view);
+        Assert.Contains("Offline log files", view);
     }
 
     [Fact]

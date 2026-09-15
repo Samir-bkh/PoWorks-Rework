@@ -26,6 +26,8 @@ namespace PoWorks_Rework.Controllers
             int? companyId,
             DateTime? from,
             DateTime? to,
+            bool showTechnical = false,
+            int pageSize = 15,
             int page = 1)
         {
             var model = new AuditLogPageViewModel
@@ -36,8 +38,9 @@ namespace PoWorks_Rework.Controllers
                 CompanyId = companyId,
                 From = from,
                 To = to,
+                ShowTechnical = showTechnical,
                 Page = Math.Max(1, page),
-                PageSize = 50,
+                PageSize = NormalizePageSize(pageSize),
                 LogDirectory = FileDiagnostics.ResolveLogRoot(_configuration)
             };
 
@@ -49,6 +52,14 @@ namespace PoWorks_Rework.Controllers
 
             var where = new StringBuilder(" WHERE 1=1 ");
             var parameters = new List<NpgsqlParameter>();
+
+            // Keep successful generic request-level safety-net events available,
+            // but hide them by default so the page focuses on meaningful business events.
+            // MUTATION_FAILED stays visible because failures should never be hidden.
+            if (!showTechnical)
+            {
+                where.Append(@" AND NOT (""Action"" = 'MUTATION' AND ""Success"" = TRUE)");
+            }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -136,5 +147,14 @@ namespace PoWorks_Rework.Controllers
 
             return View(model);
         }
+
+        private static int NormalizePageSize(int pageSize) =>
+            pageSize switch
+            {
+                15 => 15,
+                25 => 25,
+                50 => 50,
+                _ => 15
+            };
     }
 }
