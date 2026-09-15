@@ -759,8 +759,7 @@
             strictMinMax: true,
             maxDeviation: .1,
             baseInterval: { timeUnit, count: 1 },
-            renderer: xRenderer,
-            tooltip: am5.Tooltip.new(root, {})
+            renderer: xRenderer
         }));
 
         const yRenderer = am5xy.AxisRendererY.new(root, {
@@ -808,7 +807,7 @@
             strokeOpacity: .35,
             strokeDasharray: [3, 3]
         });
-        cursor.set('maxTooltipDistance', 24);
+        cursor.set('maxTooltipDistance', -1);
 
         const colors = [
             am5.color(0x2563EB), am5.color(0x0EA5E9), am5.color(0x10B981),
@@ -839,26 +838,35 @@
                 getFillFromSprite: false,
                 getStrokeFromSprite: false,
                 autoTextColor: false,
-                pointerOrientation: 'vertical'
+                centerX: am5.p50,
+                dy: -10
             });
             tooltip.get('background').setAll({
-                fill: am5.color(0x0F172A),
-                fillOpacity: .96,
-                stroke: am5.color(0x334155),
-                strokeOpacity: .7,
-                cornerRadius: 10
+                fill: am5.color(0xFFFFFF),
+                fillOpacity: 1,
+                stroke: am5.color(0xCBD5E1),
+                strokeOpacity: 1,
+                cornerRadius: 8,
+                shadowColor: am5.color(0x0F172A),
+                shadowBlur: 12,
+                shadowOffsetY: 4,
+                shadowOpacity: .12
             });
             tooltip.label.setAll({
-                fill: am5.color(0xFFFFFF),
+                fill: am5.color(0x0F172A),
                 fontSize: 12,
-                lineHeight: 18
+                lineHeight: 17,
+                maxWidth: 250,
+                oversizedBehavior: 'wrap',
+                paddingTop: 8,
+                paddingRight: 10,
+                paddingBottom: 8,
+                paddingLeft: 10
             });
             tooltip.label.set('text',
                 `[bold]{meterName}[/]\n` +
-                `{valueX.formatDate('${dateFormat}')}\n` +
-                `Consumption: [bold]{valueY.formatNumber('#,###.00')} {unit}[/]\n` +
-                `Tenant: {tenantName}\n` +
-                `{periodLabel}`);
+                `{valueX.formatDate('${dateFormat}')} · [bold]{valueY.formatNumber('#,###.00')} {unit}[/]\n` +
+                `Tenant: {tenantName} · {periodLabel}`);
 
             let series;
             if (chartType === 'bar') {
@@ -914,8 +922,7 @@
                         radius: ds.isCompare ? 3 : 4.5,
                         fill: color,
                         stroke: am5.color(0xFFFFFF),
-                        strokeWidth: 2,
-                        tooltipText: ''
+                        strokeWidth: 2
                     })
                 }));
             }
