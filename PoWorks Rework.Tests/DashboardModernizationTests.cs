@@ -207,9 +207,9 @@ public class DashboardModernizationTests
         // Equal-duration comparison: custom mode selects only its starting date.
         Assert.Contains("computeComparisonRange", script);
         Assert.Contains("durationDays", script);
-        Assert.Contains("inclusiveDays", controller);
-        Assert.Contains("compareStart.Value", controller);
-        Assert.Contains("AddDays(inclusiveDays)", controller);
+        Assert.Contains("DashboardComparisonPeriodResolver.Resolve", controller);
+        Assert.Contains("request.CompareStartDate.Value", controller);
+        Assert.Contains("resolvedComparison.EndDate", controller);
         Assert.DoesNotContain("id=\"compareEndDate\"", view);
 
         // Client can choose global aggregate, tenant breakdown or individual meters.
