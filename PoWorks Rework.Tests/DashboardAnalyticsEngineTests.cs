@@ -215,6 +215,32 @@ public class DashboardAnalyticsEngineTests
     }
 
     [Fact]
+    public void QuantityCustomAggregation_UsesTruthfulSourceTotalKpis()
+    {
+        var query = BaseQuery("energy", "aggregate", "average");
+        var rows = new List<MeasurementBucketResult>
+        {
+            Row(1, "A", 10, "T", "2026-09-15", 10),
+            Row(1, "A", 10, "T", "2026-09-16", 20),
+            Row(2, "B", 10, "T", "2026-09-15", 30),
+            Row(2, "B", 10, "T", "2026-09-16", 40)
+        };
+
+        var result = DashboardAnalyticsEngine.Build(query, rows);
+
+        var period = result.Summary.Kpis.Single(k => k.Key == "total");
+        var daily = result.Summary.Kpis.Single(k => k.Key == "dailyAverage");
+        var peak = result.Summary.Kpis.Single(k => k.Key == "peak");
+
+        Assert.Equal("Average source total", period.Label);
+        Assert.Equal(50d, period.Value);
+        Assert.Equal("Average source per day", daily.Label);
+        Assert.Equal(25d, daily.Value);
+        Assert.Equal("Peak displayed period", peak.Label);
+        Assert.Equal(30d, peak.Value);
+    }
+
+    [Fact]
     public void QuantityAndStateMetricsExposeDifferentKpis()
     {
         var energy = DashboardAnalyticsEngine.Build(
