@@ -67,6 +67,15 @@ public class WorkspaceIsolationSourceRegressionTests
         Assert.Contains("t.\"\"CompanyId\"\" = @CompanyId", controller);
         Assert.Contains("td.\"\"CompanyId\"\" = t.\"\"CompanyId\"\"", controller);
         Assert.Contains("_companyContext.CurrentCompanyId", controller);
+        Assert.Contains(
+            "IsTenantUser && !CurrentTenantId.HasValue",
+            controller);
+        Assert.True(
+            controller.Split("if (HasInvalidTenantScope)", StringSplitOptions.None).Length - 1 >= 6,
+            "All tenant-sensitive dashboard endpoints must fail closed when TenantId is missing.");
+        Assert.Contains(
+            "GetAvailableDateRangesAsync(\n                    IsTenantUser ? CurrentTenantId : null)",
+            controller);
     }
 
     [Fact]
