@@ -1684,7 +1684,7 @@
             })
             .join('\r\n');
 
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         const metric = String(metadata.metric || 'analytics')
@@ -1729,11 +1729,16 @@
     }
 
     function csvCell(value) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return String(value);
+        }
+
         let text = String(value === null || value === undefined ? '' : value);
 
         // Prevent spreadsheet formula injection when names/labels originate
-        // from configurable tenant or meter data.
-        if (/^[=+\-@]/.test(text)) {
+        // from configurable tenant or meter data. Numeric negatives remain
+        // numeric so temperatures and other signed measurements export cleanly.
+        if (/^[\t\r\n ]*[=+\-@]/.test(text)) {
             text = "'" + text;
         }
 
