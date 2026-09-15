@@ -565,7 +565,7 @@ public class ConsumptionBillingConsistencyTests
                 (106, 'Water.Counter', 'm³', TRUE, 10, 1),
                 (107, 'Water.Flow', 'L/min', TRUE, 10, 1),
                 (108, 'Motor.Speed', 'rpm', TRUE, 10, 1),
-                (109, 'Legacy.Unspecified', NULL, TRUE, 10, 1),
+                (109, 'Legacy.Unspecified', '', TRUE, 10, 1),
                 (201, 'OtherWorkspace.kWh', 'kWh', TRUE, 20, 2);
 
             INSERT INTO ""MeterReadings"" (
