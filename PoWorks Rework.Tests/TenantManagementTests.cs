@@ -23,6 +23,7 @@ public class TenantManagementTests
             Threshold2 = 200m,
             Threshold2Rate = 0.8m,
             Deposit = 10m,
+            MonthlyFee = 25m,
             StartDate = "2026-09-15"
         };
 
@@ -39,6 +40,7 @@ public class TenantManagementTests
             Period = "Monthly",
             TariffType = "Company",
             BaseRate = -1m,
+            MonthlyFee = -10m,
             Threshold1 = 200m,
             Threshold2 = 100m,
             StartDate = "2026-09-15"
@@ -49,6 +51,7 @@ public class TenantManagementTests
         Assert.Contains(errors, x => x.Contains("Email", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, x => x.Contains("rates", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, x => x.Contains("Threshold 2", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(errors, x => x.Contains("monthly fixed fee", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -118,6 +121,8 @@ public class TenantManagementTests
         Assert.Contains(@"ADD COLUMN IF NOT EXISTS ""TariffType""", schema);
         Assert.Contains(@"ADD COLUMN IF NOT EXISTS ""Threshold1""", schema);
         Assert.Contains(@"ADD COLUMN IF NOT EXISTS ""Threshold2Rate""", schema);
+        Assert.Contains(@"""AbonnementMensuel""", schema);
+        Assert.Contains(@"COALESCE(""Tarif_1""::numeric", schema);
         Assert.Contains(@"SET ""CompanyId"" = t.""CompanyId""", schema);
         Assert.Contains("idx_tenantdetails_company_tenant", schema);
     }
@@ -137,6 +142,7 @@ public class TenantManagementTests
         Assert.Contains("DisableTenant", editor);
         Assert.Contains("EnableTenant", editor);
         Assert.Contains("DeleteTenant", editor);
+        Assert.Contains("Monthly Fixed Fee", editor);
     }
 
     private static string ReadSource(params string[] parts)
