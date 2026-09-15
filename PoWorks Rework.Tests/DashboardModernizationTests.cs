@@ -160,7 +160,9 @@ public class DashboardModernizationTests
         Assert.DoesNotContain("compareEndDate", view);
         Assert.Contains("coverageBadge", view);
         Assert.Contains("meterCompatibilityHint", view);
-        Assert.Contains("kpi1Label", view);
+        Assert.Contains("id=\"kpi@(i)Label\"", view);
+        Assert.Contains("id=\"kpi@(i)Value\"", view);
+        Assert.Contains("id=\"kpi@(i)Detail\"", view);
         Assert.Contains("topConsumersList", view);
         Assert.Contains("energy-chart-core.js", view);
 
