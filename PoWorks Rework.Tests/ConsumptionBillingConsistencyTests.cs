@@ -233,6 +233,7 @@ public class ConsumptionBillingConsistencyTests
         var analyticsService = new DashboardAnalyticsService(
             database,
             companyContext,
+            consumptionService,
             NullLogger<DashboardAnalyticsService>.Instance);
 
         var billingService = new BillingService(
@@ -343,6 +344,10 @@ public class ConsumptionBillingConsistencyTests
             });
 
         Assert.Equal(30d, Assert.Single(derivedEnergy.ChartData.Datasets).Data.Single()!.Value, 6);
+        Assert.Equal(
+            dashboardSeries.Single(row => row.MeterId == 103).TotalConsumption,
+            Assert.Single(derivedEnergy.ChartData.Datasets).Data.Single()!.Value,
+            6);
         Assert.Equal("kWh", derivedEnergy.Summary.Unit);
 
         var pressure = await analyticsService.GetAnalyticsAsync(
@@ -549,12 +554,14 @@ public class ConsumptionBillingConsistencyTests
             INSERT INTO ""MeterReadings"" (
                 ""MeterId"", ""Timestamp"", ""Value"", ""CompanyId"")
             VALUES
+                (101, '2026-08-31 23:00:00', 90, 1),
                 (101, '2026-09-01 00:00:00', 100, 1),
                 (101, '2026-09-01 01:00:00', 160, 1),
                 (101, '2026-09-01 02:00:00', 250, 1),
                 (102, '2026-09-01 00:00:00', 22, 1),
                 (102, '2026-09-01 01:00:00', 24, 1),
                 (102, '2026-09-01 02:00:00', 23, 1),
+                (103, '2026-08-31 23:00:00', 5, 1),
                 (103, '2026-09-01 00:00:00', 10, 1),
                 (103, '2026-09-01 01:00:00', 20, 1),
                 (103, '2026-09-01 02:00:00', 30, 1),
