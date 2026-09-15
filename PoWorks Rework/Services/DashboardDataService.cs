@@ -427,7 +427,11 @@ namespace PoWorks_Rework.Services
             result.Labels = data.Select(d => d.ReadingDate).Distinct().OrderBy(x => x).ToList();
             var meterGroups = data.GroupBy(d => new { d.MeterId, d.MeterName, d.Unit, d.TenantName });
 
-            var colors = new[] { "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#FF6384", "#C9CBCF" };
+            var colors = new[]
+            {
+                "#2563EB", "#0EA5E9", "#10B981", "#8B5CF6",
+                "#F59E0B", "#EF4444", "#14B8A6", "#6366F1"
+            };
             int colorIndex = 0;
 
             foreach (var meterGroup in meterGroups)
@@ -436,9 +440,14 @@ namespace PoWorks_Rework.Services
                 var dataset = new ChartDataset
                 {
                     Label = BuildMeterLabel(meterGroup.Key.MeterName, meterGroup.Key.Unit, meterGroup.Key.TenantName),
+                    MeterName = meterGroup.Key.MeterName,
+                    Unit = string.IsNullOrWhiteSpace(meterGroup.Key.Unit) ? "unit" : meterGroup.Key.Unit,
+                    TenantName = meterGroup.Key.TenantName,
                     BackgroundColor = color,
                     BorderColor = color,
-                    Data = result.Labels.Select(label => meterGroup.FirstOrDefault(d => d.ReadingDate == label)?.TotalConsumption ?? 0).ToList()
+                    Data = result.Labels
+                        .Select(label => meterGroup.FirstOrDefault(d => d.ReadingDate == label)?.TotalConsumption ?? 0)
+                        .ToList()
                 };
                 result.Datasets.Add(dataset);
                 colorIndex++;
@@ -452,16 +461,44 @@ namespace PoWorks_Rework.Services
         /// </summary>
         /// <param name="data">The consumption data to summarize.</param>
         /// <returns>A DashboardSummary with totals and averages.</returns>
-        public DashboardSummary CalculateSummary(List<ConsumptionQueryResult> data)
+        public DashboardSummary CalculateSummary(
+            List<ConsumptionQueryResult> data,
+            MeterReadingFilters filters)
         {
             var summary = new DashboardSummary();
             if (!data.Any()) return summary;
 
+            var units = data
+                .Select(d => string.IsNullOrWhiteSpace(d.Unit) ? "unit" : d.Unit.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            summary.HasMixedUnits = units.Count > 1;
+            summary.Unit = summary.HasMixedUnits ? "mixed" : units[0];
             summary.TotalConsumption = data.Sum(d => d.TotalConsumption);
-            summary.PeakUsage = data.Max(d => d.MaxConsumption);
             summary.ActiveMeters = data.Select(d => d.MeterId).Distinct().Count();
-            var uniqueDates = data.Select(d => d.ReadingDate).Distinct().Count();
-            summary.AverageDaily = uniqueDates > 0 ? summary.TotalConsumption / uniqueDates : 0;
+            summary.DataBuckets = data.Select(d => d.ReadingDate).Distinct().Count();
+
+            var (startDate, endDate) = filters.GetDateRange();
+            summary.PeriodDays = Math.Max(1, (endDate.Date - startDate.Date).Days + 1);
+            summary.AverageDaily = summary.TotalConsumption / summary.PeriodDays;
+
+            // Peak means the highest total consumption bucket across all selected
+            // meters, not the biggest individual meter value. This is what an
+            // operator expects when looking for the peak of the displayed scope.
+            summary.PeakUsage = data
+                .GroupBy(d => d.ReadingDate)
+                .Select(bucket => bucket.Sum(x => x.TotalConsumption))
+                .DefaultIfEmpty(0)
+                .Max();
+
+            summary.PeakPeriodLabel = filters.DateFilter?.ToLowerInvariant() switch
+            {
+                "yearly" => "Highest annual total",
+                "monthly" => "Highest monthly total",
+                "hourly" => "Highest hourly total",
+                _ => "Highest daily total"
+            };
 
             return summary;
         }

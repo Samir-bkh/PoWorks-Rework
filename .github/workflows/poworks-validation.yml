@@ -33,6 +33,14 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate dashboard JavaScript syntax
+        run: node --check "PoWorks Rework/wwwroot/js/energy-dashboard.js"
+
       - name: Restore application
         run: dotnet restore "PoWorks Rework/PoWorks Rework.csproj"
 

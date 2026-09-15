@@ -413,15 +413,35 @@
     // Format the backend data to [{x: timestamp, y: value}] required by our amCharts series
     function toTimeSeriesFormat(chartData) {
         if (!chartData || !chartData.labels) return chartData;
-        const points = chartData.labels.map(l => parseLabelToTs(l));
-        const datasets = chartData.datasets.map(ds => ({
-            label: ds.label,
-            data: ds.data.map((v, i) => ({ x: points[i], y: v || 0 }))
-        }));
+
+        const points = chartData.labels.map(label => parseLabelToTs(label));
+        const datasets = (chartData.datasets || []).map(ds => {
+            const unit = ds.unit || 'unit';
+            const meterName = ds.meterName || ds.label || 'Meter';
+            const tenantName = ds.tenantName || 'Unassigned';
+
+            return {
+                label: ds.label,
+                meterName,
+                tenantName,
+                unit,
+                data: (ds.data || []).map((value, index) => ({
+                    x: points[index],
+                    y: Number(value) || 0,
+                    meterName,
+                    tenantName,
+                    unit,
+                    seriesLabel: ds.label,
+                    periodLabel: 'Current period'
+                }))
+            };
+        });
+
         return { datasets };
     }
 
     // ------------------------------------------------------------
+    // NEW: Curve limit    // ------------------------------------------------------------
     // NEW: Curve limit + automatic "Others" aggregation
     // ------------------------------------------------------------
     // If more meters are selected than the configured max, we don't block
@@ -438,37 +458,49 @@
             return data;
         }
 
-        // Rank meters by total consumption over the loaded period
         const withTotals = data.datasets.map(ds => ({
             ds,
-            total: ds.data.reduce((sum, p) => sum + ((p && p.y) || 0), 0)
-        }));
-        withTotals.sort((a, b) => b.total - a.total);
+            total: ds.data.reduce((sum, point) => sum + ((point && point.y) || 0), 0)
+        })).sort((a, b) => b.total - a.total);
 
-        const keptSlots = Math.max(1, maxCurves - 1); // reserve 1 slot for "Autres"
+        const keptSlots = Math.max(1, maxCurves - 1);
         const kept = withTotals.slice(0, keptSlots).map(x => x.ds);
         const rest = withTotals.slice(keptSlots);
+        const restUnits = [...new Set(rest.map(x => (x.ds.unit || 'unit').toLowerCase()))];
+        const othersUnit = restUnits.length === 1 ? rest[0].ds.unit : 'mixed';
 
-        // Sum the remaining meters, timestamp by timestamp, into one series
         const othersMap = new Map();
         rest.forEach(({ ds }) => {
-            ds.data.forEach(p => {
-                if (!p) return;
-                othersMap.set(p.x, (othersMap.get(p.x) || 0) + (p.y || 0));
+            ds.data.forEach(point => {
+                if (!point) return;
+                othersMap.set(point.x, (othersMap.get(point.x) || 0) + (point.y || 0));
             });
         });
+
         const othersData = Array.from(othersMap.entries())
             .sort((a, b) => a[0] - b[0])
-            .map(([x, y]) => ({ x, y }));
+            .map(([x, y]) => ({
+                x,
+                y,
+                meterName: 'Other meters',
+                tenantName: 'Multiple tenants',
+                unit: othersUnit,
+                seriesLabel: `Others (${rest.length} meters)`,
+                periodLabel: 'Current period'
+            }));
 
         const othersDataset = {
-            label: `Autres (${rest.length} meter${rest.length > 1 ? 's' : ''})`,
+            label: `Others (${rest.length} meter${rest.length > 1 ? 's' : ''})`,
+            meterName: 'Other meters',
+            tenantName: 'Multiple tenants',
+            unit: othersUnit,
             data: othersData,
             isOthers: true
         };
 
         if (warningDiv && warningText) {
-            warningText.textContent = `Display limited to the ${keptSlots} largest consumers. ${rest.length} meter(s) grouped in "Others". Increase "Max curves" or refine your selection for more detail.`;
+            warningText.textContent =
+                `Displaying the ${keptSlots} largest consumers. ${rest.length} additional meter(s) are grouped into “Others” to keep the chart readable.`;
             warningDiv.classList.remove('d-none');
         }
 
@@ -476,6 +508,7 @@
     }
 
     // ------------------------------------------------------------
+    // Comparing meters    // ------------------------------------------------------------
     // Comparing meters to each other is already what Standard mode does
     // (several meters overlaid). "Comparison" here means: same meter(s),
     // two different time periods overlaid (e.g. this month vs last month).
@@ -522,30 +555,44 @@
                 pairs.push(curDs);
                 return;
             }
+
             pairs.push({
-                label: `${curDs.label} (Actuelle)`,
-                data: curDs.data,
-                pairKey: curDs.label
+                ...curDs,
+                label: `${curDs.label} · Current`,
+                pairKey: curDs.label,
+                data: curDs.data.map(point => ({
+                    ...point,
+                    periodLabel: 'Current period'
+                }))
             });
-            const compareDs = compareFormatted.datasets?.find(d => d.label === curDs.label);
+
+            const compareDs = compareFormatted.datasets?.find(ds => ds.label === curDs.label);
             if (compareDs) {
                 pairs.push({
-                    label: `${curDs.label} (Précédente)`,
-                    data: compareDs.data.map(p => ({ x: p.x + shiftMs, y: p.y })),
+                    ...compareDs,
+                    label: `${curDs.label} · Comparison`,
                     pairKey: curDs.label,
-                    isCompare: true
+                    isCompare: true,
+                    data: compareDs.data.map(point => ({
+                        ...point,
+                        x: point.x + shiftMs,
+                        periodLabel: 'Comparison period'
+                    }))
                 });
             }
         });
+
         return { datasets: pairs };
     }
 
     async function loadChartData() {
-        console.log('Loading chart data...');
         showLoading(true);
+        setChartEmpty(false);
 
         const dateFilterValue = document.getElementById('dateFilter').value;
-        const selectedMeters = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
+        const selectedMeters = Array.from(document.querySelectorAll('.meter-checkbox:checked'))
+            .map(cb => parseInt(cb.value, 10))
+            .filter(Number.isFinite);
         const isComparisonActive = document.getElementById('modeComparison').checked;
 
         const filters = {
@@ -554,8 +601,8 @@
             meterIds: selectedMeters,
             startDate: document.getElementById('startDate').value,
             endDate: document.getElementById('endDate').value,
-            limit: parseInt(document.getElementById('meterLimit').value) || 5,
-            isComparisonMode: false, // legacy weekday-grouping mode, replaced by compareStartDate/compareEndDate below
+            limit: parseInt(document.getElementById('meterLimit').value, 10) || 5,
+            isComparisonMode: false,
             groupBy: 'meter'
         };
 
@@ -580,38 +627,50 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
-            if (data.noDataInRange && data.suggestions) {
-                showNotification(data.message, 'warning');
-                showDateRangeSuggestions(data.suggestions);
+            if (data.noDataInRange) {
+                currentData = { datasets: [] };
+                updateAmChart(currentData);
+                updateSummaryCards(data.summary || {});
+                updateDashboardContext(data.summary || {}, filters);
+                renderTopConsumers([]);
+                setChartEmpty(true);
+                if (data.message) showNotification(data.message, 'warning');
                 showLoading(false);
                 return;
             }
 
             if (data.dataInfo) updateDataInfoDisplay(data.dataInfo);
 
-            let formatted = toTimeSeriesFormat(data.chartData);
-            formatted = applyCurveLimit(formatted); // cap + aggregate the current period first
+            let currentFormatted = toTimeSeriesFormat(data.chartData);
+            currentFormatted = applyCurveLimit(currentFormatted);
+            const rankingData = currentFormatted.datasets || [];
 
+            let formatted = currentFormatted;
             if (isComparisonActive && compareRange && data.compareChartData) {
-                formatted = buildComparisonPairs(formatted, data.compareChartData, filters.startDate, compareRange.start);
+                formatted = buildComparisonPairs(
+                    currentFormatted,
+                    data.compareChartData,
+                    filters.startDate,
+                    compareRange.start);
             } else if (isComparisonActive && compareRange && !data.compareChartData) {
                 showNotification('No data found for the comparison period', 'warning');
             }
 
             currentData = formatted;
             updateAmChart(currentData);
-
-            if (currentData.datasets) renderTopConsumers(currentData.datasets);
+            renderTopConsumers(rankingData);
             updateSummaryCards(data.summary);
-
+            updateDashboardContext(data.summary, filters);
+            setChartEmpty(!currentData.datasets || currentData.datasets.length === 0);
             showLoading(false);
-
         } catch (error) {
             console.error('Chart loading error:', error);
-            showNotification(`Error: ${error.message}`, 'error');
+            setChartEmpty(true);
+            showNotification(`Unable to load dashboard data: ${error.message}`, 'error');
             showLoading(false);
         }
     }
+
     let chartRenderToken = 0;
 
     function updateAmChart(data) {
@@ -635,86 +694,131 @@
             exporting = null;
         }
 
-        if (!data || !data.datasets || data.datasets.length === 0) return;
+        if (!data || !data.datasets || data.datasets.length === 0) {
+            chartdiv.innerHTML = '';
+            return;
+        }
 
         const chartType = document.getElementById('chartType')?.value || 'area';
+        const dateFilter = document.getElementById('dateFilter')?.value || 'daily';
+        const units = [...new Set(
+            data.datasets
+                .filter(ds => !ds.isCompare)
+                .map(ds => (ds.unit || 'unit').trim())
+                .filter(Boolean)
+        )];
+        const axisUnit = units.length === 1 ? units[0] : 'mixed units';
 
-        const dateFilter = document.getElementById('dateFilter').value;
-        let timeUnit = "day";
-        let tooltipFormat = "[bold]{name}[/]\n{valueX.formatDate('yyyy-MM-dd')}: {valueY} kWh";
+        const timeUnit =
+            dateFilter === 'yearly' ? 'year' :
+            dateFilter === 'monthly' ? 'month' :
+            'day';
 
-        if (dateFilter === "daily") {
-            timeUnit = "hour";
-            tooltipFormat = "[bold]{name}[/]\n{valueX.formatDate('yyyy-MM-dd HH:mm')}: {valueY} kWh";
-        } else if (dateFilter === "yearly") {
-            timeUnit = "month";
-            tooltipFormat = "[bold]{name}[/]\n{valueX.formatDate('MMM yyyy')}: {valueY} kWh";
-        }
+        const dateFormat =
+            dateFilter === 'yearly' ? 'yyyy' :
+            dateFilter === 'monthly' ? 'MMM yyyy' :
+            'dd MMM yyyy';
 
         const startDateInput = document.getElementById('startDate').value;
         const endDateInput = document.getElementById('endDate').value;
-        const startTs = new Date(startDateInput + "T00:00:00").getTime();
-        const endTs = new Date(endDateInput + "T23:59:59").getTime();
+        const startTs = new Date(startDateInput + 'T00:00:00').getTime();
+        const endTs = new Date(endDateInput + 'T23:59:59').getTime();
 
-        root = am5.Root.new("chartdiv");
-
-        if (root._logo) {
-            root._logo.dispose();
-        }
-
+        root = am5.Root.new('chartdiv');
+        if (root._logo) root._logo.dispose();
         root.setThemes([am5themes_Animated.new(root)]);
 
-        let chart = root.container.children.push(am5xy.XYChart.new(root, {
-            panX: false,
+        const chart = root.container.children.push(am5xy.XYChart.new(root, {
+            panX: true,
             panY: false,
-            wheelX: "panX",
-            wheelY: "zoomX",
+            wheelX: 'panX',
+            wheelY: 'zoomX',
+            pinchZoomX: true,
             layout: root.verticalLayout,
-            pinchZoomX: true
+            paddingTop: 8,
+            paddingRight: 10
         }));
 
-        let xAxis = chart.xAxes.push(am5xy.DateAxis.new(root, {
+        const xRenderer = am5xy.AxisRendererX.new(root, {
+            minGridDistance: 62,
+            minorGridEnabled: false
+        });
+        xRenderer.grid.template.setAll({
+            stroke: am5.color(0xCBD5E1),
+            strokeOpacity: .28
+        });
+        xRenderer.labels.template.setAll({
+            fill: am5.color(0x64748B),
+            fontSize: 12,
+            paddingTop: 9
+        });
+
+        const xAxis = chart.xAxes.push(am5xy.DateAxis.new(root, {
             min: startTs,
             max: endTs,
             strictMinMax: true,
-            maxDeviation: 0.2,
-            baseInterval: { timeUnit: timeUnit, count: 1 },
-            renderer: am5xy.AxisRendererX.new(root, {
-                minGridDistance: 60,
-                minorGridEnabled: true
-            }),
+            maxDeviation: .1,
+            baseInterval: { timeUnit, count: 1 },
+            renderer: xRenderer,
             tooltip: am5.Tooltip.new(root, {})
         }));
 
-        let yAxis = chart.yAxes.push(am5xy.ValueAxis.new(root, {
-            renderer: am5xy.AxisRendererY.new(root, {}),
-            tooltip: am5.Tooltip.new(root, {
-                animationDuration: 150
-            })
+        const yRenderer = am5xy.AxisRendererY.new(root, {
+            minGridDistance: 42
+        });
+        yRenderer.grid.template.setAll({
+            stroke: am5.color(0xCBD5E1),
+            strokeOpacity: .32
+        });
+        yRenderer.labels.template.setAll({
+            fill: am5.color(0x64748B),
+            fontSize: 12,
+            paddingRight: 8
+        });
+
+        const yAxis = chart.yAxes.push(am5xy.ValueAxis.new(root, {
+            min: 0,
+            renderer: yRenderer,
+            numberFormat: '#,###.##'
         }));
 
-     
-        let cursor = chart.set("cursor", am5xy.XYCursor.new(root, {
-            behavior: "zoomXY",
-            xAxis: xAxis,
-            yAxis: yAxis
+        yAxis.children.unshift(am5.Label.new(root, {
+            text: `Consumption (${axisUnit})`,
+            rotation: -90,
+            y: am5.p50,
+            centerX: am5.p50,
+            fill: am5.color(0x475569),
+            fontSize: 13,
+            fontWeight: '600',
+            paddingBottom: 12
         }));
 
-        cursor.lineX.setAll({ strokeDasharray: [3, 3] });
-        cursor.lineY.setAll({ visible: true, strokeDasharray: [3, 3] });
-        cursor.set("maxTooltipDistance", 0);
+        const cursor = chart.set('cursor', am5xy.XYCursor.new(root, {
+            behavior: 'zoomX',
+            xAxis,
+            yAxis
+        }));
+        cursor.lineX.setAll({
+            stroke: am5.color(0x64748B),
+            strokeOpacity: .65,
+            strokeDasharray: [4, 4]
+        });
+        cursor.lineY.setAll({
+            stroke: am5.color(0x94A3B8),
+            strokeOpacity: .35,
+            strokeDasharray: [3, 3]
+        });
+        cursor.set('maxTooltipDistance', 24);
 
         const colors = [
-            am5.color(0x36A2EB), am5.color(0xFF6384), am5.color(0xFFCE56),
-            am5.color(0x4BC0C0), am5.color(0x9966FF), am5.color(0xFF9F40)
+            am5.color(0x2563EB), am5.color(0x0EA5E9), am5.color(0x10B981),
+            am5.color(0x8B5CF6), am5.color(0xF59E0B), am5.color(0xEF4444),
+            am5.color(0x14B8A6), am5.color(0x6366F1)
         ];
-        const OTHERS_COLOR = am5.color(0x9AA0A6); // grey, distinct from the palette above
-
-        // NEW: assign one color per meter (via pairKey), shared by its current-period
-        // series and its comparison-period series so a dashed line always matches
-        // the solid line of the same meter.
+        const othersColor = am5.color(0x94A3B8);
         const colorForKey = new Map();
         let nextColorIndex = 0;
+
         data.datasets.forEach(ds => {
             if (ds.isOthers) return;
             const key = ds.pairKey || ds.label;
@@ -724,117 +828,152 @@
             }
         });
 
-        data.datasets.forEach((ds, index) => {
-            // The "Autres" aggregate series always renders in neutral grey + dashed,
-            // so it reads visually as "the rest", never confused with a real meter.
-            let color = ds.isOthers ? OTHERS_COLOR : colorForKey.get(ds.pairKey || ds.label);
-            let series;
+        const createdSeries = [];
 
+        data.datasets.forEach(ds => {
+            const color = ds.isOthers
+                ? othersColor
+                : colorForKey.get(ds.pairKey || ds.label);
+
+            const tooltip = am5.Tooltip.new(root, {
+                getFillFromSprite: false,
+                getStrokeFromSprite: false,
+                autoTextColor: false,
+                pointerOrientation: 'vertical'
+            });
+            tooltip.get('background').setAll({
+                fill: am5.color(0x0F172A),
+                fillOpacity: .96,
+                stroke: am5.color(0x334155),
+                strokeOpacity: .7,
+                cornerRadius: 10
+            });
+            tooltip.label.setAll({
+                fill: am5.color(0xFFFFFF),
+                fontSize: 12,
+                lineHeight: 18
+            });
+            tooltip.label.set('text',
+                `[bold]{meterName}[/]\n` +
+                `{valueX.formatDate('${dateFormat}')}\n` +
+                `Consumption: [bold]{valueY.formatNumber('#,###.00')} {unit}[/]\n` +
+                `Tenant: {tenantName}\n` +
+                `{periodLabel}`);
+
+            let series;
             if (chartType === 'bar') {
                 series = chart.series.push(am5xy.ColumnSeries.new(root, {
                     name: ds.label,
-                    xAxis: xAxis,
-                    yAxis: yAxis,
-                    valueYField: "y",
-                    valueXField: "x",
+                    xAxis,
+                    yAxis,
+                    valueYField: 'y',
+                    valueXField: 'x',
                     fill: color,
                     stroke: color,
-                    tooltip: am5.Tooltip.new(root, {
-                        labelText: tooltipFormat,
-                        dy: -5
-                    })
+                    tooltip
                 }));
-
-                if (ds.isOthers) {
-                    series.columns.template.setAll({ fillOpacity: 0.5, strokeOpacity: 0.5 });
-                } else if (ds.isCompare) {
-                    series.columns.template.setAll({ fillOpacity: 0.3, strokeOpacity: 0.6 });
-                }
+                series.columns.template.setAll({
+                    cornerRadiusTL: 5,
+                    cornerRadiusTR: 5,
+                    width: am5.percent(72),
+                    fillOpacity: ds.isCompare ? .35 : (ds.isOthers ? .48 : .82),
+                    strokeOpacity: .9
+                });
             } else {
                 series = chart.series.push(am5xy.LineSeries.new(root, {
                     name: ds.label,
-                    xAxis: xAxis,
-                    yAxis: yAxis,
-                    valueYField: "y",
-                    valueXField: "x",
+                    xAxis,
+                    yAxis,
+                    valueYField: 'y',
+                    valueXField: 'x',
                     fill: color,
                     stroke: color,
-                    tooltip: am5.Tooltip.new(root, {
-                        labelText: tooltipFormat
-                    })
+                    tooltip,
+                    connect: false,
+                    minBulletDistance: 18
                 }));
 
-                // "Autres" -> loosely dashed grey. "Précédente" (comparison) -> tightly
-                // dashed, same color as its meter's current-period line.
                 let dashArray;
-                if (ds.isOthers) dashArray = [8, 4];
+                if (ds.isOthers) dashArray = [8, 5];
                 else if (ds.isCompare) dashArray = [4, 4];
 
                 series.strokes.template.setAll({
-                    strokeWidth: ds.isCompare ? 2 : 3,
-                    strokeDasharray: dashArray
+                    strokeWidth: ds.isCompare ? 2 : 2.5,
+                    strokeDasharray: dashArray,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round'
                 });
 
                 series.fills.template.setAll({
-                    // NEW: only 'area' fills the zone under the curve. 'line' is a bare stroke.
                     visible: chartType === 'area',
-                    fillOpacity: ds.isOthers ? 0.08 : (ds.isCompare ? 0.05 : 0.2)
+                    fillOpacity: ds.isOthers ? .05 : (ds.isCompare ? .03 : .12)
                 });
 
-                if (!ds.isOthers && !ds.isCompare) {
-                    series.bullets.push(function () {
-                        return am5.Bullet.new(root, {
-                            sprite: am5.Circle.new(root, {
-                                radius: 4,
-                                fill: color,
-                                stroke: root.interfaceColors.get("background"),
-                                strokeWidth: 2
-                            })
-                        });
-                    });
-                }
+                series.bullets.push(() => am5.Bullet.new(root, {
+                    sprite: am5.Circle.new(root, {
+                        radius: ds.isCompare ? 3 : 4.5,
+                        fill: color,
+                        stroke: am5.color(0xFFFFFF),
+                        strokeWidth: 2,
+                        tooltipText: ''
+                    })
+                }));
             }
 
             series.data.setAll(ds.data);
+            createdSeries.push(series);
         });
 
+        if (createdSeries.length > 0) {
+            cursor.set('snapToSeries', createdSeries);
+        }
 
-        let legend = chart.children.push(am5.Legend.new(root, {
+        const legend = chart.children.push(am5.Legend.new(root, {
             centerX: am5.p50,
             x: am5.p50,
-            paddingTop: 15,
-            useDefaultMarker: true
+            paddingTop: 16,
+            useDefaultMarker: true,
+            layout: root.horizontalLayout
         }));
+        legend.labels.template.setAll({
+            fill: am5.color(0x475569),
+            fontSize: 12,
+            maxWidth: 260,
+            oversizedBehavior: 'truncate'
+        });
         legend.data.setAll(chart.series.values);
 
-        let scrollbarX = am5xy.XYChartScrollbar.new(root, {
-            orientation: "horizontal",
-            height: 50
+        const scrollbarX = am5xy.XYChartScrollbar.new(root, {
+            orientation: 'horizontal',
+            height: 46,
+            marginTop: 8
         });
-        chart.set("scrollbarX", scrollbarX);
+        chart.set('scrollbarX', scrollbarX);
 
-        let sbxAxis = scrollbarX.chart.xAxes.push(am5xy.DateAxis.new(root, {
-            baseInterval: { timeUnit: timeUnit, count: 1 },
+        const sbxAxis = scrollbarX.chart.xAxes.push(am5xy.DateAxis.new(root, {
+            baseInterval: { timeUnit, count: 1 },
             renderer: am5xy.AxisRendererX.new(root, {
-                opposite: false,
-                strokeOpacity: 0
+                strokeOpacity: 0,
+                minGridDistance: 80
             })
         }));
-
-        let sbyAxis = scrollbarX.chart.yAxes.push(am5xy.ValueAxis.new(root, {
+        const sbyAxis = scrollbarX.chart.yAxes.push(am5xy.ValueAxis.new(root, {
             renderer: am5xy.AxisRendererY.new(root, {})
         }));
 
-        if (data.datasets.length > 0) {
-            let sbseries = scrollbarX.chart.series.push(am5xy.LineSeries.new(root, {
+        const firstSeries = data.datasets.find(ds => !ds.isCompare) || data.datasets[0];
+        if (firstSeries) {
+            const preview = scrollbarX.chart.series.push(am5xy.LineSeries.new(root, {
                 xAxis: sbxAxis,
                 yAxis: sbyAxis,
-                valueYField: "y",
-                valueXField: "x"
+                valueYField: 'y',
+                valueXField: 'x',
+                stroke: am5.color(0x64748B),
+                fill: am5.color(0xCBD5E1)
             }));
-            let dsData = data.datasets[0].data;
-            sbseries.fills.template.setAll({ visible: true, fillOpacity: 0.2 });
-            sbseries.data.setAll(dsData);
+            preview.strokes.template.setAll({ strokeWidth: 1.5 });
+            preview.fills.template.setAll({ visible: true, fillOpacity: .22 });
+            preview.data.setAll(firstSeries.data);
         }
 
         exporting = am5plugins_exporting.Exporting.new(root, {
@@ -842,12 +981,12 @@
             dataSource: chart
         });
 
-        chart.appear(1000, 100);
+        chart.appear(650, 50);
     }
 
     function showDemoChart() {
-        // Fallback removed for brevity - rely on true data flow now.
         showLoading(false);
+        setChartEmpty(true);
     }
 
     // ============================================================
@@ -884,16 +1023,96 @@
     }
 
 
+    function formatMetric(value, unit, suffix = '') {
+        const numeric = Number(value) || 0;
+        const formatter = new Intl.NumberFormat(undefined, {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: numeric !== 0 && Math.abs(numeric) < 100 ? 2 : 0
+        });
+        return `${formatter.format(numeric)} ${unit || ''}${suffix}`.trim();
+    }
+
     function updateSummaryCards(summary) {
         if (!summary) return;
-        document.getElementById('totalConsumption').textContent = `${summary.totalConsumption.toFixed(2)} kWh`;
-        document.getElementById('avgDaily').textContent = `${summary.averageDaily.toFixed(2)} kWh`;
-        document.getElementById('peakUsage').textContent = `${summary.peakUsage.toFixed(2)} kWh`;
-        document.getElementById('activeMeters').textContent = summary.activeMeters;
-        const totalDetail = document.getElementById('totalConsumptionDetail');
-        if (totalDetail && summary.totalMeters) {
-            totalDetail.textContent = `From ${summary.activeMeters} of ${summary.totalMeters} meters`;
+
+        const mixed = summary.hasMixedUnits === true;
+        const unit = summary.unit && summary.unit !== 'mixed' ? summary.unit : '';
+        const total = document.getElementById('totalConsumption');
+        const average = document.getElementById('avgDaily');
+        const peak = document.getElementById('peakUsage');
+        const active = document.getElementById('activeMeters');
+
+        if (mixed) {
+            if (total) total.textContent = 'Multiple units';
+            if (average) average.textContent = '—';
+            if (peak) peak.textContent = '—';
+            document.getElementById('totalConsumptionDetail').textContent =
+                'Select meters with the same unit for aggregate KPIs';
+            document.getElementById('avgDailyDetail').textContent =
+                'Daily averages cannot combine incompatible units';
+            document.getElementById('peakUsageDetail').textContent =
+                'Peak totals cannot combine incompatible units';
+        } else {
+            if (total) total.textContent = formatMetric(summary.totalConsumption, unit);
+            if (average) average.textContent = formatMetric(summary.averageDaily, unit, '/day');
+            if (peak) peak.textContent = formatMetric(summary.peakUsage, unit);
+
+            const meterText = summary.totalMeters
+                ? `${summary.activeMeters} of ${summary.totalMeters} available meter(s)`
+                : `${summary.activeMeters} contributing meter(s)`;
+            document.getElementById('totalConsumptionDetail').textContent = meterText;
+            document.getElementById('avgDailyDetail').textContent =
+                `Across all ${summary.periodDays || 1} calendar day(s) in the selected range`;
+            document.getElementById('peakUsageDetail').textContent =
+                summary.peakPeriodLabel || 'Highest displayed period total';
         }
+
+        if (active) active.textContent = summary.activeMeters ?? 0;
+        const activeDetail = document.getElementById('activeMetersDetail');
+        if (activeDetail && !activeDetail.textContent) {
+            activeDetail.textContent = 'Meters contributing to this view';
+        }
+
+        const unitLabel = mixed ? 'Mixed units' : (unit || '—');
+        const badge = document.querySelector('#chartUnitBadge span');
+        if (badge) badge.textContent = unitLabel;
+        const unitContext = document.getElementById('dashboardUnitContext');
+        if (unitContext) unitContext.textContent = unitLabel;
+    }
+
+    function updateDashboardContext(summary, filters) {
+        const tenantSelect = document.getElementById('tenantFilter');
+        const tenantContext = document.getElementById('dashboardTenantContext');
+        if (tenantContext) {
+            tenantContext.textContent =
+                tenantSelect?.selectedOptions?.[0]?.textContent?.trim() || 'All tenants';
+        }
+
+        const meterContext = document.getElementById('dashboardMeterContext');
+        const selectedCount = document.querySelectorAll('.meter-checkbox:checked').length;
+        if (meterContext) {
+            meterContext.textContent = selectedCount > 0
+                ? `${selectedCount} selected`
+                : `Top ${filters.limit || 5} by activity`;
+        }
+
+        const periodContext = document.getElementById('dashboardPeriodContext');
+        if (periodContext) {
+            periodContext.textContent = filters.startDate && filters.endDate
+                ? `${filters.startDate} → ${filters.endDate}`
+                : 'Default range';
+        }
+
+        const rankingScope = document.getElementById('rankingScopeBadge');
+        if (rankingScope) {
+            rankingScope.textContent = tenantSelect?.value
+                ? tenantSelect.selectedOptions[0].textContent.trim()
+                : 'Current workspace';
+        }
+    }
+
+    function setChartEmpty(show) {
+        document.getElementById('chartEmptyState')?.classList.toggle('d-none', !show);
     }
 
     function resetFilters() {
@@ -939,14 +1158,7 @@
 
     function showLoading(show) {
         const spinner = document.getElementById('loadingSpinner');
-        const chartCanvas = document.getElementById('chartdiv');
-        if (show) {
-            if (spinner) spinner.classList.remove('d-none');
-            if (chartCanvas) chartCanvas.style.opacity = '0.5';
-        } else {
-            if (spinner) spinner.classList.add('d-none');
-            if (chartCanvas) chartCanvas.style.opacity = '1';
-        }
+        if (spinner) spinner.classList.toggle('d-none', !show);
     }
 
     function showNotification(message, type = 'info') {
@@ -955,7 +1167,7 @@
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show dashboard-alert`;
         alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
-        const container = document.querySelector('.container-fluid');
+        const container = document.querySelector('.dashboard-shell');
         if (container) {
             container.insertBefore(alertDiv, container.firstChild);
             setTimeout(() => { if (alertDiv.parentNode) alertDiv.remove(); }, 5000);
@@ -980,7 +1192,7 @@
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         `;
-        const container = document.querySelector('.container-fluid');
+        const container = document.querySelector('.dashboard-shell');
         if (container) container.insertBefore(alertDiv, container.children[1]);
     }
 
@@ -1009,35 +1221,52 @@
         const titleElement = document.getElementById('topConsumersTitle');
         if (!container) return;
 
-        const currentLimit = parseInt(document.getElementById('meterLimit').value) || 5;
-        if (titleElement) titleElement.innerHTML = `<i class="bi bi-fire"></i> Top ${currentLimit} Meters`;
+        const currentLimit = parseInt(document.getElementById('meterLimit').value, 10) || 5;
+        if (titleElement) {
+            titleElement.innerHTML =
+                `<i class="bi bi-trophy me-2 text-warning"></i>Top ${currentLimit} meters`;
+        }
 
-        if (!datasets || datasets.length <= 1) {
-            container.innerHTML = `<div class="alert alert-light text-center border mt-2">Select <strong>All Meters</strong> to see ranking.</div>`;
+        const usable = (datasets || []).filter(ds => !ds.isCompare);
+        if (usable.length === 0) {
+            container.innerHTML =
+                '<div class="text-center text-muted py-3">No meter consumption available for this period.</div>';
             return;
         }
 
-        const totals = datasets.map(ds => ({ name: ds.label, total: ds.data.reduce((a, b) => a + ((b && b.y) || 0), 0) }));
-        totals.sort((a, b) => b.total - a.total);
+        const units = [...new Set(usable.map(ds => (ds.unit || 'unit').toLowerCase()))];
+        if (units.length > 1) {
+            container.innerHTML =
+                '<div class="alert alert-light border mb-0">Ranking is hidden because the selected meters use different units. Compare like-for-like meters to get a meaningful ranking.</div>';
+            return;
+        }
+
+        const totals = usable.map(ds => ({
+            name: ds.meterName || ds.label,
+            tenant: ds.tenantName || 'Unassigned',
+            unit: ds.unit || 'unit',
+            total: ds.data.reduce((sum, point) => sum + ((point && point.y) || 0), 0)
+        })).sort((a, b) => b.total - a.total);
+
         const topList = totals.slice(0, currentLimit);
-        const maxTotal = topList[0].total > 0 ? topList[0].total : 1;
+        const maxTotal = Math.max(topList[0]?.total || 0, 1);
 
-        const listHtml = topList.map(item => {
-            const percent = (item.total / maxTotal) * 100;
+        container.innerHTML = topList.map((item, index) => {
+            const percent = Math.max(2, (item.total / maxTotal) * 100);
             return `
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="fw-bold text-secondary text-truncate" style="max-width: 70%;">${item.name}</span>
-                        <span class="fw-bold text-nowrap">${item.total.toFixed(2)} kWh</span>
+                <div class="dashboard-ranking-row">
+                    <div class="dashboard-ranking-name" title="${item.name} · ${item.tenant}">
+                        <span class="text-muted me-2">#${index + 1}</span>${item.name}
+                        <div class="dashboard-note ms-4">${item.tenant}</div>
                     </div>
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar bg-danger" style="width: ${percent}%"></div>
+                    <div class="dashboard-ranking-track" aria-hidden="true">
+                        <div class="dashboard-ranking-fill" style="width:${percent}%"></div>
                     </div>
-                </div>
-            `;
+                    <div class="dashboard-ranking-value">
+                        ${formatMetric(item.total, item.unit)}
+                    </div>
+                </div>`;
         }).join('');
-
-        container.innerHTML = `<div style="max-height: 250px; overflow-y: auto; padding-right: 5px;">${listHtml}</div>`;
     }
 
     function toggleFullscreen() {

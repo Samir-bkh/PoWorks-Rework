@@ -201,45 +201,38 @@ namespace PoWorks_Rework.Models
     /// </summary>
     public class DashboardSummary
     {
-        /// <summary>
-        /// The total consumption across all meters.
-        /// </summary>
         public double TotalConsumption { get; set; }
-
-        /// <summary>
-        /// The average daily consumption.
-        /// </summary>
         public double AverageDaily { get; set; }
-
-        /// <summary>
-        /// The peak usage value.
-        /// </summary>
         public double PeakUsage { get; set; }
-
-        /// <summary>
-        /// The number of active meters with data.
-        /// </summary>
         public int ActiveMeters { get; set; }
-
-        /// <summary>
-        /// The total number of meters.
-        /// </summary>
         public int TotalMeters { get; set; }
 
         /// <summary>
-        /// The oldest reading timestamp.
+        /// Inclusive number of calendar days represented by the selected range.
+        /// AverageDaily always uses this value rather than only days containing readings.
         /// </summary>
-        public DateTime? OldestReading { get; set; }
+        public int PeriodDays { get; set; }
 
         /// <summary>
-        /// The newest reading timestamp.
+        /// Human readable unit when every displayed series shares the same unit.
         /// </summary>
+        public string Unit { get; set; } = "kWh";
+
+        /// <summary>
+        /// True when incompatible units are shown together. In this case aggregate
+        /// KPIs should not be presented as a physically meaningful single value.
+        /// </summary>
+        public bool HasMixedUnits { get; set; }
+
+        /// <summary>
+        /// Describes the bucket behind PeakUsage (daily, monthly or annual).
+        /// </summary>
+        public string PeakPeriodLabel { get; set; } = "Highest daily total";
+
+        public int DataBuckets { get; set; }
+        public DateTime? OldestReading { get; set; }
         public DateTime? NewestReading { get; set; }
 
-        /// <summary>
-        /// Converts the summary into a display-friendly anonymous object.
-        /// </summary>
-        /// <returns>An anonymous object with rounded summary values.</returns>
         public object ToDisplayObject()
         {
             return new
@@ -248,7 +241,12 @@ namespace PoWorks_Rework.Models
                 averageDaily = Math.Round(AverageDaily, 2),
                 peakUsage = Math.Round(PeakUsage, 2),
                 activeMeters = ActiveMeters,
-                totalMeters = TotalMeters
+                totalMeters = TotalMeters,
+                periodDays = PeriodDays,
+                unit = Unit,
+                hasMixedUnits = HasMixedUnits,
+                peakPeriodLabel = PeakPeriodLabel,
+                dataBuckets = DataBuckets
             };
         }
     }
@@ -287,35 +285,22 @@ namespace PoWorks_Rework.Models
     /// </summary>
     public class ChartDataset
     {
-        /// <summary>
-        /// The dataset label.
-        /// </summary>
         public string Label { get; set; } = string.Empty;
-
-        /// <summary>
-        /// The data values for this dataset.
-        /// </summary>
+        public string MeterName { get; set; } = string.Empty;
+        public string Unit { get; set; } = string.Empty;
+        public string TenantName { get; set; } = string.Empty;
         public List<double> Data { get; set; } = new List<double>();
-
-        /// <summary>
-        /// The background color for the dataset.
-        /// </summary>
         public string BackgroundColor { get; set; } = string.Empty;
-
-        /// <summary>
-        /// The border color for the dataset.
-        /// </summary>
         public string BorderColor { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Converts the dataset into an API-compatible format.
-        /// </summary>
-        /// <returns>An anonymous object with dataset properties.</returns>
         public object ToApiFormat()
         {
             return new
             {
                 label = Label,
+                meterName = MeterName,
+                unit = Unit,
+                tenantName = TenantName,
                 data = Data,
                 backgroundColor = BackgroundColor,
                 borderColor = BorderColor
