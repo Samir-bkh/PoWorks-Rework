@@ -656,6 +656,30 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
+                var before = await GetMeterSnapshotsAsync(connection, tx, scopedIds, companyId);
+
+                if (request.UpdateParent && request.ParentId.HasValue)
+                {
+                    var invalidChild = before.FirstOrDefault(snapshot =>
+                    {
+                        var effectiveType = request.UpdateType
+                            ? normalizedType
+                            : snapshot.Type;
+
+                        return !string.Equals(effectiveType, "sub", StringComparison.OrdinalIgnoreCase);
+                    });
+
+                    if (invalidChild != null)
+                    {
+                        await tx.RollbackAsync();
+                        return Json(new
+                        {
+                            success = false,
+                            message = $"Meter '{invalidChild.Name}' is Main. Only Sub meters can be assigned to a parent."
+                        });
+                    }
+                }
+
                 if (request.UpdateTenant &&
                     !await ValidateTenantAssignmentAsync(connection, tx, request.TenantId))
                 {
@@ -708,7 +732,6 @@ namespace PoWorks_Rework.Controllers
                     });
                 }
 
-                var before = await GetMeterSnapshotsAsync(connection, tx, scopedIds, companyId);
                 var setClauses = new List<string>();
 
                 if (request.UpdateTenant)
@@ -1072,7 +1095,7 @@ namespace PoWorks_Rework.Controllers
                     WHERE ""MeterId"" = @ParentId
                       AND ""CompanyId"" = @CompanyId
 
-                    UNION ALL
+                    UNION
 
                     SELECT m.""MeterId"", m.""ParentId""
                     FROM ""Meters"" m
