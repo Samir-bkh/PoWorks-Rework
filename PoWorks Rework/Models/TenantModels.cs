@@ -35,6 +35,7 @@ namespace PoWorks_Rework.Models
         public decimal Threshold2 { get; set; } = 200m;
         public decimal Threshold2Rate { get; set; } = 0.8m;
         public decimal Deposit { get; set; }
+        public decimal MonthlyFee { get; set; }
         public decimal Outstanding { get; set; }
         public decimal Overdue { get; set; }
         public bool EmailAlert { get; set; } = true;
