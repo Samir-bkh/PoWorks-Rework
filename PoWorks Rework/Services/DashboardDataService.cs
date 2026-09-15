@@ -114,7 +114,7 @@ namespace PoWorks_Rework.Services
         /// Retrieves the overall available date range and data statistics from meter readings.
         /// </summary>
         /// <returns>A DateRangeInfo with the earliest/latest reading dates and data counts.</returns>
-        public async Task<DateRangeInfo> GetAvailableDateRangesAsync()
+        public async Task<DateRangeInfo> GetAvailableDateRangesAsync(int? tenantId = null)
         {
             var result = new DateRangeInfo();
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -134,10 +134,14 @@ namespace PoWorks_Rework.Services
                             COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data
                         FROM ""MeterReadings"" mr
                         INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId";
+                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
+                        AND (@TenantId IS NULL OR m.""TenantID"" = @TenantId)";
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
+                    cmd.Parameters.AddWithValue(
+                        "@TenantId",
+                        tenantId.HasValue ? tenantId.Value : DBNull.Value);
                     using var reader = await cmd.ExecuteReaderAsync();
 
                     if (await reader.ReadAsync())
@@ -167,12 +171,12 @@ namespace PoWorks_Rework.Services
         /// Generates suggested date ranges for the dashboard based on available reading data.
         /// </summary>
         /// <returns>A DateRangeSuggestions with a default range and alternative options.</returns>
-        public async Task<DateRangeSuggestions> GetDateRangeSuggestionsAsync()
+        public async Task<DateRangeSuggestions> GetDateRangeSuggestionsAsync(int? tenantId = null)
         {
             var suggestions = new DateRangeSuggestions();
             try
             {
-                var dateInfo = await GetAvailableDateRangesAsync();
+                var dateInfo = await GetAvailableDateRangesAsync(tenantId);
 
                 if (!dateInfo.HasData)
                 {
