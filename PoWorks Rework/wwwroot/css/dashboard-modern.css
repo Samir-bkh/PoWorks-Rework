@@ -605,3 +605,19 @@
         max-height: 320px;
     }
 }
+
+
+.dashboard-ranking-row.is-actionable {
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color .12s ease, box-shadow .12s ease;
+}
+
+.dashboard-ranking-row.is-actionable:hover {
+    background: #f8fafc;
+}
+
+.dashboard-ranking-row.is-actionable:focus-visible {
+    outline: 2px solid var(--pw-primary);
+    outline-offset: 2px;
+}
