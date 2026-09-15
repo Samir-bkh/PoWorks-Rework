@@ -1,81 +1,95 @@
-﻿@model PoWorks_Rework.Models.TenantViewModel
+@model PoWorks_Rework.Models.TenantViewModel
 
-<!-- Details Section -->
-<div class="card mb-4">
-    <div class="card-header bg-light">
-        <h5 class="mb-0">Details</h5>
-    </div>
-    <div class="card-body">
-        <div class="row mb-3">
-            <div class="col-md-2">
-                <label for="overdue" class="form-label">Overdue</label>
+@if (Model.SelectedTenant.Id <= 0)
+{
+    <div class="alert alert-info">Create or select a tenant to see its meters and consumption context.</div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Assigned meters</div>
+                    <div class="fs-4 fw-semibold">@Model.ConsumptionData.Meters.Count</div>
+                </div>
             </div>
-            <div class="col-md-2">
-                <input type="text" class="form-control" id="overdue" name="Overdue" value="$0.00" readonly>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Billed outstanding</div>
+                    <div class="fs-4 fw-semibold">@Model.ConsumptionData.TotalBilledOutstanding.ToString("0.00")</div>
+                </div>
             </div>
-            <div class="col-md-2">
-                <label for="totalBilledOutstanding" class="form-label">Total Billed Outstanding</label>
-            </div>
-            <div class="col-md-2">
-                <input type="text" class="form-control" id="totalBilledOutstanding" name="TotalBilledOutstanding" value="$0.00" readonly>
-            </div>
-            <div class="col-md-2">
-                <label for="totalMonthUnbilled" class="form-label">Total Month Unbilled</label>
-            </div>
-            <div class="col-md-2">
-                <input type="text" class="form-control" id="totalMonthUnbilled" name="TotalMonthUnbilled" value="$0.00" readonly>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Overdue</div>
+                    <div class="fs-4 fw-semibold">@Model.ConsumptionData.Overdue.ToString("0.00")</div>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Yearly Comparison Chart -->
-<div class="card mb-4">
-    <div class="card-header bg-light">
-        <h5 class="mb-0">Yearly Comparison</h5>
-    </div>
-    <div class="card-body">
-        <div id="yearlyComparisonChart" style="height: 300px; width: 100%;">
-            <p class="text-center text-muted">Consumption data will be available after adding meters to this tenant.</p>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Assigned meters</strong>
+                <div class="small text-muted">Meters linked to this tenant in the current workspace.</div>
+            </div>
+            <a asp-controller="Meter" asp-action="Management" class="btn btn-sm btn-outline-primary">Open Meter Management</a>
         </div>
-    </div>
-</div>
-
-<!-- Weekly Comparison Chart -->
-<div class="card mb-4">
-    <div class="card-header bg-light">
-        <h5 class="mb-0">Weekly Comparison</h5>
-    </div>
-    <div class="card-body">
-        <div id="weeklyComparisonChart" style="height: 200px; width: 100%;">
-            <p class="text-center text-muted">Weekly consumption data will be available after adding meters to this tenant.</p>
-        </div>
-    </div>
-</div>
-
-<!-- Meters Section -->
-<div class="card mb-4">
-    <div class="card-header bg-light d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Meters</h5>
-        <button type="button" class="btn btn-primary btn-sm" disabled>Add Meter</button>
-    </div>
-    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-bordered mb-0">
-                <thead>
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
                     <tr>
                         <th>Meter</th>
                         <th>Unit</th>
                         <th>Last Reading</th>
-                        <th>Active</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
+                @if (Model.ConsumptionData.Meters.Any())
+                {
+                    @foreach (var meter in Model.ConsumptionData.Meters)
+                    {
+                        <tr>
+                            <td>
+                                <div>@meter.Name</div>
+                                <small class="text-muted">#@meter.Id</small>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(meter.Unit) ? "—" : meter.Unit)</td>
+                            <td>@meter.LastReading</td>
+                            <td>
+                                @if (meter.Active)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
                     <tr>
-                        <td colspan="4" class="text-center">No meters found for this tenant. Meters functionality will be implemented in the future.</td>
+                        <td colspan="4" class="text-center text-muted py-4">
+                            No meter is assigned to this tenant yet.
+                        </td>
                     </tr>
+                }
                 </tbody>
             </table>
         </div>
     </div>
-</div>
+
+    <div class="alert alert-light border">
+        Historical comparison charts will use the meter readings assigned to this tenant. The meter list is now live; historical aggregation is handled in the next end-to-end data phase.
+    </div>
+}

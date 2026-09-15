@@ -1,217 +1,161 @@
-﻿@model PoWorks_Rework.Models.TenantViewModel
+@model PoWorks_Rework.Models.TenantViewModel
 @{
     ViewData["Title"] = "Tenant Management";
-
-    // Check if we have search parameters stored in TempData (from a save operation)
-    string preservedSearchCriteria = TempData["PreserveSearchCriteria"]?.ToString();
-    string preservedSearchTerm = TempData["PreserveSearchTerm"]?.ToString();
-
-    // Set search criteria from preserved values if available
-    if (!string.IsNullOrEmpty(preservedSearchCriteria))
-    {
-        Model.SearchCriteria = preservedSearchCriteria;
-    }
-
-    if (!string.IsNullOrEmpty(preservedSearchTerm))
-    {
-        Model.SearchTerm = preservedSearchTerm;
-    }
 }
 
-<div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h4>Tenants</h4>
-       
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-1">Tenant Management</h3>
+            <p class="text-muted mb-0">Manage tenants, lifecycle, tariffs and workspace-scoped meter assignments.</p>
+        </div>
+        <a asp-controller="TenantManagement" asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Tenant
+        </a>
     </div>
-    <div class="card-body">
-        <!-- Status Messages -->
-        @if (TempData["SuccessMessage"] != null)
-        {
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                @TempData["SuccessMessage"]
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        }
 
-        @if (TempData["ErrorMessage"] != null)
-        {
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                @TempData["ErrorMessage"]
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        }
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
 
-        <!-- Search Area -->
-        <form asp-controller="Tenant" asp-action="Search" method="post" id="searchForm">
-            <div class="search-area bg-light p-3 mb-4">
-                <h6>Search</h6>
-                <div class="row mb-2">
-                    <div class="col-md-2">
-                        <label for="searchCriteria" class="form-label">Search Criteria</label>
-                    </div>
-                    <div class="col-md-3">
-                        <select class="form-select" id="searchCriteria" name="searchCriteria">
-                            <option value="Company Name" selected="@(Model.SearchCriteria == "Company Name")">Company Name</option>
-                            <option value="Contact" selected="@(Model.SearchCriteria == "Contact")">Contact</option>
-                            <option value="Email" selected="@(Model.SearchCriteria == "Email")">Email</option>
-                            <option value="Phone" selected="@(Model.SearchCriteria == "Phone")">Phone</option>
-                        </select>
-                    </div>
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form asp-controller="Tenant" asp-action="Search" method="get" id="searchForm" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label" for="searchCriteria">Search by</label>
+                    <select class="form-select" id="searchCriteria" name="searchCriteria">
+                        <option value="Company Name" selected="@(Model.SearchCriteria == "Company Name")">Company Name</option>
+                        <option value="Contact" selected="@(Model.SearchCriteria == "Contact")">Contact</option>
+                        <option value="Email" selected="@(Model.SearchCriteria == "Email")">Email</option>
+                        <option value="Phone" selected="@(Model.SearchCriteria == "Phone")">Phone</option>
+                    </select>
                 </div>
-                <div class="row mb-3">
-                    <div class="col-md-2">
-                        <label for="searchTerm" class="form-label">Search Term</label>
-                    </div>
-                    <div class="col-md-3">
-                        <input type="text" class="form-control" id="searchTerm" name="searchTerm" value="@Model.SearchTerm">
-                    </div>
-                    <div class="col-md-7 text-end">
-                        <button type="submit" class="btn btn-primary me-2">Search</button>
-                        <a asp-controller="TenantManagement" asp-action="Create" class="btn btn-primary">New Tenant</a>
-                    </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="searchTerm">Search</label>
+                    <input class="form-control" id="searchTerm" name="searchTerm" value="@Model.SearchTerm" placeholder="Tenant company, contact, email or phone..." />
                 </div>
-            </div>
-        </form>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-fill">Search</button>
+                    <a asp-controller="Tenant" asp-action="Management" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
 
-        <!-- Search Results -->
-        <div class="card mb-4">
-            <div class="card-header bg-light">
-                <h5 class="mb-0">Search Results</h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Company</th>
-                                <th>Contact</th>
-                                <th>Email</th>
-                                <th>Phone</th>
-                                <th>Outstanding</th>
-                                <th>Overdue</th>
-                                <th>Active</th>
-                                <th>Actions</th> </tr>
-                        </thead>
-                        <tbody>
-                            @if (Model.SearchResults != null && Model.SearchResults.Any())
-                            {
-                                @foreach (var tenant in Model.SearchResults)
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <strong>Tenants</strong>
+            <span class="text-muted small">@Model.TotalItems total</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Company</th>
+                        <th>Contact</th>
+                        <th>Email</th>
+                        <th class="text-center">Meters</th>
+                        <th class="text-center">Users</th>
+                        <th class="text-center">Bills</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @if (Model.SearchResults.Any())
+                {
+                    @foreach (var tenant in Model.SearchResults)
+                    {
+                        <tr class="@(tenant.Id == Model.SelectedTenant?.Id ? "table-primary" : "")">
+                            <td>
+                                <strong>@tenant.CompanyName</strong>
+                                @if (!string.IsNullOrWhiteSpace(tenant.Phone))
                                 {
-                                    <tr class="@(tenant.Id == Model.SelectedTenant?.Id ? "table-primary" : "")">
-                                        <td>@tenant.CompanyName</td>
-                                        <td>@tenant.Contact</td>
-                                        <td>@tenant.Email</td>
-                                        <td>@tenant.Phone</td>
-                                        <td>@tenant.Outstanding.ToString("C")</td>
-                                        <td>@tenant.Overdue.ToString("C")</td>
-                                        <td class="text-center">@Html.Raw(tenant.Active ? "<i class=\"bi bi-check\"></i>" : "")</td>
-                                        <td>
-                                            <a href="~/Tenant/Management?id=@tenant.Id" class="btn btn-sm btn-primary">
-                                                Select
-                                            </a>
-                                        </td>
-                                    </tr>
+                                    <div class="small text-muted">@tenant.Phone</div>
                                 }
-                            }
-                            else
-                            {
-                                <tr>
-                                    <td colspan="7" class="text-center">
-                                        <span>No tenants found. Use the search above or create a new tenant.</span>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination -->
-                @if (Model.TotalPages > 1)
-                {
-                    <div class="d-flex justify-content-between align-items-center p-2 bg-light border-top">
-                        <div>
-                            <nav aria-label="Page navigation">
-                                <ul class="pagination mb-0">
-                                    <li class="page-item @(Model.CurrentPage == 1 ? "disabled" : "")">
-                                        <a class="page-link" href="@Url.Action("Search", "Tenant", new { searchCriteria = Model.SearchCriteria, searchTerm = Model.SearchTerm, page = 1 })" aria-label="First">
-                                            <span aria-hidden="true">&laquo;</span>
-                                        </a>
-                                    </li>
-
-                                    @{
-                                        int startPage = Math.Max(1, Model.CurrentPage - 2);
-                                        int endPage = Math.Min(Model.TotalPages, startPage + 4);
-                                        startPage = Math.Max(1, endPage - 4);
-                                    }
-
-                                    @for (int i = startPage; i <= endPage; i++)
-                                    {
-                                        <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
-                                            <a class="page-link" href="@Url.Action("Search", "Tenant", new { searchCriteria = Model.SearchCriteria, searchTerm = Model.SearchTerm, page = i })">@i</a>
-                                        </li>
-                                    }
-
-                                    <li class="page-item @(Model.CurrentPage == Model.TotalPages ? "disabled" : "")">
-                                        <a class="page-link" href="@Url.Action("Search", "Tenant", new { searchCriteria = Model.SearchCriteria, searchTerm = Model.SearchTerm, page = Model.TotalPages })" aria-label="Last">
-                                            <span aria-hidden="true">&raquo;</span>
-                                        </a>
-                                    </li>
-                                </ul>
-                            </nav>
-                        </div>
-                        <div>
-                            <span class="text-muted">@Model.CurrentPage of @Model.TotalPages pages (@Model.TotalItems items)</span>
-                        </div>
-                    </div>
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(tenant.Contact) ? "—" : tenant.Contact)</td>
+                            <td>@(string.IsNullOrWhiteSpace(tenant.Email) ? "—" : tenant.Email)</td>
+                            <td class="text-center">@tenant.AssignedMeterCount</td>
+                            <td class="text-center">@tenant.UserCount</td>
+                            <td class="text-center">@tenant.BillCount</td>
+                            <td>
+                                @if (tenant.Active)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a asp-controller="Tenant" asp-action="Management" asp-route-id="@tenant.Id" class="btn btn-sm btn-outline-primary">Open</a>
+                            </td>
+                        </tr>
+                    }
                 }
-                else if (Model.TotalItems > 0)
+                else
                 {
-                    <div class="d-flex justify-content-end align-items-center p-2 bg-light border-top">
-                        <span class="text-muted">@Model.TotalItems @(Model.TotalItems == 1 ? "item" : "items")</span>
-                    </div>
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">No tenants found.</td>
+                    </tr>
                 }
-            </div>
+                </tbody>
+            </table>
         </div>
 
-        <!-- Tabs -->
-        <ul class="nav nav-tabs mb-4" id="tenantTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="consumption-tab" data-bs-toggle="tab" data-bs-target="#consumption" type="button" role="tab" aria-controls="consumption" aria-selected="false">Consumption</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="tenant-management-tab" data-bs-toggle="tab" data-bs-target="#tenant-management" type="button" role="tab" aria-controls="tenant-management" aria-selected="true">Tenant Management</button>
-            </li>
-        </ul>
-
-        <!-- Tab Content -->
-        <div class="tab-content" id="tenantTabsContent">
-            <!-- Consumption Tab -->
-            <div class="tab-pane fade" id="consumption" role="tabpanel" aria-labelledby="consumption-tab">
-                <partial name="~/Views/Tenant/_Consumption.cshtml" model="Model" />
+        @if (Model.TotalPages > 1)
+        {
+            <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                <span class="small text-muted">Page @Model.CurrentPage of @Model.TotalPages</span>
+                <div class="btn-group">
+                    <a class="btn btn-sm btn-outline-secondary @(Model.CurrentPage <= 1 ? "disabled" : "")"
+                       asp-controller="Tenant" asp-action="Search"
+                       asp-route-searchCriteria="@Model.SearchCriteria"
+                       asp-route-searchTerm="@Model.SearchTerm"
+                       asp-route-page="@(Model.CurrentPage - 1)">Previous</a>
+                    <a class="btn btn-sm btn-outline-secondary @(Model.CurrentPage >= Model.TotalPages ? "disabled" : "")"
+                       asp-controller="Tenant" asp-action="Search"
+                       asp-route-searchCriteria="@Model.SearchCriteria"
+                       asp-route-searchTerm="@Model.SearchTerm"
+                       asp-route-page="@(Model.CurrentPage + 1)">Next</a>
+                </div>
             </div>
+        }
+    </div>
 
-            <!-- Tenant Management Tab -->
-            <div class="tab-pane fade show active" id="tenant-management" role="tabpanel" aria-labelledby="tenant-management-tab">
-                <partial name="~/Views/Tenant/_TenantManagement.cshtml" model="Model" />
-            </div>
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tenant-management" type="button">Tenant</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#consumption" type="button">Meters & Consumption</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="tenant-management">
+            <partial name="~/Views/Tenant/_TenantManagement.cshtml" model="Model" />
+        </div>
+        <div class="tab-pane fade" id="consumption">
+            <partial name="~/Views/Tenant/_Consumption.cshtml" model="Model" />
         </div>
     </div>
 </div>
 
 @section Scripts {
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Make sure checkboxes work correctly (to handle the hidden fields)
-            document.querySelectorAll('input[type="checkbox"]').forEach(function(checkbox) {
-                checkbox.addEventListener('change', function() {
-                    // Find the associated hidden field
-                    var hiddenField = checkbox.nextElementSibling;
-                    if (hiddenField && hiddenField.type === 'hidden') {
-                        // Update hidden field value based on checkbox state
-                        hiddenField.disabled = checkbox.checked;
-                    }
-                });
-            });
-        });
-    </script>
+    <script src="~/js/tenant-scripts.js"></script>
 }
