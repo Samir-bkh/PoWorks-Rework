@@ -120,6 +120,25 @@ public class DashboardModernizationTests
     }
 
     [Fact]
+    public void ChartData_MissingMeterBucket_RemainsNullInsteadOfFakeZero()
+    {
+        var service = CreateDashboardService();
+        var data = new List<ConsumptionQueryResult>
+        {
+            new() { MeterId = 1, MeterName = "Electricity A", Unit = "kWh", ReadingDate = "2026-09-01", TotalConsumption = 10 },
+            new() { MeterId = 1, MeterName = "Electricity A", Unit = "kWh", ReadingDate = "2026-09-02", TotalConsumption = 12 },
+            new() { MeterId = 2, MeterName = "Electricity B", Unit = "kWh", ReadingDate = "2026-09-01", TotalConsumption = 8 }
+        };
+
+        var result = service.ProcessChartData(data);
+        var meterB = Assert.Single(result.Datasets.Where(d => d.MeterName == "Electricity B"));
+
+        Assert.Equal(2, meterB.Data.Count);
+        Assert.Equal(8d, meterB.Data[0]);
+        Assert.Null(meterB.Data[1]);
+    }
+
+    [Fact]
     public void DashboardView_UsesModernContextKpisFiltersAndEmptyState()
     {
         var view = ReadSource("Views", "Home", "Index.cshtml");
@@ -143,23 +162,23 @@ public class DashboardModernizationTests
     }
 
     [Fact]
-    public void DashboardChart_ShowsCompactTooltipOnlyOnHoveredDataElements()
+    public void DashboardChart_UsesCurveProximityHoverWithoutPermanentPointCloud()
     {
         var script = ReadSource("wwwroot", "js", "energy-dashboard.js");
+        var view = ReadSource("Views", "Home", "Index.cshtml");
 
-        Assert.Contains("Tenant: {tenantName}", script);
-        Assert.Contains("{valueY.formatNumber('#,###.00')} {unit}", script);
-        Assert.Contains("Consumption ($" + "{axisUnit})", script);
-        Assert.Contains("bindHoverTooltip(series.columns.template, tooltip)", script);
-        Assert.Contains("bindHoverTooltip(marker, tooltip)", script);
-        Assert.Contains("tooltipPosition: 'pointer'", script);
-        Assert.Contains("interactive: true", script);
+        Assert.Contains("cursor.events.on('cursormoved'", script);
+        Assert.Contains("distanceToSegment", script);
+        Assert.Contains("best.distance <= 12", script);
+        Assert.Contains("showCurveHover", script);
+        Assert.Contains("hideCurveHover", script);
+        Assert.Contains("pointToPlotPixels", script);
+        Assert.Contains("tooltipText:", script);
         Assert.DoesNotContain("cursor.set('snapToSeries'", script);
         Assert.DoesNotContain("cursor.set('maxTooltipDistance'", script);
-        Assert.Contains("fill: am5.color(0xFFFFFF)", script);
-        Assert.Contains("maxWidth: 220", script);
-        Assert.DoesNotContain("pointerOrientation: 'vertical'", script);
-        Assert.DoesNotContain("tooltip: am5.Tooltip.new(root, {})", script);
+        Assert.Contains("dateFilter === 'hourly' ? 'hour'", script);
+        Assert.Contains("tabHourly", view);
+        Assert.Contains("Hover close to a curve", view);
         Assert.Contains("setChartEmpty", script);
         Assert.Contains("Intl.NumberFormat", script);
     }
@@ -174,6 +193,7 @@ public class DashboardModernizationTests
         Assert.Contains("computeCompareRange", script);
         Assert.Contains("applyCurveLimit", script);
         Assert.Contains("Others", script);
+        Assert.Contains("tabHourly", view);
         Assert.Contains("tabDaily", view);
         Assert.Contains("tabMonthly", view);
         Assert.Contains("tabYearly", view);

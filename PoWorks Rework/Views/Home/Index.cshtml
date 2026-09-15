@@ -126,6 +126,7 @@
 
         <div class="card-body">
             <select id="dateFilter" class="d-none" aria-hidden="true">
+                <option value="hourly">Hourly</option>
                 <option value="daily" selected>Daily</option>
                 <option value="monthly">Monthly</option>
                 <option value="yearly">Yearly</option>
@@ -238,7 +239,7 @@
             <div class="chart-title-wrap">
                 <div>
                     <h2 class="chart-title">Energy Consumption</h2>
-                    <div class="dashboard-note mt-1">Hover a point for exact meter, tenant, date and consumption.</div>
+                    <div class="dashboard-note mt-1">Hover close to a curve for the exact measured bucket, meter, tenant and consumption.</div>
                 </div>
                 <span class="chart-unit-pill" id="chartUnitBadge">
                     <i class="bi bi-rulers"></i><span>—</span>
@@ -266,6 +267,7 @@
         <div class="card-body pt-3">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                 <div class="dashboard-segmented" role="group" aria-label="Aggregation">
+                    <button type="button" class="btn btn-sm" id="tabHourly">Hourly</button>
                     <button type="button" class="btn btn-sm active" id="tabDaily">Daily</button>
                     <button type="button" class="btn btn-sm" id="tabMonthly">Monthly</button>
                     <button type="button" class="btn btn-sm" id="tabYearly">Annual</button>

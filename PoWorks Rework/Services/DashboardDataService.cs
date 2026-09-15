@@ -446,7 +446,7 @@ namespace PoWorks_Rework.Services
                     BackgroundColor = color,
                     BorderColor = color,
                     Data = result.Labels
-                        .Select(label => meterGroup.FirstOrDefault(d => d.ReadingDate == label)?.TotalConsumption ?? 0)
+                        .Select(label => meterGroup.FirstOrDefault(d => d.ReadingDate == label)?.TotalConsumption)
                         .ToList()
                 };
                 result.Datasets.Add(dataset);

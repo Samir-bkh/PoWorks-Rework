@@ -289,7 +289,7 @@ namespace PoWorks_Rework.Models
         public string MeterName { get; set; } = string.Empty;
         public string Unit { get; set; } = string.Empty;
         public string TenantName { get; set; } = string.Empty;
-        public List<double> Data { get; set; } = new List<double>();
+        public List<double?> Data { get; set; } = new List<double?>();
         public string BackgroundColor { get; set; } = string.Empty;
         public string BorderColor { get; set; } = string.Empty;
 

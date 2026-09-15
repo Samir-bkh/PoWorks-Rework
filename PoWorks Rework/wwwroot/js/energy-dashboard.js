@@ -113,6 +113,10 @@
 
         document.getElementById('fullscreenChart')?.addEventListener('click', toggleFullscreen);
 
+        document.getElementById('tabHourly')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab('hourly', 'tabHourly');
+        });
         document.getElementById('tabDaily')?.addEventListener('click', (e) => {
             e.preventDefault();
             switchTab('daily', 'tabDaily');
@@ -199,6 +203,10 @@
             const today = new Date();
 
             switch (filterType) {
+                case 'hourly':
+                    startDate.value = formatDate(new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000));
+                    endDate.value = formatDate(today);
+                    break;
                 case 'daily':
                     startDate.value = formatDate(new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000));
                     endDate.value = formatDate(today);
@@ -425,15 +433,21 @@
                 meterName,
                 tenantName,
                 unit,
-                data: (ds.data || []).map((value, index) => ({
-                    x: points[index],
-                    y: Number(value) || 0,
-                    meterName,
-                    tenantName,
-                    unit,
-                    seriesLabel: ds.label,
-                    periodLabel: 'Current period'
-                }))
+                data: (ds.data || []).map((value, index) => {
+                    const numericValue = value === null || value === undefined
+                        ? null
+                        : Number(value);
+
+                    return {
+                        x: points[index],
+                        y: Number.isFinite(numericValue) ? numericValue : null,
+                        meterName,
+                        tenantName,
+                        unit,
+                        seriesLabel: ds.label,
+                        periodLabel: 'Current period'
+                    };
+                })
             };
         });
 
@@ -460,7 +474,8 @@
 
         const withTotals = data.datasets.map(ds => ({
             ds,
-            total: ds.data.reduce((sum, point) => sum + ((point && point.y) || 0), 0)
+            total: ds.data.reduce((sum, point) =>
+                sum + (point && Number.isFinite(point.y) ? point.y : 0), 0)
         })).sort((a, b) => b.total - a.total);
 
         const keptSlots = Math.max(1, maxCurves - 1);
@@ -472,8 +487,8 @@
         const othersMap = new Map();
         rest.forEach(({ ds }) => {
             ds.data.forEach(point => {
-                if (!point) return;
-                othersMap.set(point.x, (othersMap.get(point.x) || 0) + (point.y || 0));
+                if (!point || !Number.isFinite(point.y)) return;
+                othersMap.set(point.x, (othersMap.get(point.x) || 0) + point.y);
             });
         });
 
@@ -712,11 +727,13 @@
         const timeUnit =
             dateFilter === 'yearly' ? 'year' :
             dateFilter === 'monthly' ? 'month' :
+            dateFilter === 'hourly' ? 'hour' :
             'day';
 
         const dateFormat =
             dateFilter === 'yearly' ? 'yyyy' :
             dateFilter === 'monthly' ? 'MMM yyyy' :
+            dateFilter === 'hourly' ? 'dd MMM HH:mm' :
             'dd MMM yyyy';
 
         const startDateInput = document.getElementById('startDate').value;
@@ -807,14 +824,127 @@
             strokeOpacity: .35,
             strokeDasharray: [3, 3]
         });
-        // Tooltips are deliberately bound to rendered data elements below.
-        // The cursor remains available for crosshair/zoom, but must not trigger
-        // a tooltip just because the pointer is somewhere in the plot area.
-        const bindHoverTooltip = (target, tooltip) => {
-            target.setAll({
-                tooltip,
-                tooltipPosition: 'pointer',
-                interactive: true
+        // Keep the cursor for engineering-style inspection and zooming, but
+        // drive line/area hover ourselves. A tooltip is shown only when the
+        // pointer is physically close to a rendered curve (12 px tolerance).
+        const curveHoverMarker = chart.plotContainer.children.push(am5.Circle.new(root, {
+            radius: 5,
+            fill: am5.color(0x2563EB),
+            stroke: am5.color(0xFFFFFF),
+            strokeWidth: 2,
+            visible: false,
+            interactive: false,
+            layer: 1000
+        }));
+
+        const curveHoverLabel = chart.plotContainer.children.push(am5.Label.new(root, {
+            fill: am5.color(0x0F172A),
+            fontSize: 12,
+            lineHeight: 18,
+            maxWidth: 260,
+            oversizedBehavior: 'wrap',
+            paddingTop: 8,
+            paddingRight: 10,
+            paddingBottom: 8,
+            paddingLeft: 10,
+            visible: false,
+            interactive: false,
+            layer: 1001,
+            background: am5.RoundedRectangle.new(root, {
+                fill: am5.color(0xFFFFFF),
+                fillOpacity: 1,
+                stroke: am5.color(0xCBD5E1),
+                strokeOpacity: 1,
+                cornerRadiusTL: 8,
+                cornerRadiusTR: 8,
+                cornerRadiusBL: 8,
+                cornerRadiusBR: 8,
+                shadowColor: am5.color(0x0F172A),
+                shadowBlur: 12,
+                shadowOffsetY: 4,
+                shadowOpacity: .12
+            })
+        }));
+
+        const hoverSeries = [];
+        const isFinitePoint = point =>
+            point && Number.isFinite(point.x) && Number.isFinite(point.y);
+
+        const pointToPlotPixels = point => ({
+            x: xRenderer.positionToCoordinate(
+                xAxis.toGlobalPosition(xAxis.valueToPosition(point.x))),
+            y: yRenderer.positionToCoordinate(
+                yAxis.toGlobalPosition(yAxis.valueToPosition(point.y)))
+        });
+
+        const distanceToSegment = (point, start, end) => {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const lengthSquared = dx * dx + dy * dy;
+
+            if (lengthSquared === 0) {
+                return { distance: Math.hypot(point.x - start.x, point.y - start.y), t: 0 };
+            }
+
+            const rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+            const t = Math.max(0, Math.min(1, rawT));
+            const projected = {
+                x: start.x + t * dx,
+                y: start.y + t * dy
+            };
+
+            return {
+                distance: Math.hypot(point.x - projected.x, point.y - projected.y),
+                t
+            };
+        };
+
+        const formatHoverDate = timestamp => {
+            const options =
+                dateFilter === 'yearly' ? { year: 'numeric' } :
+                dateFilter === 'monthly' ? { month: 'short', year: 'numeric' } :
+                dateFilter === 'hourly'
+                    ? { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+                    : { day: '2-digit', month: 'short', year: 'numeric' };
+
+            return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp));
+        };
+
+        const hideCurveHover = () => {
+            curveHoverMarker.set('visible', false);
+            curveHoverLabel.set('visible', false);
+        };
+
+        const showCurveHover = (model, point, coords) => {
+            const value = new Intl.NumberFormat(undefined, {
+                maximumFractionDigits: 2
+            }).format(point.y);
+            const tenant = point.tenantName || model.dataset.tenantName || 'Unassigned';
+            const period = point.periodLabel || 'Current period';
+            const unit = point.unit || model.dataset.unit || '';
+
+            curveHoverMarker.setAll({
+                x: coords.x,
+                y: coords.y,
+                fill: model.color,
+                visible: true
+            });
+
+            curveHoverLabel.set('text',
+                `${model.dataset.meterName || model.dataset.label}\n` +
+                `${formatHoverDate(point.x)} · ${value} ${unit}\n` +
+                `Tenant: ${tenant} · ${period}`);
+
+            const plotWidth = chart.plotContainer.width();
+            const placeLeft = coords.x > Math.max(280, plotWidth - 285);
+            const placeBelow = coords.y < 90;
+
+            curveHoverLabel.setAll({
+                x: placeLeft ? coords.x - 12 : coords.x + 12,
+                centerX: placeLeft ? am5.p100 : 0,
+                y: placeBelow ? coords.y + 12 : coords.y - 12,
+                centerY: placeBelow ? 0 : am5.p100,
+                visible: true
             });
         };
 
@@ -841,42 +971,32 @@
                 ? othersColor
                 : colorForKey.get(ds.pairKey || ds.label);
 
-            const tooltip = am5.Tooltip.new(root, {
-                getFillFromSprite: false,
-                getStrokeFromSprite: false,
-                autoTextColor: false,
-                centerX: am5.p50,
-                dy: -10
-            });
-            tooltip.get('background').setAll({
-                fill: am5.color(0xFFFFFF),
-                fillOpacity: 1,
-                stroke: am5.color(0xCBD5E1),
-                strokeOpacity: 1,
-                cornerRadius: 8,
-                shadowColor: am5.color(0x0F172A),
-                shadowBlur: 12,
-                shadowOffsetY: 4,
-                shadowOpacity: .12
-            });
-            tooltip.label.setAll({
-                fill: am5.color(0x0F172A),
-                fontSize: 12,
-                lineHeight: 17,
-                maxWidth: 220,
-                oversizedBehavior: 'wrap',
-                paddingTop: 8,
-                paddingRight: 10,
-                paddingBottom: 8,
-                paddingLeft: 10
-            });
-            tooltip.label.set('text',
-                `[bold]{meterName}[/]\n` +
-                `{valueX.formatDate('${dateFormat}')} · [bold]{valueY.formatNumber('#,###.00')} {unit}[/]\n` +
-                `Tenant: {tenantName} · {periodLabel}`);
-
             let series;
             if (chartType === 'bar') {
+                const tooltip = am5.Tooltip.new(root, {
+                    getFillFromSprite: false,
+                    getStrokeFromSprite: false,
+                    autoTextColor: false
+                });
+                tooltip.get('background').setAll({
+                    fill: am5.color(0xFFFFFF),
+                    fillOpacity: 1,
+                    stroke: am5.color(0xCBD5E1),
+                    strokeOpacity: 1,
+                    cornerRadius: 8,
+                    shadowColor: am5.color(0x0F172A),
+                    shadowBlur: 12,
+                    shadowOffsetY: 4,
+                    shadowOpacity: .12
+                });
+                tooltip.label.setAll({
+                    fill: am5.color(0x0F172A),
+                    fontSize: 12,
+                    lineHeight: 17,
+                    maxWidth: 220,
+                    oversizedBehavior: 'wrap'
+                });
+
                 series = chart.series.push(am5xy.ColumnSeries.new(root, {
                     name: ds.label,
                     xAxis,
@@ -891,9 +1011,14 @@
                     cornerRadiusTR: 5,
                     width: am5.percent(72),
                     fillOpacity: ds.isCompare ? .35 : (ds.isOthers ? .48 : .82),
-                    strokeOpacity: .9
+                    strokeOpacity: .9,
+                    tooltip,
+                    tooltipPosition: 'pointer',
+                    tooltipText:
+                        `[bold]{meterName}[/]\n` +
+                        `{valueX.formatDate('${dateFormat}')} · [bold]{valueY.formatNumber('#,###.00')} {unit}[/]\n` +
+                        `Tenant: {tenantName} · {periodLabel}`
                 });
-                bindHoverTooltip(series.columns.template, tooltip);
             } else {
                 series = chart.series.push(am5xy.LineSeries.new(root, {
                     name: ds.label,
@@ -903,8 +1028,7 @@
                     valueXField: 'x',
                     fill: color,
                     stroke: color,
-                    connect: false,
-                    minBulletDistance: 18
+                    connect: false
                 }));
 
                 let dashArray;
@@ -920,23 +1044,96 @@
 
                 series.fills.template.setAll({
                     visible: chartType === 'area',
-                    fillOpacity: ds.isOthers ? .05 : (ds.isCompare ? .03 : .12)
+                    fillOpacity: ds.isOthers ? .05 : (ds.isCompare ? .03 : .10)
                 });
 
-                series.bullets.push(() => {
-                    const marker = am5.Circle.new(root, {
-                        radius: ds.isCompare ? 3 : 4.5,
-                        fill: color,
-                        stroke: am5.color(0xFFFFFF),
-                        strokeWidth: 2
-                    });
-                    bindHoverTooltip(marker, tooltip);
-                    return am5.Bullet.new(root, { sprite: marker });
-                });
+                const finitePoints = (ds.data || []).filter(isFinitePoint);
+                if (finitePoints.length <= 2) {
+                    series.bullets.push(() => am5.Bullet.new(root, {
+                        sprite: am5.Circle.new(root, {
+                            radius: 3,
+                            fill: color,
+                            stroke: am5.color(0xFFFFFF),
+                            strokeWidth: 1.5
+                        })
+                    }));
+                }
+
+                hoverSeries.push({ series, dataset: ds, color });
             }
 
             series.data.setAll(ds.data);
         });
+
+        if (chartType !== 'bar') {
+            cursor.events.on('cursormoved', ev => {
+                const positionX = ev.target.getPrivate('positionX');
+                const positionY = ev.target.getPrivate('positionY');
+
+                if (!Number.isFinite(positionX) || !Number.isFinite(positionY)) {
+                    hideCurveHover();
+                    return;
+                }
+
+                const cursorPoint = {
+                    x: xRenderer.positionToCoordinate(positionX),
+                    y: yRenderer.positionToCoordinate(positionY)
+                };
+
+                let best = null;
+
+                hoverSeries.forEach(model => {
+                    const points = model.dataset.data || [];
+
+                    for (let index = 0; index < points.length; index++) {
+                        const current = points[index];
+                        if (!isFinitePoint(current)) continue;
+
+                        const currentPixels = pointToPlotPixels(current);
+                        const pointDistance = Math.hypot(
+                            cursorPoint.x - currentPixels.x,
+                            cursorPoint.y - currentPixels.y);
+
+                        if (!best || pointDistance < best.distance) {
+                            best = {
+                                distance: pointDistance,
+                                model,
+                                point: current,
+                                coords: currentPixels
+                            };
+                        }
+
+                        const next = points[index + 1];
+                        if (!isFinitePoint(next)) continue;
+
+                        const nextPixels = pointToPlotPixels(next);
+                        const segmentHit = distanceToSegment(cursorPoint, currentPixels, nextPixels);
+
+                        if (!best || segmentHit.distance < best.distance) {
+                            const currentXDistance = Math.abs(cursorPoint.x - currentPixels.x);
+                            const nextXDistance = Math.abs(cursorPoint.x - nextPixels.x);
+                            const exactPoint = currentXDistance <= nextXDistance ? current : next;
+                            const exactCoords = exactPoint === current ? currentPixels : nextPixels;
+
+                            best = {
+                                distance: segmentHit.distance,
+                                model,
+                                point: exactPoint,
+                                coords: exactCoords
+                            };
+                        }
+                    }
+                });
+
+                if (best && best.distance <= 12) {
+                    showCurveHover(best.model, best.point, best.coords);
+                } else {
+                    hideCurveHover();
+                }
+            });
+
+            cursor.events.on('cursorhidden', hideCurveHover);
+        }
 
         const legend = chart.children.push(am5.Legend.new(root, {
             centerX: am5.p50,
@@ -1214,6 +1411,7 @@
     };
 
     window.switchTab = function (filterValue, activeBtnId) {
+        document.getElementById('tabHourly')?.classList.remove('active');
         document.getElementById('tabDaily').classList.remove('active');
         document.getElementById('tabMonthly').classList.remove('active');
         document.getElementById('tabYearly').classList.remove('active');
