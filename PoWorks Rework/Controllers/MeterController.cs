@@ -252,7 +252,7 @@ namespace PoWorks_Rework.Controllers
                     return RedirectToAction(nameof(Management));
                 }
 
-                if (!await ValidateTenantAssignmentAsync(connection, tx, tenantId))
+                if (!await ValidateTenantAssignmentAsync(connection, tx, tenantId, before.TenantId))
                 {
                     await tx.RollbackAsync();
                     TempData["ErrorMessage"] = "The selected tenant is disabled or does not belong to the current workspace.";
@@ -805,7 +805,7 @@ namespace PoWorks_Rework.Controllers
                 {
                     model.SubMeters = await _meterRepository.GetSubMetersAsync(meterId.Value);
                     model.ParentMeterOptions = BuildParentOptions(
-                        await _meterRepository.GetParentMetersAsync(meterId.Value));
+                        await _meterRepository.GetParentMetersAsync());
 
                     await using var connection = _databaseService.CreateNewConnection();
                     await connection.OpenAsync();
@@ -964,7 +964,8 @@ namespace PoWorks_Rework.Controllers
         private async Task<bool> ValidateTenantAssignmentAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction tx,
-            int? tenantId)
+            int? tenantId,
+            int? existingTenantId = null)
         {
             if (!tenantId.HasValue)
                 return true;
@@ -983,7 +984,10 @@ namespace PoWorks_Rework.Controllers
             cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
 
             var result = await cmd.ExecuteScalarAsync();
-            return result is bool active && active;
+            if (result is not bool active)
+                return false;
+
+            return active || existingTenantId == tenantId;
         }
 
         private async Task<string?> ValidateParentAssignmentAsync(
