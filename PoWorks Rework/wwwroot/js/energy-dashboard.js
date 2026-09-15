@@ -6,6 +6,7 @@
     const preferenceKey = 'poworks.dashboard.analytics.v3';
 
     let metricCatalog = [];
+    let dashboardAccess = { tenantLocked: false, currentTenantId: null };
     let tenants = [];
     let meters = [];
     let root = null;
@@ -135,6 +136,10 @@
 
         const payload = await response.json();
         metricCatalog = payload.metrics || [];
+        dashboardAccess = {
+            tenantLocked: payload.tenantLocked === true,
+            currentTenantId: payload.currentTenantId ?? null
+        };
 
         const select = document.getElementById('measurementMetric');
         select.innerHTML = '';
@@ -161,7 +166,9 @@
 
             tenants = await response.json() || [];
             const select = document.getElementById('tenantFilter');
-            select.innerHTML = '<option value="">All tenants</option>';
+            select.innerHTML = dashboardAccess.tenantLocked
+                ? ''
+                : '<option value="">All tenants</option>';
 
             tenants.forEach(function (tenant) {
                 const option = document.createElement('option');
@@ -169,6 +176,15 @@
                 option.textContent = tenant.name;
                 select.appendChild(option);
             });
+
+            if (dashboardAccess.tenantLocked) {
+                const tenantId = dashboardAccess.currentTenantId;
+                if (tenantId !== null && tenantId !== undefined) {
+                    select.value = String(tenantId);
+                }
+                select.disabled = true;
+                select.title = 'Tenant accounts are restricted to their own analytical scope.';
+            }
         } catch (error) {
             console.error(error);
             tenants = [];
