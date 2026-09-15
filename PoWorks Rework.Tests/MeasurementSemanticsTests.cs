@@ -119,6 +119,15 @@ public class MeasurementSemanticsTests
     }
 
     [Fact]
+    public void MissingUnit_IsRawAndNeverImplicitEnergy()
+    {
+        Assert.Equal("raw", MeasurementSemantics.GetFamilyForUnit(null));
+        Assert.Equal("raw", MeasurementSemantics.GetFamilyForUnit(""));
+        Assert.Contains("raw", MeasurementSemantics.GetCompatibleMetrics(null));
+        Assert.DoesNotContain("energy", MeasurementSemantics.GetCompatibleMetrics(null));
+    }
+
+    [Fact]
     public void RawMeasurements_KeepTheirOriginalUnit()
     {
         Assert.Equal(
