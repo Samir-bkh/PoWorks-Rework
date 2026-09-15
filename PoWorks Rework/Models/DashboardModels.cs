@@ -98,7 +98,7 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// The meter's unit of measurement.
         /// </summary>
-        public string Unit { get; set; } = "kWh";
+        public string Unit { get; set; } = string.Empty;
 
         /// <summary>
         /// The meter type (e.g. Energy).
