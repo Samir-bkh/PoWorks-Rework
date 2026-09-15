@@ -12,15 +12,18 @@ namespace PoWorks_Rework.Services
     {
         private readonly DatabaseService _databaseService;
         private readonly ICompanyContext _companyContext;
+        private readonly ConsumptionCalculationService _consumptionCalculationService;
         private readonly ILogger<DashboardAnalyticsService> _logger;
 
         public DashboardAnalyticsService(
             DatabaseService databaseService,
             ICompanyContext companyContext,
+            ConsumptionCalculationService consumptionCalculationService,
             ILogger<DashboardAnalyticsService> logger)
         {
             _databaseService = databaseService;
             _companyContext = companyContext;
+            _consumptionCalculationService = consumptionCalculationService;
             _logger = logger;
         }
 
@@ -51,6 +54,13 @@ namespace PoWorks_Rework.Services
             var companyId = _companyContext.CurrentCompanyId;
             var definition = MeasurementSemantics.GetDefinition(query.Metric);
             var metric = definition.Key;
+
+            // Energy is billable business data. Reuse the same calculation
+            // service as invoicing so the dashboard can never show a different
+            // kWh total for the same meters and date range.
+            if (metric == "energy")
+                return await GetEnergyBucketsAsync(query);
+
             var quantityMetric = definition.ValueKind == "quantity";
             var includeMeters = query.MeterIds?.Count > 0;
             var unitPredicate = MeasurementSemantics.SqlMetricPredicate(
@@ -259,6 +269,36 @@ namespace PoWorks_Rework.Services
                     companyId);
                 throw;
             }
+        }
+
+        private async Task<List<MeasurementBucketResult>> GetEnergyBucketsAsync(
+            DashboardAnalyticsQuery query)
+        {
+            var rows = await _consumptionCalculationService.GetConsumptionSeriesAsync(
+                new MeterReadingFilters
+                {
+                    DateFilter = query.DateFilter,
+                    TenantId = query.TenantId,
+                    MeterIds = query.MeterIds?.Distinct().ToList() ?? new List<int>(),
+                    StartDate = query.StartDate,
+                    EndDate = query.EndDate,
+                    GroupBy = "meter",
+                    ActiveOnly = true,
+                    IncludeNullTenants = true,
+                    Limit = int.MaxValue
+                });
+
+            return rows.Select(row => new MeasurementBucketResult
+            {
+                MeterId = row.MeterId,
+                MeterName = row.MeterName,
+                TenantId = row.TenantId,
+                TenantName = row.TenantName,
+                SourceUnit = row.Unit,
+                CanonicalUnit = "kWh",
+                ReadingDate = row.ReadingDate,
+                Value = row.TotalConsumption
+            }).ToList();
         }
 
         private static string GetBucketExpression(
