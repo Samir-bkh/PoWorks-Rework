@@ -12,6 +12,8 @@
     let root = null;
     let chart = null;
     let exporting = null;
+    let lastAnalyticsPayload = null;
+    let lastAnalyticsRequest = null;
     let autoRefreshInterval = null;
     let reloadTimer = null;
 
@@ -98,6 +100,7 @@
         document.getElementById('refreshMeters')?.addEventListener('click', refreshMeters);
         document.getElementById('autoRefresh')?.addEventListener('click', toggleAutoRefresh);
         document.getElementById('exportChart')?.addEventListener('click', exportChart);
+        document.getElementById('exportCsv')?.addEventListener('click', exportCsv);
         document.getElementById('fullscreenChart')?.addEventListener('click', toggleFullscreen);
         document.getElementById('resetZoomBtn')?.addEventListener('click', resetZoom);
 
@@ -759,6 +762,9 @@
 
             if (!response.ok) throw new Error('HTTP ' + response.status);
             const payload = await response.json();
+
+            lastAnalyticsPayload = payload;
+            lastAnalyticsRequest = request;
 
             if (payload.success === false) {
                 disposeChart();
@@ -1508,6 +1514,105 @@
 
         exporting.download('png');
         showNotification('Chart export started.', 'success');
+    }
+
+    function exportCsv() {
+        const current = lastAnalyticsPayload?.chartData;
+        if (!current?.datasets?.length || !lastAnalyticsRequest) {
+            showNotification('No analytical data is available to export.', 'warning');
+            return;
+        }
+
+        const metadata = lastAnalyticsPayload.metadata || {};
+        const rows = [
+            [
+                'Period',
+                'Bucket',
+                'Series',
+                'Tenant',
+                'Measurement',
+                'Unit',
+                'Value',
+                'Source count'
+            ]
+        ];
+
+        appendCsvPeriod(
+            rows,
+            'Current',
+            current,
+            metadata.metricLabel || metadata.metric || 'Measurement');
+
+        if (
+            document.getElementById('modeComparison')?.checked === true &&
+            lastAnalyticsPayload.compareChartData?.datasets?.length) {
+            appendCsvPeriod(
+                rows,
+                'Comparison',
+                lastAnalyticsPayload.compareChartData,
+                metadata.metricLabel || metadata.metric || 'Measurement');
+        }
+
+        const csv = rows
+            .map(function (row) {
+                return row.map(csvCell).join(',');
+            })
+            .join('\r\n');
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const metric = String(metadata.metric || 'analytics')
+            .replace(/[^a-z0-9_-]+/gi, '-')
+            .replace(/^-+|-+$/g, '');
+        const start = lastAnalyticsRequest.startDate || 'start';
+        const end = lastAnalyticsRequest.endDate || 'end';
+
+        link.href = url;
+        link.download = 'poworks-' + metric + '-' + start + '-to-' + end + '.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(function () {
+            URL.revokeObjectURL(url);
+        }, 0);
+
+        showNotification('CSV data export started.', 'success');
+    }
+
+    function appendCsvPeriod(rows, periodName, chartData, metricLabel) {
+        const labels = chartData.labels || [];
+
+        (chartData.datasets || []).forEach(function (dataset) {
+            (dataset.data || []).forEach(function (value, index) {
+                if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+                    return;
+                }
+
+                rows.push([
+                    periodName,
+                    labels[index] || '',
+                    dataset.label || dataset.meterName || dataset.seriesKey || '',
+                    dataset.tenantName || '',
+                    metricLabel,
+                    dataset.unit || '',
+                    Number(value),
+                    Number(dataset.sourceCount) || 1
+                ]);
+            });
+        });
+    }
+
+    function csvCell(value) {
+        let text = String(value === null || value === undefined ? '' : value);
+
+        // Prevent spreadsheet formula injection when names/labels originate
+        // from configurable tenant or meter data.
+        if (/^[=+\-@]/.test(text)) {
+            text = "'" + text;
+        }
+
+        return '"' + text.replaceAll('"', '""') + '"';
     }
 
     function resetZoom() {
