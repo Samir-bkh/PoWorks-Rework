@@ -50,7 +50,7 @@
                             class="btn btn-outline-danger"
                             formaction="@Url.Action("DeleteTenant", "TenantManagement")"
                             name="tenantId" value="@Model.SelectedTenant.Id"
-                            disabled="@(!Model.Dependencies.CanDelete)"
+                            disabled="@(!Model.Dependencies.CanDelete ? "disabled" : null)"
                             title="@(Model.Dependencies.CanDelete ? "Delete this empty tenant" : "Disable the tenant instead. Permanent deletion is blocked while linked data exists.")"
                             onclick="return confirm('Permanently delete this empty tenant?');">
                         Delete
