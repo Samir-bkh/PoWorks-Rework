@@ -86,6 +86,9 @@ public class AuditLoggingTests
         Assert.Contains("asp-route-showTechnical", view);
         Assert.Contains("table table-sm", view);
         Assert.Contains("text-overflow: ellipsis", view);
+        Assert.Contains("color: var(--bs-emphasis-color) !important", view);
+        Assert.Contains("audit-action-header", view);
+        Assert.Contains("audit-status-header", view);
     }
 
     [Fact]
