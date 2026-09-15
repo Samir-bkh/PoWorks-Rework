@@ -124,6 +124,27 @@ public class DashboardAnalyticsEngineTests
     }
 
     [Fact]
+    public void RequestedSeriesKeys_KeepComparisonOnPrimaryVisibleTenants()
+    {
+        var query = BaseQuery("energy", "tenant", "sum");
+        query.SeriesKeys = new List<string> { "tenant:20" };
+
+        var rows = new List<MeasurementBucketResult>
+        {
+            Row(1, "A", 10, "Tenant A", "2026-09-15", 100),
+            Row(2, "B", 20, "Tenant B", "2026-09-15", 5),
+            Row(3, "C", 30, "Tenant C", "2026-09-15", 500)
+        };
+
+        var result = DashboardAnalyticsEngine.Build(query, rows);
+
+        var dataset = Assert.Single(result.ChartData.Datasets);
+        Assert.Equal("tenant:20", dataset.SeriesKey);
+        Assert.Equal("Tenant B", dataset.Label);
+        Assert.Equal(5d, dataset.Data.Single()!.Value);
+    }
+
+    [Fact]
     public void AllTenantAggregate_RankingIsTenantBased()
     {
         var query = BaseQuery("energy", "aggregate", "sum");
