@@ -22,6 +22,14 @@ public class MeasurementSemanticsTests
     }
 
     [Fact]
+    public void UnitNormalization_ToleratesNonBreakingSpacesAndUnicodeSymbols()
+    {
+        Assert.Equal("energy", MeasurementSemantics.GetFamilyForUnit("k\u00A0Wh"));
+        Assert.Equal("flow", MeasurementSemantics.GetFamilyForUnit("m³ / h"));
+        Assert.Equal("temperature", MeasurementSemantics.GetFamilyForUnit("° C"));
+    }
+
+    [Fact]
     public void PowerSources_AreAvailableAsPowerAndDerivedEnergy()
     {
         var metrics = MeasurementSemantics.GetCompatibleMetrics("kW");
