@@ -9,6 +9,13 @@ test('parseBucketTimestamp supports hourly, daily, monthly and annual buckets', 
     assert.ok(Number.isFinite(core.parseBucketTimestamp('2026')));
 });
 
+test('shiftIsoDateByYears keeps calendar dates and clamps leap day', () => {
+    assert.equal(core.shiftIsoDateByYears('2026-09-15', -1), '2025-09-15');
+    assert.equal(core.shiftIsoDateByYears('2028-02-29', -1), '2027-02-28');
+    assert.equal(core.shiftIsoDateByYears('2024-02-29', 4), '2028-02-29');
+    assert.equal(core.shiftIsoDateByYears('not-a-date', -1), null);
+});
+
 test('toTimeSeries preserves metadata and missing buckets as null instead of zero', () => {
     const result = core.toTimeSeries({
         labels: ['2026-09-15 10:00', '2026-09-15 11:00'],
