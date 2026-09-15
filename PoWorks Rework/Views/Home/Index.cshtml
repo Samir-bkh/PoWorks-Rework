@@ -29,10 +29,27 @@
                         title="Refresh the current analytical view every 30 seconds">
                     <i class="bi bi-broadcast-pin me-1"></i> Live refresh
                 </button>
-                <button id="exportChart" class="btn btn-sm btn-primary dashboard-action" type="button"
-                        title="Export the current chart as PNG">
-                    <i class="bi bi-download me-1"></i> Export
-                </button>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-primary dashboard-action dropdown-toggle"
+                            type="button"
+                            id="exportMenu"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                        <i class="bi bi-download me-1"></i> Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="exportMenu">
+                        <li>
+                            <button id="exportChart" class="dropdown-item" type="button">
+                                <i class="bi bi-image me-2"></i>Chart as PNG
+                            </button>
+                        </li>
+                        <li>
+                            <button id="exportCsv" class="dropdown-item" type="button">
+                                <i class="bi bi-filetype-csv me-2"></i>Data as CSV
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
 
