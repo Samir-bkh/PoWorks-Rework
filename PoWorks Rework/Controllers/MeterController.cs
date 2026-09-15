@@ -419,6 +419,17 @@ namespace PoWorks_Rework.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to delete meter {MeterId}", meterId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "DELETE_FAILED",
+                    EntityType = "Meter",
+                    EntityId = meterId.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Meter deletion failed.",
+                    Success = false
+                });
+
                 TempData["ErrorMessage"] = "Meter deletion failed. Check the application logs for details.";
                 return RedirectToAction(nameof(Management), new { id = meterId });
             }
@@ -555,6 +566,16 @@ namespace PoWorks_Rework.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Bulk meter deletion failed in workspace {CompanyId}", companyId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "BULK_DELETE_FAILED",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = "Bulk meter deletion failed.",
+                    Success = false
+                });
+
                 return Json(new
                 {
                     success = false,
@@ -760,6 +781,16 @@ namespace PoWorks_Rework.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Bulk meter update failed in workspace {CompanyId}", companyId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "BULK_UPDATE_FAILED",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = "Bulk meter update failed.",
+                    Success = false
+                });
+
                 return Json(new
                 {
                     success = false,
@@ -783,12 +814,16 @@ namespace PoWorks_Rework.Controllers
                 Summary = await _meterRepository.GetSummaryAsync()
             };
 
-            model.SearchResults = await _meterRepository.GetMetersAsync(criteria, page, pageSize);
             model.TotalItems = await _meterRepository.GetTotalMetersCountAsync(criteria);
             model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.TotalItems / (double)pageSize));
 
             if (model.CurrentPage > model.TotalPages)
                 model.CurrentPage = model.TotalPages;
+
+            model.SearchResults = await _meterRepository.GetMetersAsync(
+                criteria,
+                model.CurrentPage,
+                pageSize);
 
             var meterId = selectedId;
             if (!meterId.HasValue && model.SearchResults.Count > 0)
