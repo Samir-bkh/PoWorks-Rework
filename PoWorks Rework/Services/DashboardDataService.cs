@@ -200,31 +200,51 @@ namespace PoWorks_Rework.Services
 
                 var latest = dateInfo.LatestReading.Value;
                 var earliest = dateInfo.EarliestReading.Value;
+                var latestDate = latest.Date;
+                var earliestDate = earliest.Date;
 
                 if (latest > DateTime.Now.AddDays(-7))
                 {
-                    suggestions.DefaultStartDate = latest.AddDays(-30);
-                    suggestions.DefaultEndDate = latest;
-                    suggestions.Message = $"Recent data available. Showing last 30 days ending {latest:yyyy-MM-dd}.";
+                    suggestions.DefaultStartDate = latestDate.AddDays(-29);
+                    suggestions.DefaultEndDate = latestDate;
+                    suggestions.Message = $"Recent data available. Showing last 30 calendar days ending {latest:yyyy-MM-dd}.";
                 }
                 else if (latest > DateTime.Now.AddDays(-90))
                 {
-                    suggestions.DefaultStartDate = latest.AddDays(-30);
-                    suggestions.DefaultEndDate = latest;
-                    suggestions.Message = $"Latest data from {latest:yyyy-MM-dd}. Showing 30 days ending at latest data.";
+                    suggestions.DefaultStartDate = latestDate.AddDays(-29);
+                    suggestions.DefaultEndDate = latestDate;
+                    suggestions.Message = $"Latest data from {latest:yyyy-MM-dd}. Showing 30 calendar days ending at latest data.";
                 }
                 else
                 {
-                    suggestions.DefaultStartDate = latest.AddDays(-60);
-                    suggestions.DefaultEndDate = latest.AddDays(1);
-                    suggestions.Message = $"Data available from {earliest:yyyy-MM-dd} to {latest:yyyy-MM-dd}. Showing 60 days around latest data.";
+                    suggestions.DefaultStartDate = latestDate.AddDays(-59);
+                    suggestions.DefaultEndDate = latestDate;
+                    suggestions.Message = $"Data available from {earliest:yyyy-MM-dd} to {latest:yyyy-MM-dd}. Showing the last 60 calendar days of available data.";
                 }
 
                 suggestions.AlternativeRanges = new List<DateRangeOption>
                 {
-                    new DateRangeOption { Name = "Last 7 days of data", StartDate = latest.AddDays(-6), EndDate = latest.AddDays(1), Description = "Recent week" },
-                    new DateRangeOption { Name = "Last month of data", StartDate = latest.AddDays(-30), EndDate = latest.AddDays(1), Description = "Recent month" },
-                    new DateRangeOption { Name = "All available data", StartDate = earliest, EndDate = latest.AddDays(1), Description = $"Full range ({(latest - earliest).Days} days)" }
+                    new DateRangeOption
+                    {
+                        Name = "Last 7 days of data",
+                        StartDate = latestDate.AddDays(-6),
+                        EndDate = latestDate,
+                        Description = "Recent week"
+                    },
+                    new DateRangeOption
+                    {
+                        Name = "Last 30 days of data",
+                        StartDate = latestDate.AddDays(-29),
+                        EndDate = latestDate,
+                        Description = "Recent month"
+                    },
+                    new DateRangeOption
+                    {
+                        Name = "All available data",
+                        StartDate = earliestDate,
+                        EndDate = latestDate,
+                        Description = $"Full range ({(latestDate - earliestDate).Days + 1} calendar days)"
+                    }
                 };
             }
             catch (Exception ex)
