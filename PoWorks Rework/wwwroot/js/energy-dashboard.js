@@ -4,6 +4,8 @@
 (function () {
     'use strict';
 
+    const chartCore = window.PoWorksEnergyChartCore;
+
     // Global variables
     let currentData = [];
     let tenants = [];
@@ -18,6 +20,10 @@
         console.log('Dashboard v5 initializing with amCharts 5...');
 
         try {
+            if (!chartCore) {
+                throw new Error('Energy chart core is not loaded');
+            }
+
             attachEventListeners();
             const initialDateFilter = document.getElementById('dateFilter');
             if (initialDateFilter) initialDateFilter.value = 'daily';
@@ -409,117 +415,34 @@
     // AMCHARTS 5 RENDERING
     // ============================================================
 
-    // Transform backend labels into MS timestamps for amCharts
-    function parseLabelToTs(label) {
-        if (typeof label === 'number') return label;
-        if (label.length === 4) return new Date(`${label}-01-01T00:00:00`).getTime();
-        if (label.length === 7) return new Date(`${label}-01T00:00:00`).getTime();
-        if (label.length === 10) return new Date(`${label}T00:00:00`).getTime();
-        return new Date(label.replace(' ', 'T') + ':00').getTime();
-    }
-
-    // Format the backend data to [{x: timestamp, y: value}] required by our amCharts series
     function toTimeSeriesFormat(chartData) {
-        if (!chartData || !chartData.labels) return chartData;
-
-        const points = chartData.labels.map(label => parseLabelToTs(label));
-        const datasets = (chartData.datasets || []).map(ds => {
-            const unit = ds.unit || 'unit';
-            const meterName = ds.meterName || ds.label || 'Meter';
-            const tenantName = ds.tenantName || 'Unassigned';
-
-            return {
-                label: ds.label,
-                meterName,
-                tenantName,
-                unit,
-                data: (ds.data || []).map((value, index) => {
-                    const numericValue = value === null || value === undefined
-                        ? null
-                        : Number(value);
-
-                    return {
-                        x: points[index],
-                        y: Number.isFinite(numericValue) ? numericValue : null,
-                        meterName,
-                        tenantName,
-                        unit,
-                        seriesLabel: ds.label,
-                        periodLabel: 'Current period'
-                    };
-                })
-            };
-        });
-
-        return { datasets };
+        return chartCore.toTimeSeries(chartData, 'Current period');
     }
 
     // ------------------------------------------------------------
-    // NEW: Curve limit    // ------------------------------------------------------------
-    // NEW: Curve limit + automatic "Others" aggregation
+    // Curve limit + automatic "Others" aggregation
     // ------------------------------------------------------------
-    // If more meters are selected than the configured max, we don't block
-    // with an error: we keep the top consumers (by total consumption) and
-    // sum everything else into a single grey "Autres" series, so the chart
-    // always stays readable no matter how many meters exist.
     function applyCurveLimit(data) {
         const warningDiv = document.getElementById('curveLimitWarning');
         const warningText = document.getElementById('curveLimitWarningText');
-        const maxCurves = parseInt(document.getElementById('maxCurves')?.value) || 10;
+        const maxCurves =
+            parseInt(document.getElementById('maxCurves')?.value, 10) || 10;
 
-        if (!data || !data.datasets || data.datasets.length <= maxCurves) {
+        const result = chartCore.limitDatasets(data, maxCurves);
+
+        if (result.groupedCount > 0) {
+            if (warningDiv && warningText) {
+                warningText.textContent =
+                    'Displaying the ' + result.keptCount +
+                    ' largest consumers. ' + result.groupedCount +
+                    ' additional meter(s) are grouped into “Others” to keep the chart readable.';
+                warningDiv.classList.remove('d-none');
+            }
+        } else {
             warningDiv?.classList.add('d-none');
-            return data;
         }
 
-        const withTotals = data.datasets.map(ds => ({
-            ds,
-            total: ds.data.reduce((sum, point) =>
-                sum + (point && Number.isFinite(point.y) ? point.y : 0), 0)
-        })).sort((a, b) => b.total - a.total);
-
-        const keptSlots = Math.max(1, maxCurves - 1);
-        const kept = withTotals.slice(0, keptSlots).map(x => x.ds);
-        const rest = withTotals.slice(keptSlots);
-        const restUnits = [...new Set(rest.map(x => (x.ds.unit || 'unit').toLowerCase()))];
-        const othersUnit = restUnits.length === 1 ? rest[0].ds.unit : 'mixed';
-
-        const othersMap = new Map();
-        rest.forEach(({ ds }) => {
-            ds.data.forEach(point => {
-                if (!point || !Number.isFinite(point.y)) return;
-                othersMap.set(point.x, (othersMap.get(point.x) || 0) + point.y);
-            });
-        });
-
-        const othersData = Array.from(othersMap.entries())
-            .sort((a, b) => a[0] - b[0])
-            .map(([x, y]) => ({
-                x,
-                y,
-                meterName: 'Other meters',
-                tenantName: 'Multiple tenants',
-                unit: othersUnit,
-                seriesLabel: `Others (${rest.length} meters)`,
-                periodLabel: 'Current period'
-            }));
-
-        const othersDataset = {
-            label: `Others (${rest.length} meter${rest.length > 1 ? 's' : ''})`,
-            meterName: 'Other meters',
-            tenantName: 'Multiple tenants',
-            unit: othersUnit,
-            data: othersData,
-            isOthers: true
-        };
-
-        if (warningDiv && warningText) {
-            warningText.textContent =
-                `Displaying the ${keptSlots} largest consumers. ${rest.length} additional meter(s) are grouped into “Others” to keep the chart readable.`;
-            warningDiv.classList.remove('d-none');
-        }
-
-        return { datasets: [...kept, othersDataset] };
+        return result.data;
     }
 
     // ------------------------------------------------------------
@@ -552,52 +475,17 @@
         return { start: formatDate(cs), end: formatDate(ce) };
     }
 
-    // Pairs each kept current-period meter with its comparison-period counterpart
-    // (matched by label, since both queries use the same meter selection), and
-    // shifts the comparison timestamps so both periods overlap on the same x-axis.
-    // Note: the "Autres" aggregate (from applyCurveLimit) is not paired - it only
-    // reflects the current period, since the grouping of "the rest" could differ
-    // between two periods and isn't meaningful to compare directly.
-    function buildComparisonPairs(currentFormatted, compareChartDataRaw, currentStartDateStr, compareStartDateStr) {
-        const compareFormatted = toTimeSeriesFormat(compareChartDataRaw);
-        const currentStartTs = new Date(currentStartDateStr + 'T00:00:00').getTime();
-        const compareStartTs = new Date(compareStartDateStr + 'T00:00:00').getTime();
-        const shiftMs = currentStartTs - compareStartTs;
+    function buildComparisonPairs(
+        currentFormatted,
+        compareChartDataRaw,
+        currentStartDateStr,
+        compareStartDateStr) {
 
-        const pairs = [];
-        currentFormatted.datasets.forEach(curDs => {
-            if (curDs.isOthers) {
-                pairs.push(curDs);
-                return;
-            }
-
-            pairs.push({
-                ...curDs,
-                label: `${curDs.label} · Current`,
-                pairKey: curDs.label,
-                data: curDs.data.map(point => ({
-                    ...point,
-                    periodLabel: 'Current period'
-                }))
-            });
-
-            const compareDs = compareFormatted.datasets?.find(ds => ds.label === curDs.label);
-            if (compareDs) {
-                pairs.push({
-                    ...compareDs,
-                    label: `${curDs.label} · Comparison`,
-                    pairKey: curDs.label,
-                    isCompare: true,
-                    data: compareDs.data.map(point => ({
-                        ...point,
-                        x: point.x + shiftMs,
-                        periodLabel: 'Comparison period'
-                    }))
-                });
-            }
-        });
-
-        return { datasets: pairs };
+        return chartCore.buildComparisonPairs(
+            currentFormatted,
+            compareChartDataRaw,
+            currentStartDateStr,
+            compareStartDateStr);
     }
 
     async function loadChartData() {
@@ -709,37 +597,35 @@
             exporting = null;
         }
 
+        chartdiv.querySelectorAll('.poworks-chart-hover-tooltip')
+            .forEach(element => element.remove());
+
         if (!data || !data.datasets || data.datasets.length === 0) {
             chartdiv.innerHTML = '';
             return;
         }
 
+        const validation = chartCore.validateData(data);
+        if (!validation.valid) {
+            console.error('Invalid energy chart data:', validation.errors);
+            chartdiv.innerHTML = '';
+            setChartEmpty(true);
+            showNotification(
+                'Energy chart data is inconsistent: ' +
+                validation.errors.join(' '),
+                'warning');
+            return;
+        }
+
         const chartType = document.getElementById('chartType')?.value || 'area';
         const dateFilter = document.getElementById('dateFilter')?.value || 'daily';
-        const units = [...new Set(
-            data.datasets
-                .filter(ds => !ds.isCompare)
-                .map(ds => (ds.unit || 'unit').trim())
-                .filter(Boolean)
-        )];
-        const axisUnit = units.length === 1 ? units[0] : 'mixed units';
+        const axisUnit = validation.unit || 'kWh';
 
         const timeUnit =
             dateFilter === 'yearly' ? 'year' :
             dateFilter === 'monthly' ? 'month' :
             dateFilter === 'hourly' ? 'hour' :
             'day';
-
-        const dateFormat =
-            dateFilter === 'yearly' ? 'yyyy' :
-            dateFilter === 'monthly' ? 'MMM yyyy' :
-            dateFilter === 'hourly' ? 'dd MMM HH:mm' :
-            'dd MMM yyyy';
-
-        const startDateInput = document.getElementById('startDate').value;
-        const endDateInput = document.getElementById('endDate').value;
-        const startTs = new Date(startDateInput + 'T00:00:00').getTime();
-        const endTs = new Date(endDateInput + 'T23:59:59').getTime();
 
         root = am5.Root.new('chartdiv');
         if (root._logo) root._logo.dispose();
@@ -770,14 +656,27 @@
             paddingTop: 9
         });
 
-        const xAxis = chart.xAxes.push(am5xy.DateAxis.new(root, {
-            min: startTs,
-            max: endTs,
-            strictMinMax: true,
+        const xAxisSettings = {
             maxDeviation: .1,
             baseInterval: { timeUnit, count: 1 },
             renderer: xRenderer
-        }));
+        };
+
+        const bounds = chartCore.getBounds(data.datasets);
+        if (bounds && bounds.minX === bounds.maxX) {
+            const singleBucketPadding =
+                timeUnit === 'hour' ? 60 * 60 * 1000 :
+                timeUnit === 'day' ? 24 * 60 * 60 * 1000 :
+                timeUnit === 'month' ? 31 * 24 * 60 * 60 * 1000 :
+                366 * 24 * 60 * 60 * 1000;
+
+            xAxisSettings.min = bounds.minX - singleBucketPadding;
+            xAxisSettings.max = bounds.maxX + singleBucketPadding;
+            xAxisSettings.strictMinMax = true;
+        }
+
+        const xAxis = chart.xAxes.push(
+            am5xy.DateAxis.new(root, xAxisSettings));
 
         const yRenderer = am5xy.AxisRendererY.new(root, {
             minGridDistance: 42
@@ -794,12 +693,13 @@
 
         const yAxis = chart.yAxes.push(am5xy.ValueAxis.new(root, {
             min: 0,
+            extraMax: .08,
             renderer: yRenderer,
             numberFormat: '#,###.##'
         }));
 
         yAxis.children.unshift(am5.Label.new(root, {
-            text: `Consumption (${axisUnit})`,
+            text: 'Consumption (' + axisUnit + ')',
             rotation: -90,
             y: am5.p50,
             centerX: am5.p50,
@@ -811,25 +711,15 @@
 
         const cursor = chart.set('cursor', am5xy.XYCursor.new(root, {
             behavior: 'zoomX',
-            xAxis,
-            yAxis
+            xAxis
         }));
         cursor.lineX.setAll({
             stroke: am5.color(0x64748B),
-            strokeOpacity: .65,
+            strokeOpacity: .55,
             strokeDasharray: [4, 4]
         });
-        cursor.lineY.setAll({
-            stroke: am5.color(0x94A3B8),
-            strokeOpacity: .35,
-            strokeDasharray: [3, 3]
-        });
-        // Use the real pointer position in the plot area. This prevents
-        // ghost/random hover hits caused by translating XYCursor positions.
-        // The popup itself is a normal HTML overlay so amCharts layout cannot
-        // stretch it to the height of the plot.
-        chartdiv.querySelectorAll('.poworks-chart-hover-tooltip')
-            .forEach(element => element.remove());
+        cursor.lineY.set('visible', false);
+
         if (window.getComputedStyle(chartdiv).position === 'static') {
             chartdiv.style.position = 'relative';
         }
@@ -839,113 +729,88 @@
         hoverOverlay.setAttribute('aria-hidden', 'true');
         chartdiv.appendChild(hoverOverlay);
 
-        const curveHoverMarker = chart.plotContainer.children.push(am5.Circle.new(root, {
-            radius: 5,
-            fill: am5.color(0x2563EB),
-            stroke: am5.color(0xFFFFFF),
-            strokeWidth: 2,
-            visible: false,
-            interactive: false,
-            layer: 1000
-        }));
-
-        const hoverSeries = [];
-        const isFinitePoint = point =>
-            point && Number.isFinite(point.x) && Number.isFinite(point.y);
-
-        const pointToPlotPixels = point => ({
-            x: xRenderer.positionToCoordinate(
-                xAxis.toGlobalPosition(xAxis.valueToPosition(point.x))),
-            y: yRenderer.positionToCoordinate(
-                yAxis.toGlobalPosition(yAxis.valueToPosition(point.y)))
-        });
-
-        const distanceToSegment = (point, start, end) => {
-            const dx = end.x - start.x;
-            const dy = end.y - start.y;
-            const lengthSquared = dx * dx + dy * dy;
-
-            if (lengthSquared === 0) {
-                return Math.hypot(point.x - start.x, point.y - start.y);
-            }
-
-            const rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
-            const t = Math.max(0, Math.min(1, rawT));
-            const projectedX = start.x + t * dx;
-            const projectedY = start.y + t * dy;
-            return Math.hypot(point.x - projectedX, point.y - projectedY);
-        };
-
-        const clampTooltipPosition = (pointer, popupSize, containerSize) => {
-            const offset = 14;
-            const margin = 8;
-            let left = pointer.x + offset;
-            let top = pointer.y - popupSize.height - offset;
-
-            if (left + popupSize.width > containerSize.width - margin) {
-                left = pointer.x - popupSize.width - offset;
-            }
-            if (top < margin) {
-                top = pointer.y + offset;
-            }
-
-            left = Math.max(margin, Math.min(left, containerSize.width - popupSize.width - margin));
-            top = Math.max(margin, Math.min(top, containerSize.height - popupSize.height - margin));
-            return { left, top };
-        };
-
-        const formatHoverDate = timestamp => {
-            const options =
-                dateFilter === 'yearly' ? { year: 'numeric' } :
-                dateFilter === 'monthly' ? { month: 'short', year: 'numeric' } :
-                dateFilter === 'hourly'
-                    ? { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
-                    : { day: '2-digit', month: 'short', year: 'numeric' };
-
-            return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp));
-        };
-
-        const hideCurveHover = () => {
-            curveHoverMarker.set('visible', false);
+        const hideDataTooltip = () => {
             hoverOverlay.style.display = 'none';
             hoverOverlay.setAttribute('aria-hidden', 'true');
         };
 
-        const showCurveHover = (model, point, coords, originalEvent) => {
+        const formatPointDate = timestamp => {
+            const options =
+                dateFilter === 'yearly' ? { year: 'numeric' } :
+                dateFilter === 'monthly' ? { month: 'short', year: 'numeric' } :
+                dateFilter === 'hourly'
+                    ? {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }
+                    : {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                    };
+
+            return new Intl.DateTimeFormat(undefined, options)
+                .format(new Date(timestamp));
+        };
+
+        const positionDataTooltip = originalEvent => {
+            if (!originalEvent) return;
+
+            const rect = chartdiv.getBoundingClientRect();
+            const width = hoverOverlay.offsetWidth;
+            const height = hoverOverlay.offsetHeight;
+            const margin = 8;
+            const offset = 14;
+            const pointerX = originalEvent.clientX - rect.left;
+            const pointerY = originalEvent.clientY - rect.top;
+
+            let left = pointerX + offset;
+            let top = pointerY - height - offset;
+
+            if (left + width > rect.width - margin) {
+                left = pointerX - width - offset;
+            }
+            if (top < margin) {
+                top = pointerY + offset;
+            }
+
+            left = Math.max(
+                margin,
+                Math.min(left, rect.width - width - margin));
+            top = Math.max(
+                margin,
+                Math.min(top, rect.height - height - margin));
+
+            hoverOverlay.style.left = left + 'px';
+            hoverOverlay.style.top = top + 'px';
+        };
+
+        const showDataTooltip = (point, dataset, originalEvent) => {
+            if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y))
+                return;
+
             const value = new Intl.NumberFormat(undefined, {
                 maximumFractionDigits: 2
             }).format(point.y);
-            const tenant = point.tenantName || model.dataset.tenantName || 'Unassigned';
+            const tenant =
+                point.tenantName || dataset.tenantName || 'Unassigned';
             const period = point.periodLabel || 'Current period';
-            const unit = point.unit || model.dataset.unit || '';
-
-            curveHoverMarker.setAll({
-                x: coords.x,
-                y: coords.y,
-                fill: model.color,
-                visible: true
-            });
 
             hoverOverlay.textContent =
-                (model.dataset.meterName || model.dataset.label) + '\n' +
-                formatHoverDate(point.x) + ' · ' + value + ' ' + unit + '\n' +
+                (point.meterName || dataset.meterName || dataset.label) + '\n' +
+                formatPointDate(point.x) + ' · ' + value + ' ' + axisUnit + '\n' +
                 'Tenant: ' + tenant + ' · ' + period;
             hoverOverlay.style.display = 'block';
             hoverOverlay.setAttribute('aria-hidden', 'false');
-
-            const chartRect = chartdiv.getBoundingClientRect();
-            const pointer = {
-                x: originalEvent.clientX - chartRect.left,
-                y: originalEvent.clientY - chartRect.top
-            };
-            const placement = clampTooltipPosition(
-                pointer,
-                { width: hoverOverlay.offsetWidth, height: hoverOverlay.offsetHeight },
-                { width: chartRect.width, height: chartRect.height });
-
-            hoverOverlay.style.left = placement.left + 'px';
-            hoverOverlay.style.top = placement.top + 'px';
+            positionDataTooltip(originalEvent);
         };
+
+        chartdiv.onmouseleave = hideDataTooltip;
+        chartdiv.onpointerdown = hideDataTooltip;
+
         const colors = [
             am5.color(0x2563EB), am5.color(0x0EA5E9), am5.color(0x10B981),
             am5.color(0x8B5CF6), am5.color(0xF59E0B), am5.color(0xEF4444),
@@ -955,47 +820,28 @@
         const colorForKey = new Map();
         let nextColorIndex = 0;
 
-        data.datasets.forEach(ds => {
-            if (ds.isOthers) return;
-            const key = ds.pairKey || ds.label;
+        data.datasets.forEach(dataset => {
+            if (dataset.isOthers) return;
+            const key = dataset.pairKey || String(dataset.meterId);
             if (!colorForKey.has(key)) {
-                colorForKey.set(key, colors[nextColorIndex % colors.length]);
+                colorForKey.set(
+                    key,
+                    colors[nextColorIndex % colors.length]);
                 nextColorIndex++;
             }
         });
 
-        data.datasets.forEach(ds => {
-            const color = ds.isOthers
+        data.datasets.forEach(dataset => {
+            const color = dataset.isOthers
                 ? othersColor
-                : colorForKey.get(ds.pairKey || ds.label);
+                : colorForKey.get(
+                    dataset.pairKey || String(dataset.meterId));
 
             let series;
-            if (chartType === 'bar') {
-                const tooltip = am5.Tooltip.new(root, {
-                    getFillFromSprite: false,
-                    getStrokeFromSprite: false,
-                    autoTextColor: false
-                });
-                tooltip.get('background').setAll({
-                    fill: am5.color(0xFFFFFF),
-                    fillOpacity: 1,
-                    stroke: am5.color(0xCBD5E1),
-                    strokeOpacity: 1,
-                    cornerRadius: 8,
-                    shadowColor: am5.color(0x0F172A),
-                    shadowBlur: 12,
-                    shadowOffsetY: 4,
-                    shadowOpacity: .12
-                });
-                tooltip.label.setAll({
-                    fill: am5.color(0x0F172A),
-                    fontSize: 12,
-                    maxWidth: 220,
-                    oversizedBehavior: 'wrap'
-                });
 
+            if (chartType === 'bar') {
                 series = chart.series.push(am5xy.ColumnSeries.new(root, {
-                    name: ds.label,
+                    name: dataset.label,
                     xAxis,
                     yAxis,
                     valueYField: 'y',
@@ -1003,22 +849,29 @@
                     fill: color,
                     stroke: color
                 }));
+
                 series.columns.template.setAll({
                     cornerRadiusTL: 5,
                     cornerRadiusTR: 5,
                     width: am5.percent(72),
-                    fillOpacity: ds.isCompare ? .35 : (ds.isOthers ? .48 : .82),
+                    fillOpacity:
+                        dataset.isCompare ? .35 :
+                        dataset.isOthers ? .48 : .82,
                     strokeOpacity: .9,
-                    tooltip,
-                    tooltipPosition: 'pointer',
-                    tooltipText:
-                        `[bold]{meterName}[/]\n` +
-                        `{valueX.formatDate('${dateFormat}')} · [bold]{valueY.formatNumber('#,###.00')} {unit}[/]\n` +
-                        `Tenant: {tenantName} · {periodLabel}`
+                    interactive: true,
+                    cursorOverStyle: 'pointer'
                 });
+
+                series.columns.template.events.on('pointerover', event => {
+                    const point = event.target.dataItem?.dataContext;
+                    showDataTooltip(point, dataset, event.originalEvent);
+                });
+                series.columns.template.events.on(
+                    'pointerout',
+                    hideDataTooltip);
             } else {
                 series = chart.series.push(am5xy.LineSeries.new(root, {
-                    name: ds.label,
+                    name: dataset.label,
                     xAxis,
                     yAxis,
                     valueYField: 'y',
@@ -1029,11 +882,11 @@
                 }));
 
                 let dashArray;
-                if (ds.isOthers) dashArray = [8, 5];
-                else if (ds.isCompare) dashArray = [4, 4];
+                if (dataset.isOthers) dashArray = [8, 5];
+                else if (dataset.isCompare) dashArray = [4, 4];
 
                 series.strokes.template.setAll({
-                    strokeWidth: ds.isCompare ? 2 : 2.5,
+                    strokeWidth: dataset.isCompare ? 2 : 2.5,
                     strokeDasharray: dashArray,
                     strokeLinecap: 'round',
                     strokeLinejoin: 'round'
@@ -1041,101 +894,51 @@
 
                 series.fills.template.setAll({
                     visible: chartType === 'area',
-                    fillOpacity: ds.isOthers ? .05 : (ds.isCompare ? .03 : .10)
+                    fillOpacity:
+                        dataset.isOthers ? .05 :
+                        dataset.isCompare ? .03 : .10
                 });
 
-                const finitePoints = (ds.data || []).filter(isFinitePoint);
-                if (finitePoints.length <= 2) {
-                    series.bullets.push(() => am5.Bullet.new(root, {
-                        sprite: am5.Circle.new(root, {
-                            radius: 3,
-                            fill: color,
-                            stroke: am5.color(0xFFFFFF),
-                            strokeWidth: 1.5
-                        })
-                    }));
-                }
+                // Only real data buckets are interactive. No chart-wide
+                // proximity search means no random popup positions.
+                series.bullets.push((bulletRoot, _series, dataItem) => {
+                    const point = dataItem?.dataContext;
+                    if (!point || !Number.isFinite(point.y))
+                        return undefined;
 
-                hoverSeries.push({ series, dataset: ds, color });
+                    const hit = am5.Circle.new(bulletRoot, {
+                        radius: 9,
+                        fill: color,
+                        fillOpacity: .001,
+                        stroke: color,
+                        strokeOpacity: 0,
+                        interactive: true,
+                        cursorOverStyle: 'pointer'
+                    });
+
+                    hit.states.create('hover', {
+                        fillOpacity: .16,
+                        strokeOpacity: 1,
+                        strokeWidth: 2
+                    });
+
+                    hit.events.on('pointerover', event => {
+                        showDataTooltip(
+                            point,
+                            dataset,
+                            event.originalEvent);
+                    });
+                    hit.events.on('pointerout', hideDataTooltip);
+
+                    return am5.Bullet.new(bulletRoot, {
+                        sprite: hit
+                    });
+                });
             }
 
-            series.data.setAll(ds.data);
+            series.data.setAll(dataset.data);
         });
 
-        if (chartType !== 'bar') {
-            chart.plotContainer.events.on('globalpointermove', ev => {
-                const originalEvent = ev.originalEvent;
-
-                if (!originalEvent || originalEvent.buttons) {
-                    hideCurveHover();
-                    return;
-                }
-
-                const pointer = chart.plotContainer.toLocal(ev.point);
-                const plotWidth = chart.plotContainer.width();
-                const plotHeight = chart.plotContainer.height();
-
-                if (pointer.x < 0 || pointer.y < 0 ||
-                    pointer.x > plotWidth || pointer.y > plotHeight) {
-                    hideCurveHover();
-                    return;
-                }
-
-                let best = null;
-
-                hoverSeries.forEach(model => {
-                    const points = model.dataset.data || [];
-
-                    for (let index = 0; index < points.length; index++) {
-                        const current = points[index];
-                        if (!isFinitePoint(current)) continue;
-
-                        const currentPixels = pointToPlotPixels(current);
-                        const pointDistance = Math.hypot(
-                            pointer.x - currentPixels.x,
-                            pointer.y - currentPixels.y);
-
-                        if (!best || pointDistance < best.distance) {
-                            best = {
-                                distance: pointDistance,
-                                model,
-                                point: current,
-                                coords: currentPixels
-                            };
-                        }
-
-                        const next = points[index + 1];
-                        if (!isFinitePoint(next)) continue;
-
-                        const nextPixels = pointToPlotPixels(next);
-                        const segmentDistance = distanceToSegment(pointer, currentPixels, nextPixels);
-
-                        if (!best || segmentDistance < best.distance) {
-                            const currentXDistance = Math.abs(pointer.x - currentPixels.x);
-                            const nextXDistance = Math.abs(pointer.x - nextPixels.x);
-                            const exactPoint = currentXDistance <= nextXDistance ? current : next;
-                            const exactCoords = exactPoint === current ? currentPixels : nextPixels;
-
-                            best = {
-                                distance: segmentDistance,
-                                model,
-                                point: exactPoint,
-                                coords: exactCoords
-                            };
-                        }
-                    }
-                });
-
-                if (best && best.distance <= 12) {
-                    showCurveHover(best.model, best.point, best.coords, originalEvent);
-                } else {
-                    hideCurveHover();
-                }
-            });
-
-            chartdiv.onmouseleave = hideCurveHover;
-            chartdiv.onpointerdown = hideCurveHover;
-        }
         const legend = chart.children.push(am5.Legend.new(root, {
             centerX: am5.p50,
             x: am5.p50,
@@ -1158,29 +961,39 @@
         });
         chart.set('scrollbarX', scrollbarX);
 
-        const sbxAxis = scrollbarX.chart.xAxes.push(am5xy.DateAxis.new(root, {
-            baseInterval: { timeUnit, count: 1 },
-            renderer: am5xy.AxisRendererX.new(root, {
-                strokeOpacity: 0,
-                minGridDistance: 80
-            })
-        }));
-        const sbyAxis = scrollbarX.chart.yAxes.push(am5xy.ValueAxis.new(root, {
-            renderer: am5xy.AxisRendererY.new(root, {})
-        }));
-
-        const firstSeries = data.datasets.find(ds => !ds.isCompare) || data.datasets[0];
-        if (firstSeries) {
-            const preview = scrollbarX.chart.series.push(am5xy.LineSeries.new(root, {
-                xAxis: sbxAxis,
-                yAxis: sbyAxis,
-                valueYField: 'y',
-                valueXField: 'x',
-                stroke: am5.color(0x64748B),
-                fill: am5.color(0xCBD5E1)
+        const sbxAxis = scrollbarX.chart.xAxes.push(
+            am5xy.DateAxis.new(root, {
+                baseInterval: { timeUnit, count: 1 },
+                renderer: am5xy.AxisRendererX.new(root, {
+                    strokeOpacity: 0,
+                    minGridDistance: 80
+                })
             }));
+        const sbyAxis = scrollbarX.chart.yAxes.push(
+            am5xy.ValueAxis.new(root, {
+                renderer: am5xy.AxisRendererY.new(root, {})
+            }));
+
+        const firstSeries =
+            data.datasets.find(dataset => !dataset.isCompare) ||
+            data.datasets[0];
+
+        if (firstSeries) {
+            const preview = scrollbarX.chart.series.push(
+                am5xy.LineSeries.new(root, {
+                    xAxis: sbxAxis,
+                    yAxis: sbyAxis,
+                    valueYField: 'y',
+                    valueXField: 'x',
+                    stroke: am5.color(0x64748B),
+                    fill: am5.color(0xCBD5E1),
+                    connect: false
+                }));
             preview.strokes.template.setAll({ strokeWidth: 1.5 });
-            preview.fills.template.setAll({ visible: true, fillOpacity: .22 });
+            preview.fills.template.setAll({
+                visible: true,
+                fillOpacity: .22
+            });
             preview.data.setAll(firstSeries.data);
         }
 
@@ -1189,7 +1002,7 @@
             dataSource: chart
         });
 
-        chart.appear(650, 50);
+        chart.appear(450, 30);
     }
 
     function showDemoChart() {
