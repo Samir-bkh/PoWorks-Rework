@@ -164,6 +164,9 @@ public class DashboardModernizationTests
         Assert.Contains("id=\"kpi@(i)Value\"", view);
         Assert.Contains("id=\"kpi@(i)Detail\"", view);
         Assert.Contains("topConsumersList", view);
+        Assert.Contains("exportChart", view);
+        Assert.Contains("exportCsv", view);
+        Assert.Contains("Data as CSV", view);
         Assert.Contains("energy-chart-core.js", view);
 
         Assert.DoesNotContain("radial-gradient", css);
@@ -241,6 +244,13 @@ public class DashboardModernizationTests
         // User choices are persisted instead of being forced on every visit.
         Assert.Contains("poworks.dashboard.analytics.v3", script);
         Assert.Contains("localStorage.setItem", script);
+
+        // Export is useful outside PoWorks and spreadsheet cells are protected
+        // against formula injection from configurable labels/names.
+        Assert.Contains("function exportCsv()", script);
+        Assert.Contains("text/csv;charset=utf-8", script);
+        Assert.Contains("function csvCell(value)", script);
+        Assert.Contains("/^[=+\\-@]/", script);
     }
 
     private static DashboardDataService CreateDashboardService() =>
