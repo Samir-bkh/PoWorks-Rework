@@ -6,12 +6,15 @@
 CREATE TABLE IF NOT EXISTS "Tenants" (
     "TenantID" SERIAL PRIMARY KEY,
     "DisplayName" VARCHAR(100) NOT NULL,
-    "Misc" VARCHAR(255)
+    "Misc" VARCHAR(255),
+    "UserId" TEXT,
+    "CompanyId" INTEGER DEFAULT 1
 );
 -- Create TenantDetails table if it doesn't exist
 CREATE TABLE IF NOT EXISTS "TenantDetails" (
     "ID" SERIAL PRIMARY KEY,
     "TenantID" INTEGER NOT NULL REFERENCES "Tenants"("TenantID"),
+    "CompanyId" INTEGER DEFAULT 1,
     "ContactName" VARCHAR(100),
     "ContactPhone" VARCHAR(20),
     "ContactMobile" VARCHAR(20),
@@ -20,6 +23,17 @@ CREATE TABLE IF NOT EXISTS "TenantDetails" (
     "CompanyAddress" TEXT,
     "CompanyLocation" VARCHAR(100),
     "CompanyMisc" VARCHAR(100),
+    "Address1" VARCHAR(255),
+    "Address2" VARCHAR(255),
+    "PostCode" VARCHAR(20),
+    "City" VARCHAR(100),
+    "Unit" VARCHAR(100),
+    "TariffType" VARCHAR(20) DEFAULT 'Company',
+    "BaseRate" NUMERIC(12,4) DEFAULT 0.5,
+    "Threshold1" NUMERIC(12,3) DEFAULT 100,
+    "Threshold1Rate" NUMERIC(12,4) DEFAULT 0.6,
+    "Threshold2" NUMERIC(12,3) DEFAULT 200,
+    "Threshold2Rate" NUMERIC(12,4) DEFAULT 0.8,
     "Tarif_1" MONEY DEFAULT 0,
     "Tarif_2" MONEY DEFAULT 0,
     "Tarif_3" MONEY DEFAULT 0,
@@ -33,6 +47,9 @@ CREATE TABLE IF NOT EXISTS "TenantDetails" (
 );
 -- Create index for faster tenant-related queries
 CREATE INDEX IF NOT EXISTS idx_tenantdetails_tenantid ON "TenantDetails"("TenantID");
+CREATE INDEX IF NOT EXISTS idx_tenants_companyid ON "Tenants"("CompanyId");
+CREATE INDEX IF NOT EXISTS idx_tenantdetails_companyid ON "TenantDetails"("CompanyId");
+CREATE INDEX IF NOT EXISTS idx_tenantdetails_company_tenant ON "TenantDetails"("CompanyId", "TenantID");
 
 --##########################################################
 --Company Logic
@@ -415,6 +432,28 @@ ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
 ALTER TABLE "Tenants" ADD COLUMN IF NOT EXISTS "UserId" TEXT; 
 ALTER TABLE "Payments" ADD COLUMN IF NOT EXISTS "Notes" TEXT;
 ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Address1" VARCHAR(255);
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Address2" VARCHAR(255);
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "PostCode" VARCHAR(20);
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "City" VARCHAR(100);
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Unit" VARCHAR(100);
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "TariffType" VARCHAR(20) DEFAULT 'Company';
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "BaseRate" NUMERIC(12,4) DEFAULT 0.5;
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Threshold1" NUMERIC(12,3) DEFAULT 100;
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Threshold1Rate" NUMERIC(12,4) DEFAULT 0.6;
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Threshold2" NUMERIC(12,3) DEFAULT 200;
+ALTER TABLE "TenantDetails" ADD COLUMN IF NOT EXISTS "Threshold2Rate" NUMERIC(12,4) DEFAULT 0.8;
+
+-- Repair legacy tenant-detail rows that inherited the old default workspace.
+UPDATE "TenantDetails" td
+SET "CompanyId" = t."CompanyId"
+FROM "Tenants" t
+WHERE td."TenantID" = t."TenantID"
+  AND td."CompanyId" IS DISTINCT FROM t."CompanyId";
+
+CREATE INDEX IF NOT EXISTS idx_tenants_companyid ON "Tenants"("CompanyId");
+CREATE INDEX IF NOT EXISTS idx_tenantdetails_companyid ON "TenantDetails"("CompanyId");
+CREATE INDEX IF NOT EXISTS idx_tenantdetails_company_tenant ON "TenantDetails"("CompanyId", "TenantID");
 ALTER TABLE "Bills" ADD COLUMN IF NOT EXISTS "CompanyId" INTEGER DEFAULT 1;
 ALTER TABLE "Bills" ADD COLUMN IF NOT EXISTS "GrandTotal" NUMERIC(10,2) DEFAULT 0;
 
