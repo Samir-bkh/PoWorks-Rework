@@ -51,9 +51,22 @@ public class WorkspaceIsolationSourceRegressionTests
     public void DashboardQueries_AreExplicitlyWorkspaceScoped()
     {
         var source = ReadSource("Services", "DashboardDataService.cs");
+        var analytics = ReadSource("Services", "DashboardAnalyticsService.cs");
+        var controller = ReadSource("Controllers", "DashboardApiController.cs");
 
         Assert.Contains("m.\"\"CompanyId\"\" = @CompanyId", source);
+        Assert.Contains("mr.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
+        Assert.Contains("t.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
+        Assert.Contains("td.\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("WHERE \"\"CompanyId\"\" = @CompanyId AND \"\"TenantID\"\" = @TenantId", source);
+
+        Assert.Contains("mr.\"\"CompanyId\"\" = @CompanyId", analytics);
+        Assert.Contains("t.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", analytics);
+        Assert.Contains("m.\"\"CompanyId\"\" = @CompanyId", analytics);
+
+        Assert.Contains("t.\"\"CompanyId\"\" = @CompanyId", controller);
+        Assert.Contains("td.\"\"CompanyId\"\" = t.\"\"CompanyId\"\"", controller);
+        Assert.Contains("_companyContext.CurrentCompanyId", controller);
     }
 
     [Fact]
