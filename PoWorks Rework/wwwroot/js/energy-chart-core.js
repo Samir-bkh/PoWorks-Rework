@@ -52,7 +52,7 @@
         const effectivePeriod = periodLabel || 'Current period';
 
         const datasets = (chartData.datasets || []).map((dataset, datasetIndex) => {
-            const unit = (dataset.unit || '').trim() || 'kWh';
+            const unit = (dataset.unit || '').trim() || 'unit';
             const meterName = dataset.meterName || dataset.label || 'Meter';
             const tenantName = dataset.tenantName || 'Unassigned';
 
