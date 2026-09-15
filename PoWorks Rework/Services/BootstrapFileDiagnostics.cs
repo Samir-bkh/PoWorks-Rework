@@ -20,6 +20,7 @@ namespace PoWorks_Rework.Services
             try
             {
                 var root = FileDiagnostics.ResolveLogRoot();
+                FileDiagnostics.CleanupOldLogs();
                 _writer = new DailyLogWriter(root);
 
                 _originalOut = Console.Out;
