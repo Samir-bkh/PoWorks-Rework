@@ -166,6 +166,48 @@ public class DashboardAnalyticsEngineTests
     }
 
     [Fact]
+    public void PowerTenantRanking_UsesTotalDemandAcrossMetersPerBucket()
+    {
+        var query = BaseQuery("power", "tenant", "sum");
+        var rows = new List<MeasurementBucketResult>
+        {
+            StateRow(1, "A1", 10, "Tenant A", "2026-09-15 10:00", 10, "kW"),
+            StateRow(2, "A2", 10, "Tenant A", "2026-09-15 10:00", 10, "kW"),
+            StateRow(1, "A1", 10, "Tenant A", "2026-09-15 11:00", 20, "kW"),
+            StateRow(2, "A2", 10, "Tenant A", "2026-09-15 11:00", 20, "kW"),
+            StateRow(3, "B1", 20, "Tenant B", "2026-09-15 10:00", 25, "kW"),
+            StateRow(3, "B1", 20, "Tenant B", "2026-09-15 11:00", 25, "kW")
+        };
+
+        var result = DashboardAnalyticsEngine.Build(query, rows);
+
+        Assert.Equal("Tenant A", result.Ranking[0].Name);
+        Assert.Equal(30d, result.Ranking[0].Value, 6);
+        Assert.Equal("Tenant B", result.Ranking[1].Name);
+        Assert.Equal(25d, result.Ranking[1].Value, 6);
+    }
+
+    [Fact]
+    public void StateRanking_WeightsBucketsRatherThanNumberOfSensors()
+    {
+        var query = BaseQuery("temperature", "tenant", "average");
+        var rows = new List<MeasurementBucketResult>
+        {
+            StateRow(1, "A1", 10, "Tenant A", "2026-09-15", 20, "°C"),
+            StateRow(2, "A2", 10, "Tenant A", "2026-09-15", 24, "°C"),
+            StateRow(1, "A1", 10, "Tenant A", "2026-09-16", 30, "°C"),
+            StateRow(3, "B1", 20, "Tenant B", "2026-09-15", 25, "°C"),
+            StateRow(3, "B1", 20, "Tenant B", "2026-09-16", 25, "°C")
+        };
+
+        var result = DashboardAnalyticsEngine.Build(query, rows);
+        var tenantA = result.Ranking.Single(item => item.Name == "Tenant A");
+
+        // (average(20,24) + average(30)) / 2 = 26
+        Assert.Equal(26d, tenantA.Value, 6);
+    }
+
+    [Fact]
     public void SelectedTenantAggregate_RankingDrillsDownToMeters()
     {
         var query = BaseQuery("energy", "aggregate", "sum");
