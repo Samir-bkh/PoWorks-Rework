@@ -55,6 +55,77 @@ public class ConsumptionBillingConsistencyTests
         Assert.Equal(30m, consumption);
     }
 
+    [Theory]
+    [InlineData("Wh")]
+    [InlineData("kWh")]
+    [InlineData("MWh")]
+    [InlineData("W")]
+    [InlineData("kW")]
+    [InlineData("MW")]
+    public void EnergyUnits_AreRecognized(string unit)
+    {
+        Assert.True(ConsumptionFormula.IsSupportedEnergyUnit(unit));
+        Assert.Equal("kWh", ConsumptionFormula.GetConsumptionUnit(unit));
+    }
+
+    [Theory]
+    [InlineData("°C")]
+    [InlineData("bar")]
+    [InlineData("m3")]
+    [InlineData("m³/h")]
+    [InlineData("%")]
+    [InlineData("")]
+    public void NonEnergySensorUnits_AreNotTreatedAsConsumption(string unit)
+    {
+        Assert.False(ConsumptionFormula.IsSupportedEnergyUnit(unit));
+
+        var readings = new[]
+        {
+            new ConsumptionReadingPoint(new DateTime(2026, 9, 1, 0, 0, 0), 10m),
+            new ConsumptionReadingPoint(new DateTime(2026, 9, 1, 1, 0, 0), 20m)
+        };
+
+        Assert.Equal(0m, ConsumptionFormula.CalculateConsumption(unit, readings));
+    }
+
+    [Fact]
+    public void WhAndMWhCounters_AreNormalizedToKwh()
+    {
+        var start = new DateTime(2026, 9, 1, 0, 0, 0);
+        var wh = new[]
+        {
+            new ConsumptionReadingPoint(start, 1000m),
+            new ConsumptionReadingPoint(start.AddHours(1), 2500m)
+        };
+        var mwh = new[]
+        {
+            new ConsumptionReadingPoint(start, 2m),
+            new ConsumptionReadingPoint(start.AddHours(1), 2.5m)
+        };
+
+        Assert.Equal(1.5m, ConsumptionFormula.CalculateConsumption("Wh", wh));
+        Assert.Equal(500m, ConsumptionFormula.CalculateConsumption("MWh", mwh));
+    }
+
+    [Fact]
+    public void PowerUnits_AreIntegratedAndNormalizedToKwh()
+    {
+        var start = new DateTime(2026, 9, 1, 0, 0, 0);
+        var watts = new[]
+        {
+            new ConsumptionReadingPoint(start, 1000m),
+            new ConsumptionReadingPoint(start.AddHours(1), 1000m)
+        };
+        var megawatts = new[]
+        {
+            new ConsumptionReadingPoint(start, 0.001m),
+            new ConsumptionReadingPoint(start.AddHours(1), 0.001m)
+        };
+
+        Assert.Equal(1m, ConsumptionFormula.CalculateConsumption("W", watts));
+        Assert.Equal(1m, ConsumptionFormula.CalculateConsumption("MW", megawatts));
+    }
+
     [Fact]
     public void TieredTariff_Known150Kwh_ProducesPredictableCharge()
     {
@@ -104,7 +175,8 @@ public class ConsumptionBillingConsistencyTests
         Assert.Contains(@"""Threshold2""", billing);
         Assert.Contains(@"""Threshold2Rate""", billing);
         Assert.Contains("BillingCalculationEngine.CalculateTieredCharge", billing);
-        Assert.Contains("ConsumptionFormula.IsCumulativeUnit", billing);
+        Assert.Contains("ConsumptionFormula.IsSupportedEnergyUnit", billing);
+        Assert.Contains("ConsumptionFormula.GetConsumptionUnit", billing);
     }
 
     [Fact]
@@ -178,18 +250,41 @@ public class ConsumptionBillingConsistencyTests
         var dashboardSeries = await dashboardService.GetMeterReadingsAsync(
             new MeterReadingFilters
             {
-                TenantId = 10,
-                MeterIds = new List<int> { 101 },
+                MeterIds = new List<int> { 101, 102, 103 },
                 StartDate = start,
                 EndDate = end,
                 DateFilter = "daily",
                 GroupBy = "meter",
                 ActiveOnly = true,
-                IncludeNullTenants = false
+                IncludeNullTenants = true
             });
 
-        Assert.Single(dashboardSeries);
-        Assert.Equal(150d, dashboardSeries[0].TotalConsumption, 6);
+        Assert.Equal(2, dashboardSeries.Count);
+        Assert.DoesNotContain(dashboardSeries, row => row.MeterId == 102);
+        Assert.All(dashboardSeries, row => Assert.Equal("kWh", row.Unit));
+        Assert.Equal(
+            150d,
+            dashboardSeries.Single(row => row.MeterId == 101).TotalConsumption,
+            6);
+        Assert.Equal(
+            30d,
+            dashboardSeries.Single(row => row.MeterId == 103).TotalConsumption,
+            6);
+
+        var visibleMeters = await dashboardService.GetActiveMetersWithDataAsync(
+            new MeterReadingFilters
+            {
+                StartDate = start,
+                EndDate = end,
+                Limit = 20,
+                IncludeNullTenants = true,
+                ActiveOnly = true
+            });
+
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 101);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 103);
+        Assert.DoesNotContain(visibleMeters, meter => meter.MeterId == 102);
+        Assert.DoesNotContain(visibleMeters, meter => meter.MeterId == 201);
 
         var bill = await billingService.CalculateBillAsync(10, start, end);
 
@@ -275,7 +370,10 @@ public class ConsumptionBillingConsistencyTests
             CREATE TABLE ""Meters"" (
                 ""MeterId"" INTEGER PRIMARY KEY,
                 ""Name"" VARCHAR(100) NOT NULL,
+                ""Label"" VARCHAR(150),
                 ""Unit"" VARCHAR(20) NOT NULL,
+                ""Type"" VARCHAR(20) NOT NULL DEFAULT 'Main',
+                ""LastReading"" INTEGER NOT NULL DEFAULT 0,
                 ""Active"" BOOLEAN NOT NULL,
                 ""TenantID"" INTEGER,
                 ""CompanyId"" INTEGER NOT NULL
@@ -335,6 +433,8 @@ public class ConsumptionBillingConsistencyTests
                 ""MeterId"", ""Name"", ""Unit"", ""Active"", ""TenantID"", ""CompanyId"")
             VALUES
                 (101, 'Known.kWh', 'kWh', TRUE, 10, 1),
+                (102, 'Room.Temperature', '°C', TRUE, 10, 1),
+                (103, 'Plant.Power', 'kW', TRUE, NULL, 1),
                 (201, 'OtherWorkspace.kWh', 'kWh', TRUE, 20, 2);
 
             INSERT INTO ""MeterReadings"" (
@@ -343,6 +443,12 @@ public class ConsumptionBillingConsistencyTests
                 (101, '2026-09-01 00:00:00', 100, 1),
                 (101, '2026-09-01 01:00:00', 160, 1),
                 (101, '2026-09-01 02:00:00', 250, 1),
+                (102, '2026-09-01 00:00:00', 22, 1),
+                (102, '2026-09-01 01:00:00', 24, 1),
+                (102, '2026-09-01 02:00:00', 23, 1),
+                (103, '2026-09-01 00:00:00', 10, 1),
+                (103, '2026-09-01 01:00:00', 20, 1),
+                (103, '2026-09-01 02:00:00', 30, 1),
                 (201, '2026-09-01 00:00:00', 1000, 2),
                 (201, '2026-09-01 01:00:00', 9000, 2);";
 

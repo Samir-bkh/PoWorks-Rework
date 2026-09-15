@@ -49,7 +49,10 @@ namespace PoWorks_Rework.Services
                 {
                     var (startDate, endDate) = filters.GetDateRange();
 
-                    var query = @"
+                    var supportedEnergyUnit =
+                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
+
+                    var query = $@"
                         WITH meter_stats AS (
                             SELECT 
                                 COUNT(*) as total_active,
@@ -57,16 +60,18 @@ namespace PoWorks_Rework.Services
                                 COUNT(CASE WHEN m.""TenantID"" IS NULL THEN 1 END) as without_tenants
                             FROM ""Meters"" m
                             WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            {0}
+                            AND {supportedEnergyUnit}
+                            {{0}}
                         ),
                         reading_stats AS (
                             SELECT COUNT(*) as total_readings
                             FROM ""MeterReadings"" mr
                             INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
                             WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
+                            AND {supportedEnergyUnit}
                             AND mr.""Timestamp"" >= @StartDate 
                             AND mr.""Timestamp"" <= @EndDate
-                            {0}
+                            {{0}}
                         )
                         SELECT 
                             m.total_active,
@@ -125,7 +130,10 @@ namespace PoWorks_Rework.Services
 
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
                 {
-                    var query = @"
+                    var supportedEnergyUnit =
+                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
+
+                    var query = $@"
                         SELECT 
                             MIN(mr.""Timestamp"") as earliest_reading,
                             MAX(mr.""Timestamp"") as latest_reading,
@@ -134,7 +142,8 @@ namespace PoWorks_Rework.Services
                             COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data
                         FROM ""MeterReadings"" mr
                         INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId";
+                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
+                        AND {supportedEnergyUnit}";
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
@@ -240,7 +249,10 @@ namespace PoWorks_Rework.Services
                 {
                     var (startDate, endDate) = filters.GetDateRange();
 
-                    var query = @"
+                    var supportedEnergyUnit =
+                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
+
+                    var query = $@"
                         SELECT DISTINCT
                             m.""MeterId"", 
                             m.""Name"", 
@@ -258,6 +270,7 @@ namespace PoWorks_Rework.Services
                         LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
                         INNER JOIN ""MeterReadings"" mr ON m.""MeterId"" = mr.""MeterId""
                         WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
+                        AND {supportedEnergyUnit}
                         AND mr.""Timestamp"" >= @StartDate 
                         AND mr.""Timestamp"" <= @EndDate";
 
@@ -439,6 +452,7 @@ namespace PoWorks_Rework.Services
                 var color = colors[colorIndex % colors.Length];
                 var dataset = new ChartDataset
                 {
+                    MeterId = meterGroup.Key.MeterId,
                     Label = BuildMeterLabel(meterGroup.Key.MeterName, meterGroup.Key.Unit, meterGroup.Key.TenantName),
                     MeterName = meterGroup.Key.MeterName,
                     Unit = string.IsNullOrWhiteSpace(meterGroup.Key.Unit) ? "unit" : meterGroup.Key.Unit,
@@ -530,8 +544,8 @@ namespace PoWorks_Rework.Services
                 labels = labels,
                 datasets = new object[]
                 {
-                    new { label = "Sample Meter 1 (kWh)", data = sampleData1, backgroundColor = "#FF6384", borderColor = "#FF6384" },
-                    new { label = "Sample Meter 2 (kWh)", data = sampleData2, backgroundColor = "#36A2EB", borderColor = "#36A2EB" }
+                    new { meterId = 1, label = "Sample Meter 1 (kWh)", meterName = "Sample Meter 1", tenantName = "Demo", unit = "kWh", data = sampleData1, backgroundColor = "#FF6384", borderColor = "#FF6384" },
+                    new { meterId = 2, label = "Sample Meter 2 (kWh)", meterName = "Sample Meter 2", tenantName = "Demo", unit = "kWh", data = sampleData2, backgroundColor = "#36A2EB", borderColor = "#36A2EB" }
                 }
             };
 

@@ -285,6 +285,7 @@ namespace PoWorks_Rework.Models
     /// </summary>
     public class ChartDataset
     {
+        public int MeterId { get; set; }
         public string Label { get; set; } = string.Empty;
         public string MeterName { get; set; } = string.Empty;
         public string Unit { get; set; } = string.Empty;
@@ -297,6 +298,7 @@ namespace PoWorks_Rework.Models
         {
             return new
             {
+                meterId = MeterId,
                 label = Label,
                 meterName = MeterName,
                 unit = Unit,

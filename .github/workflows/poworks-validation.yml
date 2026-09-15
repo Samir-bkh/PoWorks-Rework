@@ -39,7 +39,12 @@ jobs:
           node-version: '22'
 
       - name: Validate dashboard JavaScript syntax
-        run: node --check "PoWorks Rework/wwwroot/js/energy-dashboard.js"
+        run: |
+          node --check "PoWorks Rework/wwwroot/js/energy-chart-core.js"
+          node --check "PoWorks Rework/wwwroot/js/energy-dashboard.js"
+
+      - name: Run dashboard JavaScript unit tests
+        run: node --test "PoWorks Rework.Tests/js/energy-chart-core.test.js"
 
       - name: Restore application
         run: dotnet restore "PoWorks Rework/PoWorks Rework.csproj"
