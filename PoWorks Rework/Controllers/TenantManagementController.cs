@@ -354,12 +354,12 @@ namespace PoWorks_Rework.Controllers
                     ""Threshold1Rate"" = @threshold1Rate,
                     ""Threshold2"" = @threshold2,
                     ""Threshold2Rate"" = @threshold2Rate,
-                    ""Tarif_1"" = @baseRate::numeric::money,
-                    ""Tarif_2"" = @threshold1Rate::numeric::money,
-                    ""Tarif_3"" = @threshold2Rate::numeric::money,
+                    ""Tarif_1"" = CAST(@baseRate AS numeric)::money,
+                    ""Tarif_2"" = CAST(@threshold1Rate AS numeric)::money,
+                    ""Tarif_3"" = CAST(@threshold2Rate AS numeric)::money,
                     ""StartDate"" = @startDate,
                     ""Period"" = @period,
-                    ""Deposit"" = @deposit::numeric::money,
+                    ""Deposit"" = CAST(@deposit AS numeric)::money,
                     ""Active"" = @active,
                     ""EmailAlert"" = @emailAlert,
                     ""PrintBill"" = @printBill,
@@ -380,8 +380,8 @@ namespace PoWorks_Rework.Controllers
                     @companyName, @legacyAddress, @legacyLocation, @unit,
                     @address1, @address2, @postCode, @city, @unit,
                     @tariffType, @baseRate, @threshold1, @threshold1Rate, @threshold2, @threshold2Rate,
-                    @baseRate::numeric::money, @threshold1Rate::numeric::money, @threshold2Rate::numeric::money,
-                    @startDate, @period, @deposit::numeric::money,
+                    CAST(@baseRate AS numeric)::money, CAST(@threshold1Rate AS numeric)::money, CAST(@threshold2Rate AS numeric)::money,
+                    @startDate, @period, CAST(@deposit AS numeric)::money,
                     @active, @emailAlert, @printBill, @emailBill)";
 
             using var update = new NpgsqlCommand(updateSql, connection, transaction);
