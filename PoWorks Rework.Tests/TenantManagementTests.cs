@@ -99,7 +99,7 @@ public class TenantManagementTests
         Assert.Contains("DELETE_BLOCKED", source);
         Assert.Contains("EnableTenant", source);
         Assert.Contains("DisableTenant", source);
-        Assert.Contains("EntityType = "Tenant"", source);
+        Assert.Contains("EntityType = \"Tenant\"", source);
         Assert.Contains(@"""AspNetUserClaims""", source);
         Assert.Contains(@"""Meters""", source);
         Assert.Contains(@"""Bills""", source);
@@ -129,7 +129,7 @@ public class TenantManagementTests
         var consumption = ReadSource("Views", "Tenant", "_Consumption.cshtml");
         var editor = ReadSource("Views", "Tenant", "_TenantManagement.cshtml");
 
-        Assert.Contains("method="get"", management);
+        Assert.Contains("method=\"get\"", management);
         Assert.Contains("AssignedMeterCount", management);
         Assert.Contains("Model.ConsumptionData.Meters.Any()", consumption);
         Assert.Contains("Open Meter Management", consumption);
