@@ -172,6 +172,16 @@ namespace PoWorks_Rework.Controllers
                 model.CanViewImportExport,
                 model.CanViewGeneralSettings);
 
+            await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+            {
+                Action = "CREATE",
+                EntityType = "User",
+                EntityId = user.Id,
+                CompanyId = assignment.Item3,
+                Summary = $"User '{user.UserName}' created.",
+                After = await BuildUserAuditSnapshotAsync(user)
+            });
+
             TempData["SuccessMessage"] = $"User '{user.UserName}' created.";
             return RedirectToAction(nameof(Index));
         }
@@ -207,6 +217,8 @@ namespace PoWorks_Rework.Controllers
             var user = await _userManager.FindByIdAsync(model.Id);
             if (user == null || string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
                 return RedirectToAction(nameof(Index));
+
+            var beforeAudit = await BuildUserAuditSnapshotAsync(user);
 
             var assignment = ValidateAndResolveAssignment(model.UserType, model.CompanyId, model.TenantId);
             if (!assignment.IsValid)
@@ -249,6 +261,22 @@ namespace PoWorks_Rework.Controllers
             }
 
             await _userManager.UpdateSecurityStampAsync(user);
+
+            await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+            {
+                Action = "UPDATE",
+                EntityType = "User",
+                EntityId = user.Id,
+                CompanyId = assignment.CompanyId,
+                Summary = $"User '{user.UserName}' updated.",
+                Before = beforeAudit,
+                After = new
+                {
+                    Snapshot = await BuildUserAuditSnapshotAsync(user),
+                    PasswordChanged = !string.IsNullOrWhiteSpace(model.NewPassword)
+                }
+            });
+
             TempData["SuccessMessage"] = $"User '{user.UserName}' updated.";
             return RedirectToAction(nameof(Index));
         }
@@ -259,6 +287,8 @@ namespace PoWorks_Rework.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null || string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
                 return RedirectToAction(nameof(Index));
+
+            var beforeAudit = await BuildUserAuditSnapshotAsync(user);
 
             user.LockoutEnabled = true;
             user.LockoutEnd = DateTimeOffset.UtcNow.AddSeconds(-1);
@@ -272,6 +302,23 @@ namespace PoWorks_Rework.Controllers
             }
 
             await _userManager.UpdateSecurityStampAsync(user);
+
+            var enabledClaims = await _userManager.GetClaimsAsync(user);
+            var enabledCompanyId = int.TryParse(enabledClaims.FirstOrDefault(x => x.Type == "CompanyId")?.Value, out var parsedEnabledCompanyId)
+                ? parsedEnabledCompanyId
+                : (int?)null;
+
+            await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+            {
+                Action = "ENABLE",
+                EntityType = "User",
+                EntityId = user.Id,
+                CompanyId = enabledCompanyId,
+                Summary = $"User '{user.UserName}' enabled.",
+                Before = beforeAudit,
+                After = await BuildUserAuditSnapshotAsync(user)
+            });
+
             TempData["SuccessMessage"] = $"User '{user.UserName}' enabled.";
             return RedirectToAction(nameof(Index));
         }
@@ -282,6 +329,8 @@ namespace PoWorks_Rework.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null || string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
                 return RedirectToAction(nameof(Index));
+
+            var beforeAudit = await BuildUserAuditSnapshotAsync(user);
 
             user.LockoutEnabled = true;
             user.LockoutEnd = DateTimeOffset.UtcNow.AddYears(100);
@@ -294,6 +343,23 @@ namespace PoWorks_Rework.Controllers
             }
 
             await _userManager.UpdateSecurityStampAsync(user);
+
+            var disabledClaims = await _userManager.GetClaimsAsync(user);
+            var disabledCompanyId = int.TryParse(disabledClaims.FirstOrDefault(x => x.Type == "CompanyId")?.Value, out var parsedDisabledCompanyId)
+                ? parsedDisabledCompanyId
+                : (int?)null;
+
+            await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+            {
+                Action = "DISABLE",
+                EntityType = "User",
+                EntityId = user.Id,
+                CompanyId = disabledCompanyId,
+                Summary = $"User '{user.UserName}' disabled.",
+                Before = beforeAudit,
+                After = await BuildUserAuditSnapshotAsync(user)
+            });
+
             TempData["SuccessMessage"] = $"User '{user.UserName}' disabled.";
             return RedirectToAction(nameof(Index));
         }
@@ -305,11 +371,60 @@ namespace PoWorks_Rework.Controllers
 
             if (user != null && !string.Equals(user.UserName, "Admin", StringComparison.OrdinalIgnoreCase))
             {
-                await _userManager.DeleteAsync(user);
-                TempData["SuccessMessage"] = $"User '{user.UserName}' deleted. Company, tenant and business data were preserved.";
+                var beforeAudit = await BuildUserAuditSnapshotAsync(user);
+                var claims = await _userManager.GetClaimsAsync(user);
+                var companyId = int.TryParse(claims.FirstOrDefault(x => x.Type == "CompanyId")?.Value, out var parsedCompanyId)
+                    ? parsedCompanyId
+                    : (int?)null;
+
+                var deleteResult = await _userManager.DeleteAsync(user);
+                if (deleteResult.Succeeded)
+                {
+                    await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+                    {
+                        Action = "DELETE",
+                        EntityType = "User",
+                        EntityId = user.Id,
+                        CompanyId = companyId,
+                        Summary = $"User '{user.UserName}' deleted. Business data preserved.",
+                        Before = beforeAudit
+                    });
+
+                    TempData["SuccessMessage"] = $"User '{user.UserName}' deleted. Company, tenant and business data were preserved.";
+                }
+                else
+                {
+                    await AuditTrail.LogAsync(_databaseService, HttpContext, new PoWorks_Rework.Models.AuditEvent
+                    {
+                        Action = "DELETE",
+                        EntityType = "User",
+                        EntityId = user.Id,
+                        CompanyId = companyId,
+                        Summary = $"User '{user.UserName}' deletion failed.",
+                        Before = beforeAudit,
+                        Success = false
+                    });
+
+                    TempData["ErrorMessage"] = string.Join(" ", deleteResult.Errors.Select(e => e.Description));
+                }
             }
 
             return RedirectToAction(nameof(Index));
+        }
+
+        private async Task<object> BuildUserAuditSnapshotAsync(IdentityUser user)
+        {
+            var claims = await _userManager.GetClaimsAsync(user);
+            return new
+            {
+                user.Id,
+                user.UserName,
+                UserType = claims.FirstOrDefault(x => x.Type == "UserType")?.Value,
+                CompanyId = claims.FirstOrDefault(x => x.Type == "CompanyId")?.Value,
+                TenantId = claims.FirstOrDefault(x => x.Type == "TenantId")?.Value,
+                Permissions = claims.Where(x => x.Type == "Permission").Select(x => x.Value).OrderBy(x => x).ToArray(),
+                Enabled = AccessRules.IsUserEnabled(user, DateTimeOffset.UtcNow)
+            };
         }
 
         private async Task ApplyAccessClaimsAsync(
