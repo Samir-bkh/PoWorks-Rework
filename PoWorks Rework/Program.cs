@@ -104,6 +104,14 @@ builder.Services.AddAuthorization(options =>
                 StringComparison.OrdinalIgnoreCase));
     });
 
+    options.AddPolicy("ManagementAccess", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireAssertion(context =>
+            string.Equals(context.User.Identity?.Name, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            context.User.HasClaim("UserType", "Management"));
+    });
+
     options.AddPolicy("ImportExportAccess", policy =>
     {
         policy.RequireAuthenticatedUser();

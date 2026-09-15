@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Npgsql;
@@ -8,29 +9,38 @@ using PoWorks_Rework.Services;
 namespace PoWorks_Rework.Controllers
 {
     /// <summary>
-    /// Controller for meter management and configuration.
-    /// Handles CRUD operations for meters, meter hierarchies (parent/sub-meters), and meter search/filtering.
+    /// Management-facing meter configuration. Tenant users are intentionally
+    /// excluded: their experience is the dashboard/analytics view of meters
+    /// already assigned to them.
     /// </summary>
+    [Authorize(Policy = "ManagementAccess")]
     public class MeterController : BaseController
     {
         private readonly MeterRepository _meterRepository;
-        private readonly ICompanyContext _companyContext; 
+        private readonly ICompanyContext _companyContext;
+        private readonly ILogger<MeterController> _logger;
 
-        /// <summary>
-        /// Initializes the meter controller with database, repository, and company context dependencies.
-        /// </summary>
-        public MeterController(DatabaseService databaseService, MeterRepository meterRepository, ICompanyContext companyContext)
+        public MeterController(
+            DatabaseService databaseService,
+            MeterRepository meterRepository,
+            ICompanyContext companyContext,
+            ILogger<MeterController> logger)
             : base(databaseService)
         {
             _meterRepository = meterRepository;
-            _companyContext = companyContext; 
+            _companyContext = companyContext;
+            _logger = logger;
         }
 
-        /// <summary>
-        /// Displays the meter management page with search results and details for a selected meter.
-        /// Supports pagination and optional meter selection by ID.
-        /// </summary>
-        public async Task<IActionResult> Management(int? id = null, int page = 1, int pageSize = 10)
+        [HttpGet]
+        public async Task<IActionResult> Management(
+            int? id = null,
+            string searchField = "Name",
+            string? searchTerm = null,
+            string statusFilter = "All",
+            string assignmentFilter = "All",
+            int page = 1,
+            int pageSize = 20)
         {
             if (!_databaseService.IsInitialized)
             {
@@ -38,673 +48,1340 @@ namespace PoWorks_Rework.Controllers
                 return RedirectToAction("General", "Settings");
             }
 
-            var searchCriteria = new MeterSearchCriteria();
-            var viewModel = new MeterManagementViewModel
+            var criteria = new MeterSearchCriteria
             {
-                SearchCriteria = searchCriteria,
-                CurrentPage = page,
-                TenantOptions = GetTenantOptions() 
+                SearchField = NormalizeSearchField(searchField),
+                SearchTerm = searchTerm,
+                StatusFilter = MeterLifecycleRules.NormalizeStatus(statusFilter),
+                AssignmentFilter = MeterLifecycleRules.NormalizeAssignment(assignmentFilter)
             };
 
-            try
-            {
-                viewModel.SearchResults = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
-                viewModel.TotalItems = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
-                viewModel.TotalPages = (viewModel.TotalItems + pageSize - 1) / pageSize;
-                if (id.HasValue)
-                {
-                    Console.WriteLine($"Selected meter ID: {id.Value}");
-                    viewModel.SelectedMeter = await _meterRepository.GetMeterByIdAsync(id.Value);
-
-                    if (viewModel.SelectedMeter != null)
-                    {
-                        Console.WriteLine($"Selected meter: {viewModel.SelectedMeter.Name}, ID: {viewModel.SelectedMeter.Id}");
-                        viewModel.SubMeters = await _meterRepository.GetSubMetersAsync(id.Value);
-                        Console.WriteLine($"Retrieved {viewModel.SubMeters.Count} sub meters for meter ID {id.Value}");
-                    }
-                }
-                else if (viewModel.SearchResults.Count > 0)
-                {
-                    var mainMeter = viewModel.SearchResults.FirstOrDefault(m => m.Type.ToLower() == "main");
-
-                    if (mainMeter != null)
-                    {
-                        viewModel.SelectedMeter = mainMeter;
-                        Console.WriteLine($"Selected main meter: {viewModel.SelectedMeter.Name}, ID: {viewModel.SelectedMeter.Id}");
-                    }
-                    else
-                    {
-                        viewModel.SelectedMeter = viewModel.SearchResults[0];
-                        Console.WriteLine($"No main meter found, selected first meter: {viewModel.SelectedMeter.Name}, ID: {viewModel.SelectedMeter.Id}");
-                    }
-                    viewModel.SubMeters = await _meterRepository.GetSubMetersAsync(viewModel.SelectedMeter.Id);
-                    Console.WriteLine($"Retrieved {viewModel.SubMeters.Count} sub meters for meter ID {viewModel.SelectedMeter.Id}");
-                }
-
-                return View(viewModel);
-            }
-            catch (System.Exception ex)
-            {
-                Console.WriteLine($"Error in Management method: {ex.Message}");
-                TempData["ErrorMessage"] = $"Database error: {ex.Message}";
-                return View(viewModel);
-            }
-        }
-        /// <summary>
-        /// Searches meters by the given criteria with pagination.
-        /// </summary>
-        /// <param name="searchCriteria">The search criteria containing the search field and term.</param>
-        /// <param name="page">The page number to display (1-based).</param>
-        /// <param name="pageSize">The number of results per page.</param>
-        /// <returns>The meter management view with the filtered results.</returns>
-        [HttpPost]
-        public async Task<IActionResult> Search(MeterSearchCriteria searchCriteria, int page = 1, int pageSize = 10)
-        {
-            if (!_databaseService.IsInitialized)
-            {
-                TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
-                return RedirectToAction("General", "Settings");
-            }
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 10, 100);
 
             try
             {
-                var viewModel = new MeterManagementViewModel
+                var model = await BuildManagementModelAsync(criteria, id, page, pageSize);
+                return View(model);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Unable to load meter management for workspace {CompanyId}",
+                    _companyContext.CurrentCompanyId);
+
+                TempData["ErrorMessage"] = "Unable to load meters. Check the application logs for details.";
+                return View(new MeterManagementViewModel
                 {
-                    SearchCriteria = searchCriteria,
+                    SearchCriteria = criteria,
                     CurrentPage = page,
-                    TenantOptions = GetTenantOptions() 
-                };
-                viewModel.SearchResults = await _meterRepository.GetMetersAsync(searchCriteria, page, pageSize);
-                viewModel.TotalItems = await _meterRepository.GetTotalMetersCountAsync(searchCriteria);
-                viewModel.TotalPages = (viewModel.TotalItems + pageSize - 1) / pageSize;
-                if (viewModel.SearchResults.Count > 0)
-                {
-                    viewModel.SelectedMeter = viewModel.SearchResults[0];
-                    viewModel.SubMeters = await _meterRepository.GetSubMetersAsync(viewModel.SelectedMeter.Id);
-                }
-
-                return View("Management", viewModel);
-            }
-            catch (System.Exception ex)
-            {
-                TempData["ErrorMessage"] = $"Database error: {ex.Message}";
-                return RedirectToAction("Management");
+                    PageSize = pageSize
+                });
             }
         }
 
         /// <summary>
-        /// Creates a new meter in the database for the current company.
+        /// Compatibility endpoint for old links/forms. Search is read-only and
+        /// therefore intentionally GET-only.
         /// </summary>
-        /// <param name="meter">The meter model containing the data to insert.</param>
-        /// <param name="logger">The logger used to record creation details.</param>
-        /// <returns>A redirect to the meter management page with the created meter selected.</returns>
+        [HttpGet]
+        public IActionResult Search(
+            string searchField = "Name",
+            string? searchTerm = null,
+            string statusFilter = "All",
+            string assignmentFilter = "All",
+            int page = 1,
+            int pageSize = 20)
+        {
+            return RedirectToAction(nameof(Management), new
+            {
+                searchField,
+                searchTerm,
+                statusFilter,
+                assignmentFilter,
+                page,
+                pageSize
+            });
+        }
+
         [HttpPost]
-        public async Task<IActionResult> Create(Meter meter, [FromServices] ILogger<MeterController> logger)
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Create(Meter meter)
         {
             if (!_databaseService.IsInitialized)
+                return RedirectDatabaseNotConfigured();
+
+            var companyId = _companyContext.CurrentCompanyId;
+            meter.Id = 0;
+
+            var validationErrors = MeterLifecycleRules.Validate(meter).ToList();
+            var tenantId = ParseOptionalId(meter.TenantId, "Tenant", validationErrors);
+            var parentId = ParseOptionalId(meter.ParentMeterId, "Parent meter", validationErrors);
+            var normalizedType = MeterLifecycleRules.NormalizeType(meter.Type);
+
+            if (normalizedType == "main")
+                parentId = null;
+
+            if (validationErrors.Count > 0)
             {
-                logger.LogError("Database not initialized when attempting to create meter");
-                TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
-                return RedirectToAction("General", "Settings");
+                TempData["ErrorMessage"] = string.Join(" ", validationErrors);
+                return RedirectToAction(nameof(Management));
             }
 
             try
             {
-                meter.Id = 0;
-                logger.LogInformation("Creating meter: Name={Name}, Type={Type}, Unit={Unit}, LastReading={LastReading}, Active={Active}, ParentId={ParentId}, TenantId={TenantId}",
-                    meter.Name, meter.Type, meter.Unit, meter.LastReading, meter.Active, meter.ParentMeterId, meter.TenantId);
-                if (string.IsNullOrWhiteSpace(meter.Name))
+                await using var connection = _databaseService.CreateNewConnection();
+                await connection.OpenAsync();
+                await using var tx = await connection.BeginTransactionAsync();
+
+                if (!await ValidateTenantAssignmentAsync(connection, tx, tenantId))
                 {
-                    meter.Name = "Unnamed Meter " + DateTime.Now.ToString("yyyyMMddHHmmss");
-                    logger.LogWarning("Empty meter name was auto-filled with a timestamp");
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = "The selected tenant is disabled or does not belong to the current workspace.";
+                    return RedirectToAction(nameof(Management));
                 }
-                if (string.IsNullOrWhiteSpace(meter.Unit))
+
+                var parentError = await ValidateParentAssignmentAsync(
+                    connection,
+                    tx,
+                    meterId: null,
+                    parentId);
+
+                if (parentError != null)
                 {
-                    meter.Unit = "";  
-                    logger.LogWarning("Empty Unit field was set to empty string to satisfy NOT NULL constraint");
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = parentError;
+                    return RedirectToAction(nameof(Management));
                 }
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+
+                const string sql = @"
+                    INSERT INTO ""Meters"" (
+                        ""Name"", ""Label"", ""Unit"", ""ParentId"",
+                        ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
+                    VALUES (
+                        @Name, @Label, @Unit, @ParentId,
+                        0, @Type, @Active, @TenantId, @CompanyId)
+                    RETURNING ""MeterId""";
+
+                await using var cmd = new NpgsqlCommand(sql, connection, tx);
+                AddMeterConfigurationParameters(
+                    cmd,
+                    meter,
+                    normalizedType,
+                    parentId,
+                    tenantId,
+                    companyId);
+
+                var result = await cmd.ExecuteScalarAsync();
+                if (result == null)
+                    throw new InvalidOperationException("The database did not return the created meter id.");
+
+                var meterId = Convert.ToInt32(result);
+                var after = await GetMeterSnapshotAsync(connection, tx, meterId, companyId);
+
+                await tx.CommitAsync();
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
                 {
-                    await connection.OpenAsync();
-                    logger.LogInformation("New database connection opened successfully");
-                    using var transaction = await connection.BeginTransactionAsync();
-                    try
-                    {
-                      
-                        string sql = @"
-    INSERT INTO ""Meters"" (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
-    VALUES (@Name, @Label, @Unit, @ParentId, @LastReading, @Type, @Active, @TenantId, @CompanyId)
-    RETURNING ""MeterId"";";
+                    Action = "CREATE",
+                    EntityType = "Meter",
+                    EntityId = meterId.ToString(),
+                    CompanyId = companyId,
+                    Summary = $"Meter '{meter.Name.Trim()}' created.",
+                    After = after
+                });
 
-                        using var cmd = new NpgsqlCommand(sql, connection, transaction);
-                        cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-
-                        cmd.Parameters.AddWithValue("@Name", meter.Name);
-                        cmd.Parameters.AddWithValue("@Label", meter.Label ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Unit", meter.Unit ?? "");
-                        int? parentId = null;
-                        if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
-                        {
-                            parentId = pid;
-                        }
-                        cmd.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-                        int lastReading = 0;
-                        if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int reading))
-                        {
-                            lastReading = reading;
-                        }
-                        cmd.Parameters.AddWithValue("@LastReading", lastReading);
-                        string type = "main";
-                        if (!string.IsNullOrWhiteSpace(meter.Type) &&
-                            (meter.Type.ToLower() == "main" || meter.Type.ToLower() == "sub"))
-                        {
-                            type = meter.Type.ToLower();
-                        }
-                        cmd.Parameters.AddWithValue("@Type", type);
-
-                        cmd.Parameters.AddWithValue("@Active", meter.Active);
-                        int? tenantId = null;
-                        if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
-                        {
-                            tenantId = tid;
-                        }
-                        cmd.Parameters.AddWithValue("@TenantId", tenantId.HasValue ? tenantId.Value : DBNull.Value);
-
-                        var result = await cmd.ExecuteScalarAsync();
-                        if (result == null)
-                        {
-                            throw new Exception("Database returned null after insert operation");
-                        }
-
-                        int meterId = Convert.ToInt32(result);
-                        logger.LogInformation("New meter created with ID: {MeterId}", meterId);
-
-                        await transaction.CommitAsync();
-                        logger.LogInformation("Transaction committed successfully");
-
-                        TempData["SuccessMessage"] = "Meter created successfully.";
-                        return RedirectToAction("Management", new { id = meterId });
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Error executing SQL command. Rolling back transaction.");
-                        await transaction.RollbackAsync();
-                        throw;
-                    }
-                }
+                TempData["SuccessMessage"] = "Meter created successfully.";
+                return RedirectToAction(nameof(Management), new { id = meterId });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Unexpected error creating meter");
-                TempData["ErrorMessage"] = $"Error creating meter: {ex.Message}";
-            }
-            var viewModel = new MeterManagementViewModel
-            {
-                SelectedMeter = meter,
-                SearchCriteria = new MeterSearchCriteria()
-            };
+                _logger.LogError(ex, "Failed to create meter in workspace {CompanyId}", companyId);
 
-            try
-            {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
                 {
-                    await connection.OpenAsync();
-                    string sql = @"
-SELECT m.""MeterId"", m.""Name"", m.""Unit"", m.""ParentId"", p.""Name"" AS ""ParentName"",
-       m.""LastReading"", m.""Type"", m.""Active"", m.""TenantID"", t.""DisplayName"" AS ""TenantName""
-FROM ""Meters"" m
-LEFT JOIN ""Meters"" p ON m.""ParentId"" = p.""MeterId""
-LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-WHERE m.""CompanyId"" = @CompanyId
-ORDER BY m.""Name""
-LIMIT 10";
+                    Action = "CREATE_FAILED",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = "Meter creation failed.",
+                    Success = false
+                });
 
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                    using var reader = await cmd.ExecuteReaderAsync();
-
-                    while (await reader.ReadAsync())
-                    {
-                        viewModel.SearchResults.Add(new Meter
-                        {
-                            Id = reader.GetInt32(reader.GetOrdinal("MeterId")),
-                            Name = reader.GetString(reader.GetOrdinal("Name")),
-                            Unit = reader.GetString(reader.GetOrdinal("Unit")), 
-                            ParentMeterId = reader.IsDBNull(reader.GetOrdinal("ParentId")) ? null : reader.GetInt32(reader.GetOrdinal("ParentId")).ToString(),
-                            ParentMeterName = reader.IsDBNull(reader.GetOrdinal("ParentName")) ? null : reader.GetString(reader.GetOrdinal("ParentName")),
-                            LastReading = reader.GetInt32(reader.GetOrdinal("LastReading")).ToString(),
-                            Type = reader.GetString(reader.GetOrdinal("Type")).First().ToString().ToUpper() + reader.GetString(reader.GetOrdinal("Type")).Substring(1),
-                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")).ToString(),
-                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? null : reader.GetString(reader.GetOrdinal("TenantName")),
-                            Active = reader.GetBoolean(reader.GetOrdinal("Active"))
-                        });
-                    }
-                }
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
-                    using var cmd = new NpgsqlCommand("SELECT COUNT(*) FROM \"Meters\" WHERE \"CompanyId\" = @CompanyId", connection);
-                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                    viewModel.TotalItems = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-                    viewModel.TotalPages = (viewModel.TotalItems + 9) / 10;
-                }
+                TempData["ErrorMessage"] = "Meter could not be created. Check the application logs for details.";
+                return RedirectToAction(nameof(Management));
             }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error loading search results");
-                TempData["ErrorMessage"] = (TempData["ErrorMessage"] as string ?? "") +
-                                          $" Error loading search results: {ex.Message}";
-            }
-
-            return View("Management", viewModel);
-        }
-        /// <summary>
-        /// Debug endpoint that logs all received form fields for troubleshooting.
-        /// </summary>
-        /// <returns>A redirect to the meter management page.</returns>
-        [HttpPost]
-        public async Task<IActionResult> Debug()
-        {
-            Console.WriteLine("=== DEBUG: ANY POST REQUEST RECEIVED ===");
-            foreach (var key in Request.Form.Keys)
-            {
-                Console.WriteLine($"Form Field: {key} = {Request.Form[key]}");
-            }
-            Console.WriteLine("=======================================");
-
-            return RedirectToAction("Management");
         }
 
-        /// <summary>
-        /// Updates an existing meter's details in the database.
-        /// </summary>
-        /// <param name="meter">The meter model containing the updated data.</param>
-        /// <returns>A redirect to the meter management page with the updated meter selected.</returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Update(Meter meter)
         {
-            Console.WriteLine("=== UPDATE METHOD CALLED ===");
-            Console.WriteLine($"Method reached at: {DateTime.Now}");
-            Console.WriteLine("=== FORM DATA RECEIVED ===");
-            foreach (var key in Request.Form.Keys)
-            {
-                Console.WriteLine($"Form Field: {key} = {Request.Form[key]}");
-            }
-            Console.WriteLine("=========================");
             if (!_databaseService.IsInitialized)
+                return RedirectDatabaseNotConfigured();
+
+            var companyId = _companyContext.CurrentCompanyId;
+            var validationErrors = MeterLifecycleRules.Validate(meter).ToList();
+            var tenantId = ParseOptionalId(meter.TenantId, "Tenant", validationErrors);
+            var parentId = ParseOptionalId(meter.ParentMeterId, "Parent meter", validationErrors);
+            var normalizedType = MeterLifecycleRules.NormalizeType(meter.Type);
+
+            if (meter.Id <= 0)
+                validationErrors.Add("A valid meter id is required.");
+
+            if (normalizedType == "main")
+                parentId = null;
+
+            if (validationErrors.Count > 0)
             {
-                Console.WriteLine("Database not initialized");
-                TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
-                return RedirectToAction("General", "Settings");
+                TempData["ErrorMessage"] = string.Join(" ", validationErrors);
+                return RedirectToAction(nameof(Management), new { id = meter.Id });
             }
-            Console.WriteLine($"=== METER OBJECT DATA ===");
-            Console.WriteLine($"Meter ID: {meter.Id}");
-            Console.WriteLine($"Meter Name: '{meter.Name}'");
-            Console.WriteLine($"Meter Label: '{meter.Label}'");
-            Console.WriteLine($"Meter Unit: '{meter.Unit}'");
-            Console.WriteLine($"Meter Type: '{meter.Type}'");
-            Console.WriteLine($"Meter ParentMeterId: '{meter.ParentMeterId}'");
-            Console.WriteLine($"Meter LastReading: '{meter.LastReading}'");
-            Console.WriteLine($"Meter TenantId: '{meter.TenantId}'");
-            Console.WriteLine($"Meter Active: {meter.Active}");
-            Console.WriteLine($"=========================");
-            Console.WriteLine($"ModelState.IsValid: {ModelState.IsValid}");
-
-            if (!ModelState.IsValid)
-            {
-                Console.WriteLine("=== VALIDATION ERRORS ===");
-                foreach (var modelError in ModelState)
-                {
-                    var key = modelError.Key;
-                    var errors = modelError.Value.Errors;
-                    if (errors.Count > 0)
-                    {
-                        Console.WriteLine($"Field: {key}");
-                        foreach (var error in errors)
-                        {
-                            Console.WriteLine($"  Error: {error.ErrorMessage}");
-                            if (error.Exception != null)
-                            {
-                                Console.WriteLine($"  Exception: {error.Exception.Message}");
-                            }
-                        }
-                    }
-                }
-                Console.WriteLine("========================");
-                var errorMessages = ModelState
-                    .Where(x => x.Value.Errors.Count > 0)
-                    .Select(x => $"{x.Key}: {string.Join(", ", x.Value.Errors.Select(e => e.ErrorMessage))}")
-                    .ToList();
-
-                TempData["ErrorMessage"] = $"Invalid meter data. Errors: {string.Join("; ", errorMessages)}";
-                return RedirectToAction("Management", new { id = meter.Id });
-            }
-
-            Console.WriteLine("ModelState is valid, proceeding with update...");
 
             try
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
-                    Console.WriteLine("Database connection opened for update");
-                    using var transaction = await connection.BeginTransactionAsync();
-                    Console.WriteLine("Transaction started");
+                await using var connection = _databaseService.CreateNewConnection();
+                await connection.OpenAsync();
+                await using var tx = await connection.BeginTransactionAsync();
 
-                    try
-                    {
-                        string sql = @"
+                var before = await GetMeterSnapshotAsync(connection, tx, meter.Id, companyId);
+                if (before == null)
+                {
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = "Meter not found in the current workspace.";
+                    return RedirectToAction(nameof(Management));
+                }
+
+                if (!await ValidateTenantAssignmentAsync(connection, tx, tenantId, before.TenantId))
+                {
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = "The selected tenant is disabled or does not belong to the current workspace.";
+                    return RedirectToAction(nameof(Management), new { id = meter.Id });
+                }
+
+                var parentError = await ValidateParentAssignmentAsync(
+                    connection,
+                    tx,
+                    meter.Id,
+                    parentId,
+                    before.ParentId);
+
+                if (parentError != null)
+                {
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = parentError;
+                    return RedirectToAction(nameof(Management), new { id = meter.Id });
+                }
+
+                const string sql = @"
                     UPDATE ""Meters""
                     SET ""Name"" = @Name,
                         ""Label"" = @Label,
                         ""Unit"" = @Unit,
                         ""ParentId"" = @ParentId,
-                        ""LastReading"" = @LastReading,
                         ""Type"" = @Type,
                         ""Active"" = @Active,
                         ""TenantID"" = @TenantId
-                    WHERE ""MeterId"" = @MeterId";
+                    WHERE ""MeterId"" = @MeterId
+                      AND ""CompanyId"" = @CompanyId";
 
-                        using var cmd = new NpgsqlCommand(sql, connection, transaction);
+                await using var cmd = new NpgsqlCommand(sql, connection, tx);
+                AddMeterConfigurationParameters(
+                    cmd,
+                    meter,
+                    normalizedType,
+                    parentId,
+                    tenantId,
+                    companyId);
+                cmd.Parameters.AddWithValue("@MeterId", meter.Id);
 
-                        cmd.Parameters.AddWithValue("@MeterId", meter.Id);
-                        cmd.Parameters.AddWithValue("@Name", meter.Name ?? "");
-                        cmd.Parameters.AddWithValue("@Label", meter.Label ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Unit", string.IsNullOrEmpty(meter.Unit) ? "" : meter.Unit);
-                        int? parentId = null;
-                        if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out int pid))
-                        {
-                            parentId = pid;
-                        }
-                        cmd.Parameters.AddWithValue("@ParentId", parentId.HasValue ? parentId.Value : DBNull.Value);
-                        int lastReading = 0;
-                        if (!string.IsNullOrEmpty(meter.LastReading) && int.TryParse(meter.LastReading, out int reading))
-                        {
-                            lastReading = reading;
-                        }
-                        cmd.Parameters.AddWithValue("@LastReading", lastReading);
+                var affected = await cmd.ExecuteNonQueryAsync();
+                if (affected != 1)
+                    throw new InvalidOperationException("Meter update did not affect exactly one workspace-scoped row.");
 
-                        cmd.Parameters.AddWithValue("@Type", meter.Type.ToLower());
-                        cmd.Parameters.AddWithValue("@Active", meter.Active);
-                        int? tenantId = null;
-                        if (!string.IsNullOrEmpty(meter.TenantId) && int.TryParse(meter.TenantId, out int tid))
-                        {
-                            tenantId = tid;
-                        }
-                        cmd.Parameters.AddWithValue("@TenantId", tenantId.HasValue ? tenantId.Value : DBNull.Value);
+                var after = await GetMeterSnapshotAsync(connection, tx, meter.Id, companyId);
+                await tx.CommitAsync();
 
-                        Console.WriteLine($"Executing SQL update for meter ID: {meter.Id}");
-                        var rowsAffected = await cmd.ExecuteNonQueryAsync();
-                        Console.WriteLine($"Rows affected: {rowsAffected}");
+                var (action, summary) = DescribeSingleMeterChange(before, after!);
 
-                        await transaction.CommitAsync();
-                        Console.WriteLine("Transaction committed successfully");
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = action,
+                    EntityType = "Meter",
+                    EntityId = meter.Id.ToString(),
+                    CompanyId = companyId,
+                    Summary = summary,
+                    Before = before,
+                    After = after
+                });
 
-                        TempData["SuccessMessage"] = "Meter updated successfully.";
-                    }
-                    catch (Exception ex)
-                    {
-                        await transaction.RollbackAsync();
-                        Console.WriteLine($"Database error, transaction rolled back: {ex.Message}");
-                        Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                        throw new Exception($"Failed to update meter: {ex.Message}", ex);
-                    }
-                }
+                TempData["SuccessMessage"] = "Meter updated successfully.";
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Update error: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                TempData["ErrorMessage"] = $"Error updating meter: {ex.Message}";
+                _logger.LogError(
+                    ex,
+                    "Failed to update meter {MeterId} in workspace {CompanyId}",
+                    meter.Id,
+                    companyId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "UPDATE_FAILED",
+                    EntityType = "Meter",
+                    EntityId = meter.Id.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Meter update failed.",
+                    Success = false
+                });
+
+                TempData["ErrorMessage"] = "Meter could not be updated. Check the application logs for details.";
             }
 
-            Console.WriteLine("Redirecting back to Management page");
-            return RedirectToAction("Management", new { id = meter.Id });
+            return RedirectToAction(nameof(Management), new { id = meter.Id });
         }
 
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public Task<IActionResult> EnableMeter(int meterId) =>
+            SetMeterActiveState(meterId, true);
 
-        /// <summary>
-        /// Displays the meter readings page with the list of available meters.
-        /// </summary>
-        /// <returns>The meter readings view.</returns>
-        public async Task<IActionResult> Readings()
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public Task<IActionResult> DisableMeter(int meterId) =>
+            SetMeterActiveState(meterId, false);
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteMeter(int meterId)
         {
-            if (!_databaseService.IsInitialized)
-            {
-                TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
-                return RedirectToAction("General", "Settings");
-            }
+            var companyId = _companyContext.CurrentCompanyId;
 
             try
             {
-                var searchCriteria = new MeterSearchCriteria();
- 
-                var meters = await _meterRepository.GetMetersAsync(searchCriteria, 1, 999999);
-                var totalCount = meters.Count;
+                await using var connection = _databaseService.CreateNewConnection();
+                await connection.OpenAsync();
+                await using var tx = await connection.BeginTransactionAsync();
 
-                var viewModel = new MeterReadingsViewModel
+                var before = await GetMeterSnapshotAsync(connection, tx, meterId, companyId);
+                if (before == null)
+                {
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = "Meter not found in the current workspace.";
+                    return RedirectToAction(nameof(Management));
+                }
+
+                var dependencies = await GetMeterDependenciesAsync(connection, tx, meterId, companyId);
+                if (!MeterLifecycleRules.CanPermanentlyDelete(dependencies))
+                {
+                    await tx.RollbackAsync();
+
+                    await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                    {
+                        Action = "DELETE_BLOCKED",
+                        EntityType = "Meter",
+                        EntityId = meterId.ToString(),
+                        CompanyId = companyId,
+                        Summary = BuildDeleteBlockedSummary(before.Name, dependencies),
+                        Before = new { Meter = before, Dependencies = dependencies },
+                        Success = false
+                    });
+
+                    TempData["ErrorMessage"] =
+                        "This meter has historical data, invoice references, or child meters. Disable it instead of deleting it.";
+                    return RedirectToAction(nameof(Management), new { id = meterId });
+                }
+
+                await using var delete = new NpgsqlCommand(@"
+                    DELETE FROM ""Meters""
+                    WHERE ""MeterId"" = @MeterId
+                      AND ""CompanyId"" = @CompanyId", connection, tx);
+                delete.Parameters.AddWithValue("@MeterId", meterId);
+                delete.Parameters.AddWithValue("@CompanyId", companyId);
+
+                if (await delete.ExecuteNonQueryAsync() != 1)
+                    throw new InvalidOperationException("Meter delete did not affect exactly one row.");
+
+                await tx.CommitAsync();
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "DELETE",
+                    EntityType = "Meter",
+                    EntityId = meterId.ToString(),
+                    CompanyId = companyId,
+                    Summary = $"Empty meter '{before.Name}' permanently deleted.",
+                    Before = before
+                });
+
+                TempData["SuccessMessage"] = "Empty meter permanently deleted.";
+                return RedirectToAction(nameof(Management));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to delete meter {MeterId}", meterId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "DELETE_FAILED",
+                    EntityType = "Meter",
+                    EntityId = meterId.ToString(),
+                    CompanyId = companyId,
+                    Summary = "Meter deletion failed.",
+                    Success = false
+                });
+
+                TempData["ErrorMessage"] = "Meter deletion failed. Check the application logs for details.";
+                return RedirectToAction(nameof(Management), new { id = meterId });
+            }
+        }
+
+        public async Task<IActionResult> Readings()
+        {
+            if (!_databaseService.IsInitialized)
+                return RedirectDatabaseNotConfigured();
+
+            try
+            {
+                var meters = await _meterRepository.GetMetersAsync(
+                    new MeterSearchCriteria(),
+                    1,
+                    5000);
+
+                return View(new MeterReadingsViewModel
                 {
                     Readings = new List<MeterReading>(),
                     AvailableMeters = meters.Select(m => new MeterOption
                     {
                         MeterId = m.Id,
                         Name = m.Name,
-                        Unit = m.Unit ?? "",
-                        Type = m.Type ?? ""
+                        Unit = m.Unit,
+                        Type = m.Type
                     }).ToList(),
-                    TotalItems = totalCount,
+                    TotalItems = meters.Count,
                     CurrentPage = 1,
                     TotalPages = 1
-                };
-
-                return View(viewModel);
+                });
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                TempData["ErrorMessage"] = $"Database error: {ex.Message}";
+                _logger.LogError(ex, "Unable to load meter readings page.");
+                TempData["ErrorMessage"] = "Unable to load meter readings.";
                 return View(new MeterReadingsViewModel());
             }
         }
-        /// <summary>
-        /// Retrieves the tenants belonging to the current company as dropdown options.
-        /// </summary>
-        /// <returns>A list of select list items for tenant selection.</returns>
-        private List<SelectListItem> GetTenantOptions()
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BulkDeleteMeters([FromBody] List<int> meterIds)
         {
-            var options = new List<SelectListItem>
-    {
-        new SelectListItem { Value = "", Text = "None" }
-    };
+            var ids = (meterIds ?? new List<int>())
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+
+            if (ids.Count == 0)
+                return Json(new { success = false, message = "No meters selected." });
+
+            var companyId = _companyContext.CurrentCompanyId;
 
             try
             {
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
+                await using var connection = _databaseService.CreateNewConnection();
+                await connection.OpenAsync();
+                await using var tx = await connection.BeginTransactionAsync();
+
+                var scopedIds = await GetScopedMeterIdsAsync(connection, tx, ids, companyId);
+                if (scopedIds.Count != ids.Count)
                 {
-                    connection.Open();
-
-                    string sql = @"
-SELECT t.""TenantID"", td.""CompanyName""
-FROM ""Tenants"" t
-LEFT JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-WHERE t.""CompanyId"" = @CompanyId
-ORDER BY td.""CompanyName""";
-
-                    using var cmd = new NpgsqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId); 
-                    using var reader = cmd.ExecuteReader();
-
-                    while (reader.Read())
+                    await tx.RollbackAsync();
+                    return Json(new
                     {
-                        int tenantId = reader.GetInt32(0);
-                        string companyName = !reader.IsDBNull(1) ? reader.GetString(1) : $"Tenant ID: {tenantId}";
+                        success = false,
+                        message = "One or more selected meters do not belong to the current workspace."
+                    });
+                }
 
-                        options.Add(new SelectListItem
+                var blocked = new List<object>();
+                foreach (var id in scopedIds)
+                {
+                    var dependencies = await GetMeterDependenciesAsync(connection, tx, id, companyId);
+                    if (dependencies.HasDependencies)
+                    {
+                        blocked.Add(new
                         {
-                            Value = tenantId.ToString(),
-                            Text = companyName
+                            MeterId = id,
+                            Dependencies = dependencies
                         });
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error getting tenant options: {ex.Message}");
-            }
 
-            return options;
-        }
+                if (blocked.Count > 0)
+                {
+                    await tx.RollbackAsync();
 
-        /// <summary>
-        /// Deletes multiple meters and their associated readings for the current company.
-        /// </summary>
-        /// <param name="meterIds">The list of meter IDs to delete.</param>
-        /// <returns>JSON indicating the number of meters successfully deleted.</returns>
-        [HttpPost]
-        public async Task<IActionResult> BulkDeleteMeters([FromBody] List<int> meterIds)
-        {
-            if (meterIds == null || !meterIds.Any())
-                return Json(new { success = false, message = "No meters selected" });
+                    await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                    {
+                        Action = "DELETE_BLOCKED",
+                        EntityType = "Meter",
+                        CompanyId = companyId,
+                        Summary = $"Permanent deletion blocked for {blocked.Count} selected meter(s). Disable them instead.",
+                        Before = new { BlockedMeters = blocked.Take(25).ToList() },
+                        Success = false
+                    });
 
-            try
-            {
-                using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
-                await connection.OpenAsync();
-                using var tx = await connection.BeginTransactionAsync();
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Permanent deletion was blocked because at least one selected meter has readings, invoice references, or child meters. Disable those meters instead."
+                    });
+                }
 
-                // Keep deletion scoped to meters that belong to the current company.
-                const string scopedMeterIdsSql = @"
-                    SELECT ""MeterId""
-                    FROM ""Meters""
+                var before = await GetMeterSnapshotsAsync(connection, tx, scopedIds, companyId);
+
+                await using var delete = new NpgsqlCommand(@"
+                    DELETE FROM ""Meters""
                     WHERE ""MeterId"" = ANY(@MeterIds)
-                      AND ""CompanyId"" = @CompanyId";
+                      AND ""CompanyId"" = @CompanyId", connection, tx);
+                delete.Parameters.AddWithValue("@MeterIds", scopedIds.ToArray());
+                delete.Parameters.AddWithValue("@CompanyId", companyId);
 
-                // Aggregate tables reference Meters directly, so they must be cleared first.
-                foreach (var tableName in new[]
-                {
-                    "MeterReadingsDaily",
-                    "MeterReadingsMonthly",
-                    "MeterReadingsYearly"
-                })
-                {
-                    string sqlAggregate = $@"DELETE FROM ""{tableName}""
-                        WHERE ""MeterId"" IN ({scopedMeterIdsSql})";
-
-                    using var cmdAggregate = new NpgsqlCommand(sqlAggregate, connection, tx);
-                    cmdAggregate.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
-                    cmdAggregate.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                    await cmdAggregate.ExecuteNonQueryAsync();
-                }
-
-                string sqlReadings = $@"DELETE FROM ""MeterReadings""
-                    WHERE ""MeterId"" IN ({scopedMeterIdsSql})";
-
-                using (var cmdReadings = new NpgsqlCommand(sqlReadings, connection, tx))
-                {
-                    cmdReadings.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
-                    cmdReadings.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                    await cmdReadings.ExecuteNonQueryAsync();
-                }
-
-                // Detach child meters before deleting a parent meter to avoid the self-referencing ParentId FK.
-                string sqlDetachChildren = $@"UPDATE ""Meters""
-                    SET ""ParentId"" = NULL
-                    WHERE ""ParentId"" IN ({scopedMeterIdsSql})
-                      AND ""CompanyId"" = @CompanyId";
-
-                using (var cmdDetachChildren = new NpgsqlCommand(sqlDetachChildren, connection, tx))
-                {
-                    cmdDetachChildren.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
-                    cmdDetachChildren.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                    await cmdDetachChildren.ExecuteNonQueryAsync();
-                }
-
-                string sqlMeters = @"DELETE FROM ""Meters""
-                    WHERE ""MeterId"" = ANY(@MeterIds)
-                      AND ""CompanyId"" = @CompanyId";
-
-                using var cmdMeters = new NpgsqlCommand(sqlMeters, connection, tx);
-                cmdMeters.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
-                cmdMeters.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                int rows = await cmdMeters.ExecuteNonQueryAsync();
-
+                var rows = await delete.ExecuteNonQueryAsync();
                 await tx.CommitAsync();
-                return Json(new { success = true, message = $"{rows} meters successfully deleted." });
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = rows == 1 ? "DELETE" : "BULK_DELETE",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = $"{rows} empty meter(s) permanently deleted.",
+                    Before = new { Count = before.Count, Sample = before.Take(25).ToList() }
+                });
+
+                return Json(new
+                {
+                    success = true,
+                    message = $"{rows} empty meter(s) permanently deleted."
+                });
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "Bulk meter deletion failed in workspace {CompanyId}", companyId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "BULK_DELETE_FAILED",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = "Bulk meter deletion failed.",
+                    Success = false
+                });
+
+                return Json(new
+                {
+                    success = false,
+                    message = "Meter deletion failed. Check the application logs for details."
+                });
             }
         }
 
-        
-
-        /// <summary>
-        /// Bulk-updates tenant, unit, type, or parent fields on multiple meters, optionally matching a search criteria.
-        /// </summary>
-        /// <param name="request">The bulk edit request containing meter IDs, field updates, and search criteria.</param>
-        /// <returns>JSON indicating whether the bulk update succeeded.</returns>
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> BulkEditMeters([FromBody] BulkEditMetersRequest request)
         {
             if (!_databaseService.IsInitialized)
                 return Json(new { success = false, message = "Database not configured." });
 
+            if (!request.UpdateTenant &&
+                !request.UpdateUnit &&
+                !request.UpdateType &&
+                !request.UpdateParent &&
+                !request.UpdateActive)
+            {
+                return Json(new { success = false, message = "No fields selected for update." });
+            }
+
+            var companyId = _companyContext.CurrentCompanyId;
+
             try
             {
-                List<int> idsToUpdate = request.MeterIds ?? new List<int>();
-
+                List<int> idsToUpdate;
                 if (request.SelectAllMatching)
                 {
-                    var criteria = new MeterSearchCriteria
+                    idsToUpdate = await _meterRepository.GetMeterIdsAsync(new MeterSearchCriteria
                     {
-                        SearchField = request.SearchField ?? "Name",
-                        SearchTerm = request.SearchTerm
-                    };
-
-                    var matchingMeters = await _meterRepository.GetMetersAsync(criteria, 1, 999999);
-                    idsToUpdate = matchingMeters.Select(m => m.Id).ToList();
+                        SearchField = NormalizeSearchField(request.SearchField),
+                        SearchTerm = request.SearchTerm,
+                        StatusFilter = MeterLifecycleRules.NormalizeStatus(request.StatusFilter),
+                        AssignmentFilter = MeterLifecycleRules.NormalizeAssignment(request.AssignmentFilter)
+                    });
+                }
+                else
+                {
+                    idsToUpdate = (request.MeterIds ?? new List<int>())
+                        .Where(id => id > 0)
+                        .Distinct()
+                        .ToList();
                 }
 
-                if (!idsToUpdate.Any())
-                    return Json(new { success = false, message = "No meters matched the criteria." });
+                if (idsToUpdate.Count == 0)
+                    return Json(new { success = false, message = "No meters matched the selection." });
 
-                if (!request.UpdateTenant && !request.UpdateUnit && !request.UpdateType && !request.UpdateParent && !request.UpdateActive)
-                    return Json(new { success = false, message = "No fields selected for update." });
+                var normalizedType = request.UpdateType
+                    ? MeterLifecycleRules.NormalizeType(request.Type)
+                    : null;
 
-                using var connection = new NpgsqlConnection(_databaseService.GetConnectionString());
+                if (request.UpdateType &&
+                    !string.Equals(request.Type, "main", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(request.Type, "sub", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Json(new { success = false, message = "Meter type must be Main or Sub." });
+                }
+
+                if (request.UpdateUnit && (request.Unit?.Length ?? 0) > 20)
+                    return Json(new { success = false, message = "Meter unit cannot exceed 20 characters." });
+
+                await using var connection = _databaseService.CreateNewConnection();
                 await connection.OpenAsync();
-                using var tx = await connection.BeginTransactionAsync();
+                await using var tx = await connection.BeginTransactionAsync();
+
+                var scopedIds = await GetScopedMeterIdsAsync(connection, tx, idsToUpdate, companyId);
+                if (scopedIds.Count != idsToUpdate.Count)
+                {
+                    await tx.RollbackAsync();
+                    return Json(new
+                    {
+                        success = false,
+                        message = "One or more selected meters do not belong to the current workspace."
+                    });
+                }
+
+                var before = await GetMeterSnapshotsAsync(connection, tx, scopedIds, companyId);
+
+                if (request.UpdateParent && request.ParentId.HasValue)
+                {
+                    var invalidChild = before.FirstOrDefault(snapshot =>
+                    {
+                        var effectiveType = request.UpdateType
+                            ? normalizedType
+                            : snapshot.Type;
+
+                        return !string.Equals(effectiveType, "sub", StringComparison.OrdinalIgnoreCase);
+                    });
+
+                    if (invalidChild != null)
+                    {
+                        await tx.RollbackAsync();
+                        return Json(new
+                        {
+                            success = false,
+                            message = $"Meter '{invalidChild.Name}' is Main. Only Sub meters can be assigned to a parent."
+                        });
+                    }
+                }
+
+                if (request.UpdateTenant &&
+                    !await ValidateTenantAssignmentAsync(connection, tx, request.TenantId))
+                {
+                    await tx.RollbackAsync();
+                    return Json(new
+                    {
+                        success = false,
+                        message = "The selected tenant is disabled or does not belong to the current workspace."
+                    });
+                }
+
+                if (request.UpdateParent && request.ParentId.HasValue)
+                {
+                    if (scopedIds.Contains(request.ParentId.Value))
+                    {
+                        await tx.RollbackAsync();
+                        return Json(new
+                        {
+                            success = false,
+                            message = "A selected meter cannot also be the parent used for that same bulk operation."
+                        });
+                    }
+
+                    foreach (var meterId in scopedIds)
+                    {
+                        var parentError = await ValidateParentAssignmentAsync(
+                            connection,
+                            tx,
+                            meterId,
+                            request.ParentId);
+
+                        if (parentError != null)
+                        {
+                            await tx.RollbackAsync();
+                            return Json(new { success = false, message = parentError });
+                        }
+                    }
+                }
+
+                if (request.UpdateType &&
+                    normalizedType == "main" &&
+                    request.UpdateParent &&
+                    request.ParentId.HasValue)
+                {
+                    await tx.RollbackAsync();
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Main meters cannot be assigned to a parent meter."
+                    });
+                }
 
                 var setClauses = new List<string>();
-                if (request.UpdateTenant) setClauses.Add("\"TenantID\" = @TenantId");
-                if (request.UpdateUnit) setClauses.Add("\"Unit\" = @Unit");
-                if (request.UpdateType) setClauses.Add("\"Type\" = @Type");
-                if (request.UpdateParent) setClauses.Add("\"ParentId\" = @ParentId");
-                if (request.UpdateActive) setClauses.Add("\"Active\" = @Active");
 
-                string sql = $@"UPDATE ""Meters"" SET {string.Join(", ", setClauses)} WHERE ""MeterId"" = ANY(@MeterIds) AND ""CompanyId"" = @CompanyId";
+                if (request.UpdateTenant)
+                    setClauses.Add(@"""TenantID"" = @TenantId");
 
-                using var cmd = new NpgsqlCommand(sql, connection, tx);
+                if (request.UpdateUnit)
+                    setClauses.Add(@"""Unit"" = @Unit");
 
-                if (request.UpdateTenant) cmd.Parameters.AddWithValue("@TenantId", request.TenantId.HasValue ? request.TenantId.Value : DBNull.Value);
-                if (request.UpdateUnit) cmd.Parameters.AddWithValue("@Unit", request.Unit ?? "");
-                if (request.UpdateType) cmd.Parameters.AddWithValue("@Type", request.Type ?? "main");
-                if (request.UpdateParent) cmd.Parameters.AddWithValue("@ParentId", request.ParentId.HasValue ? request.ParentId.Value : DBNull.Value);
-                if (request.UpdateActive) cmd.Parameters.AddWithValue("@Active", request.Active);
+                if (request.UpdateType)
+                {
+                    setClauses.Add(@"""Type"" = @Type");
+                    if (normalizedType == "main" && !request.UpdateParent)
+                        setClauses.Add(@"""ParentId"" = NULL");
+                }
 
-                cmd.Parameters.AddWithValue("@MeterIds", idsToUpdate.ToArray());
-                cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+                if (request.UpdateParent)
+                    setClauses.Add(@"""ParentId"" = @ParentId");
 
-                int rows = await cmd.ExecuteNonQueryAsync();
+                if (request.UpdateActive)
+                    setClauses.Add(@"""Active"" = @Active");
+
+                var sql = $@"
+                    UPDATE ""Meters""
+                    SET {string.Join(", ", setClauses)}
+                    WHERE ""MeterId"" = ANY(@MeterIds)
+                      AND ""CompanyId"" = @CompanyId";
+
+                await using var cmd = new NpgsqlCommand(sql, connection, tx);
+
+                if (request.UpdateTenant)
+                    cmd.Parameters.AddWithValue("@TenantId", (object?)request.TenantId ?? DBNull.Value);
+
+                if (request.UpdateUnit)
+                    cmd.Parameters.AddWithValue("@Unit", request.Unit?.Trim() ?? "");
+
+                if (request.UpdateType)
+                    cmd.Parameters.AddWithValue("@Type", normalizedType!);
+
+                if (request.UpdateParent)
+                    cmd.Parameters.AddWithValue("@ParentId", (object?)request.ParentId ?? DBNull.Value);
+
+                if (request.UpdateActive)
+                    cmd.Parameters.AddWithValue("@Active", request.Active);
+
+                cmd.Parameters.AddWithValue("@MeterIds", scopedIds.ToArray());
+                cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+                var rows = await cmd.ExecuteNonQueryAsync();
+                var after = await GetMeterSnapshotsAsync(connection, tx, scopedIds, companyId);
                 await tx.CommitAsync();
 
-                TempData["SuccessMessage"] = $"{rows} meters successfully updated.";
-                return Json(new { success = true });
+                var action = DescribeBulkAction(request);
+                var tenantName = request.UpdateTenant && request.TenantId.HasValue
+                    ? await GetTenantNameAsync(request.TenantId.Value, companyId)
+                    : null;
+
+                var summary = BuildBulkSummary(action, rows, tenantName);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = action,
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = summary,
+                    Before = new { Count = before.Count, Sample = before.Take(25).ToList() },
+                    After = new { Count = after.Count, Sample = after.Take(25).ToList() }
+                });
+
+                return Json(new { success = true, message = summary });
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, message = ex.Message });
+                _logger.LogError(ex, "Bulk meter update failed in workspace {CompanyId}", companyId);
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "BULK_UPDATE_FAILED",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = "Bulk meter update failed.",
+                    Success = false
+                });
+
+                return Json(new
+                {
+                    success = false,
+                    message = "Meter update failed. Check the application logs for details."
+                });
             }
         }
-    } 
-} 
+
+        private async Task<MeterManagementViewModel> BuildManagementModelAsync(
+            MeterSearchCriteria criteria,
+            int? selectedId,
+            int page,
+            int pageSize)
+        {
+            var model = new MeterManagementViewModel
+            {
+                SearchCriteria = criteria,
+                CurrentPage = page,
+                PageSize = pageSize,
+                TenantOptions = await GetTenantOptionsAsync(),
+                Summary = await _meterRepository.GetSummaryAsync()
+            };
+
+            model.TotalItems = await _meterRepository.GetTotalMetersCountAsync(criteria);
+            model.TotalPages = Math.Max(1, (int)Math.Ceiling(model.TotalItems / (double)pageSize));
+
+            if (model.CurrentPage > model.TotalPages)
+                model.CurrentPage = model.TotalPages;
+
+            model.SearchResults = await _meterRepository.GetMetersAsync(
+                criteria,
+                model.CurrentPage,
+                pageSize);
+
+            var meterId = selectedId;
+            if (!meterId.HasValue && model.SearchResults.Count > 0)
+                meterId = model.SearchResults[0].Id;
+
+            if (meterId.HasValue)
+            {
+                model.SelectedMeter = await _meterRepository.GetMeterByIdAsync(meterId.Value);
+                if (model.SelectedMeter == null)
+                {
+                    TempData["ErrorMessage"] = "Meter not found in the current workspace.";
+                }
+                else
+                {
+                    model.SubMeters = await _meterRepository.GetSubMetersAsync(meterId.Value);
+                    model.ParentMeterOptions = BuildParentOptions(
+                        await _meterRepository.GetParentMetersAsync());
+
+                    await using var connection = _databaseService.CreateNewConnection();
+                    await connection.OpenAsync();
+                    await using var tx = await connection.BeginTransactionAsync();
+                    model.SelectedMeterDependencies = await GetMeterDependenciesAsync(
+                        connection,
+                        tx,
+                        meterId.Value,
+                        _companyContext.CurrentCompanyId);
+                    await tx.CommitAsync();
+                }
+            }
+            else
+            {
+                model.ParentMeterOptions = BuildParentOptions(
+                    await _meterRepository.GetParentMetersAsync());
+            }
+
+            return model;
+        }
+
+        private async Task<IActionResult> SetMeterActiveState(int meterId, bool active)
+        {
+            var companyId = _companyContext.CurrentCompanyId;
+
+            try
+            {
+                await using var connection = _databaseService.CreateNewConnection();
+                await connection.OpenAsync();
+                await using var tx = await connection.BeginTransactionAsync();
+
+                var before = await GetMeterSnapshotAsync(connection, tx, meterId, companyId);
+                if (before == null)
+                {
+                    await tx.RollbackAsync();
+                    TempData["ErrorMessage"] = "Meter not found in the current workspace.";
+                    return RedirectToAction(nameof(Management));
+                }
+
+                await using var cmd = new NpgsqlCommand(@"
+                    UPDATE ""Meters""
+                    SET ""Active"" = @Active
+                    WHERE ""MeterId"" = @MeterId
+                      AND ""CompanyId"" = @CompanyId", connection, tx);
+                cmd.Parameters.AddWithValue("@Active", active);
+                cmd.Parameters.AddWithValue("@MeterId", meterId);
+                cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+                if (await cmd.ExecuteNonQueryAsync() != 1)
+                    throw new InvalidOperationException("Meter state update did not affect exactly one row.");
+
+                var after = await GetMeterSnapshotAsync(connection, tx, meterId, companyId);
+                await tx.CommitAsync();
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = active ? "ENABLE" : "DISABLE",
+                    EntityType = "Meter",
+                    EntityId = meterId.ToString(),
+                    CompanyId = companyId,
+                    Summary = active
+                        ? $"Meter '{before.Name}' enabled."
+                        : $"Meter '{before.Name}' disabled. Historical readings were preserved.",
+                    Before = before,
+                    After = after
+                });
+
+                TempData["SuccessMessage"] = active ? "Meter enabled." : "Meter disabled.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to change meter state for {MeterId}", meterId);
+                TempData["ErrorMessage"] = "Meter state could not be changed.";
+            }
+
+            return RedirectToAction(nameof(Management), new { id = meterId });
+        }
+
+        private async Task<List<SelectListItem>> GetTenantOptionsAsync()
+        {
+            var options = new List<SelectListItem>
+            {
+                new() { Value = "", Text = "Unassigned" }
+            };
+
+            await using var connection = _databaseService.CreateNewConnection();
+            await connection.OpenAsync();
+
+            const string sql = @"
+                SELECT
+                    t.""TenantID"",
+                    COALESCE(NULLIF(td.""CompanyName"", ''), t.""DisplayName""),
+                    COALESCE(td.""Active"", TRUE)
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""CompanyId"" = @CompanyId
+                ORDER BY COALESCE(NULLIF(td.""CompanyName"", ''), t.""DisplayName"")";
+
+            await using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var active = reader.GetBoolean(2);
+                options.Add(new SelectListItem
+                {
+                    Value = reader.GetInt32(0).ToString(),
+                    Text = active ? reader.GetString(1) : $"{reader.GetString(1)} (disabled)",
+                    Disabled = !active
+                });
+            }
+
+            return options;
+        }
+
+        private static List<SelectListItem> BuildParentOptions(IEnumerable<Meter> meters)
+        {
+            var options = new List<SelectListItem>
+            {
+                new() { Value = "", Text = "None (top level)" }
+            };
+
+            options.AddRange(meters.Select(m => new SelectListItem
+            {
+                Value = m.Id.ToString(),
+                Text = string.IsNullOrWhiteSpace(m.Label)
+                    ? m.Name
+                    : $"{m.Label} ({m.Name})",
+                Disabled = !m.Active
+            }));
+
+            return options;
+        }
+
+        private static void AddMeterConfigurationParameters(
+            NpgsqlCommand cmd,
+            Meter meter,
+            string normalizedType,
+            int? parentId,
+            int? tenantId,
+            int companyId)
+        {
+            cmd.Parameters.AddWithValue("@Name", meter.Name.Trim());
+            cmd.Parameters.AddWithValue("@Label", (object?)meter.Label?.Trim() ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Unit", meter.Unit?.Trim() ?? "");
+            cmd.Parameters.AddWithValue("@ParentId", (object?)parentId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Type", normalizedType);
+            cmd.Parameters.AddWithValue("@Active", meter.Active);
+            cmd.Parameters.AddWithValue("@TenantId", (object?)tenantId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@CompanyId", companyId);
+        }
+
+        private async Task<bool> ValidateTenantAssignmentAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            int? tenantId,
+            int? existingTenantId = null)
+        {
+            if (!tenantId.HasValue)
+                return true;
+
+            const string sql = @"
+                SELECT COALESCE(td.""Active"", TRUE)
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""TenantID"" = @TenantId
+                  AND t.""CompanyId"" = @CompanyId";
+
+            await using var cmd = new NpgsqlCommand(sql, connection, tx);
+            cmd.Parameters.AddWithValue("@TenantId", tenantId.Value);
+            cmd.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+
+            var result = await cmd.ExecuteScalarAsync();
+            if (result is not bool active)
+                return false;
+
+            return active || existingTenantId == tenantId;
+        }
+
+        private async Task<string?> ValidateParentAssignmentAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            int? meterId,
+            int? parentId,
+            int? existingParentId = null)
+        {
+            if (!parentId.HasValue)
+                return null;
+
+            if (meterId.HasValue && meterId.Value == parentId.Value)
+                return "A meter cannot be its own parent.";
+
+            const string parentSql = @"
+                SELECT LOWER(""Type""), COALESCE(""Active"", TRUE)
+                FROM ""Meters""
+                WHERE ""MeterId"" = @ParentId
+                  AND ""CompanyId"" = @CompanyId";
+
+            await using (var parent = new NpgsqlCommand(parentSql, connection, tx))
+            {
+                parent.Parameters.AddWithValue("@ParentId", parentId.Value);
+                parent.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+
+                await using var reader = await parent.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                    return "The selected parent meter does not belong to the current workspace.";
+
+                if (!string.Equals(reader.GetString(0), "main", StringComparison.OrdinalIgnoreCase))
+                    return "Only a Main meter can be used as a parent.";
+
+                var active = reader.GetBoolean(1);
+                if (!active && existingParentId != parentId)
+                    return "A disabled meter cannot receive new child meter assignments.";
+            }
+
+            if (!meterId.HasValue)
+                return null;
+
+            const string cycleSql = @"
+                WITH RECURSIVE ancestors AS (
+                    SELECT ""MeterId"", ""ParentId""
+                    FROM ""Meters""
+                    WHERE ""MeterId"" = @ParentId
+                      AND ""CompanyId"" = @CompanyId
+
+                    UNION
+
+                    SELECT m.""MeterId"", m.""ParentId""
+                    FROM ""Meters"" m
+                    INNER JOIN ancestors a ON m.""MeterId"" = a.""ParentId""
+                    WHERE m.""CompanyId"" = @CompanyId
+                )
+                SELECT COUNT(*)
+                FROM ancestors
+                WHERE ""MeterId"" = @MeterId";
+
+            await using var cycle = new NpgsqlCommand(cycleSql, connection, tx);
+            cycle.Parameters.AddWithValue("@ParentId", parentId.Value);
+            cycle.Parameters.AddWithValue("@MeterId", meterId.Value);
+            cycle.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
+
+            return Convert.ToInt32(await cycle.ExecuteScalarAsync()) > 0
+                ? "This parent assignment would create a meter hierarchy cycle."
+                : null;
+        }
+
+        private static async Task<List<int>> GetScopedMeterIdsAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            IReadOnlyCollection<int> ids,
+            int companyId)
+        {
+            var result = new List<int>();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT ""MeterId""
+                FROM ""Meters""
+                WHERE ""MeterId"" = ANY(@MeterIds)
+                  AND ""CompanyId"" = @CompanyId
+                ORDER BY ""MeterId""", connection, tx);
+            cmd.Parameters.AddWithValue("@MeterIds", ids.ToArray());
+            cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result.Add(reader.GetInt32(0));
+
+            return result;
+        }
+
+        private static async Task<MeterDependencySummary> GetMeterDependenciesAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            int meterId,
+            int companyId)
+        {
+            const string sql = @"
+                SELECT
+                    (SELECT COUNT(*) FROM ""MeterReadings""
+                     WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId),
+                    (SELECT COUNT(*) FROM ""MeterReadingsDaily""
+                     WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId),
+                    (SELECT COUNT(*) FROM ""MeterReadingsMonthly""
+                     WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId),
+                    (SELECT COUNT(*) FROM ""MeterReadingsYearly""
+                     WHERE ""MeterId"" = @MeterId AND ""CompanyId"" = @CompanyId),
+                    (SELECT COUNT(*) FROM ""BillLineItems""
+                     WHERE ""MeterId"" = @MeterId),
+                    (SELECT COUNT(*) FROM ""Meters""
+                     WHERE ""ParentId"" = @MeterId AND ""CompanyId"" = @CompanyId)";
+
+            await using var cmd = new NpgsqlCommand(sql, connection, tx);
+            cmd.Parameters.AddWithValue("@MeterId", meterId);
+            cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            await reader.ReadAsync();
+
+            return new MeterDependencySummary
+            {
+                RawReadingCount = reader.GetInt64(0),
+                DailyReadingCount = reader.GetInt64(1),
+                MonthlyReadingCount = reader.GetInt64(2),
+                YearlyReadingCount = reader.GetInt64(3),
+                BillLineCount = reader.GetInt64(4),
+                ChildMeterCount = reader.GetInt64(5)
+            };
+        }
+
+        private static async Task<MeterAuditSnapshot?> GetMeterSnapshotAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            int meterId,
+            int companyId)
+        {
+            const string sql = @"
+                SELECT
+                    m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"",
+                    m.""ParentId"", m.""Type"", m.""Active"", m.""TenantID"",
+                    t.""DisplayName""
+                FROM ""Meters"" m
+                LEFT JOIN ""Tenants"" t
+                  ON t.""TenantID"" = m.""TenantID""
+                 AND t.""CompanyId"" = m.""CompanyId""
+                WHERE m.""MeterId"" = @MeterId
+                  AND m.""CompanyId"" = @CompanyId";
+
+            await using var cmd = new NpgsqlCommand(sql, connection, tx);
+            cmd.Parameters.AddWithValue("@MeterId", meterId);
+            cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                return null;
+
+            return ReadAuditSnapshot(reader);
+        }
+
+        private static async Task<List<MeterAuditSnapshot>> GetMeterSnapshotsAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction tx,
+            IReadOnlyCollection<int> meterIds,
+            int companyId)
+        {
+            var result = new List<MeterAuditSnapshot>();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT
+                    m.""MeterId"", m.""Name"", m.""Label"", m.""Unit"",
+                    m.""ParentId"", m.""Type"", m.""Active"", m.""TenantID"",
+                    t.""DisplayName""
+                FROM ""Meters"" m
+                LEFT JOIN ""Tenants"" t
+                  ON t.""TenantID"" = m.""TenantID""
+                 AND t.""CompanyId"" = m.""CompanyId""
+                WHERE m.""MeterId"" = ANY(@MeterIds)
+                  AND m.""CompanyId"" = @CompanyId
+                ORDER BY m.""MeterId""", connection, tx);
+            cmd.Parameters.AddWithValue("@MeterIds", meterIds.ToArray());
+            cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result.Add(ReadAuditSnapshot(reader));
+
+            return result;
+        }
+
+        private static MeterAuditSnapshot ReadAuditSnapshot(NpgsqlDataReader reader) => new()
+        {
+            Id = reader.GetInt32(0),
+            Name = reader.GetString(1),
+            Label = reader.IsDBNull(2) ? null : reader.GetString(2),
+            Unit = reader.IsDBNull(3) ? "" : reader.GetString(3),
+            ParentId = reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            Type = reader.GetString(5),
+            Active = reader.GetBoolean(6),
+            TenantId = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            TenantName = reader.IsDBNull(8) ? null : reader.GetString(8)
+        };
+
+        private async Task<string?> GetTenantNameAsync(int tenantId, int companyId)
+        {
+            await using var connection = _databaseService.CreateNewConnection();
+            await connection.OpenAsync();
+
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT COALESCE(NULLIF(td.""CompanyName"", ''), t.""DisplayName"")
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""TenantID"" = @TenantId
+                  AND t.""CompanyId"" = @CompanyId", connection);
+            cmd.Parameters.AddWithValue("@TenantId", tenantId);
+            cmd.Parameters.AddWithValue("@CompanyId", companyId);
+
+            return Convert.ToString(await cmd.ExecuteScalarAsync());
+        }
+
+        private static (string Action, string Summary) DescribeSingleMeterChange(
+            MeterAuditSnapshot before,
+            MeterAuditSnapshot after)
+        {
+            var changed = new List<string>();
+
+            if (!string.Equals(before.Name, after.Name, StringComparison.Ordinal))
+                changed.Add("name");
+            if (!string.Equals(before.Label, after.Label, StringComparison.Ordinal))
+                changed.Add("label");
+            if (!string.Equals(before.Unit, after.Unit, StringComparison.Ordinal))
+                changed.Add("unit");
+            if (before.ParentId != after.ParentId)
+                changed.Add("parent");
+            if (!string.Equals(before.Type, after.Type, StringComparison.OrdinalIgnoreCase))
+                changed.Add("type");
+            if (before.Active != after.Active)
+                changed.Add("active");
+            if (before.TenantId != after.TenantId)
+                changed.Add("tenant");
+
+            if (changed.Count == 1 && changed[0] == "tenant")
+            {
+                return after.TenantId.HasValue
+                    ? ("ASSIGN", $"Meter '{after.Name}' assigned to tenant '{after.TenantName ?? after.TenantId.ToString()}'.")
+                    : ("UNASSIGN", $"Meter '{after.Name}' unassigned from tenant.");
+            }
+
+            if (changed.Count == 1 && changed[0] == "active")
+            {
+                return after.Active
+                    ? ("ENABLE", $"Meter '{after.Name}' enabled.")
+                    : ("DISABLE", $"Meter '{after.Name}' disabled. Historical readings were preserved.");
+            }
+
+            var fieldSummary = changed.Count == 0 ? "no configuration fields" : string.Join(", ", changed);
+            return ("UPDATE", $"Meter '{after.Name}' updated ({fieldSummary}).");
+        }
+
+        private static string DescribeBulkAction(BulkEditMetersRequest request)
+        {
+            var selectedOperations =
+                (request.UpdateTenant ? 1 : 0) +
+                (request.UpdateUnit ? 1 : 0) +
+                (request.UpdateType ? 1 : 0) +
+                (request.UpdateParent ? 1 : 0) +
+                (request.UpdateActive ? 1 : 0);
+
+            if (selectedOperations == 1 && request.UpdateTenant)
+                return request.TenantId.HasValue ? "BULK_ASSIGN" : "BULK_UNASSIGN";
+
+            if (selectedOperations == 1 && request.UpdateActive)
+                return request.Active ? "BULK_ENABLE" : "BULK_DISABLE";
+
+            return "BULK_UPDATE";
+        }
+
+        private static string BuildBulkSummary(string action, int rows, string? tenantName)
+        {
+            return action switch
+            {
+                "BULK_ASSIGN" => $"{rows} meter(s) assigned to tenant '{tenantName ?? "selected tenant"}'.",
+                "BULK_UNASSIGN" => $"{rows} meter(s) unassigned from tenant.",
+                "BULK_ENABLE" => $"{rows} meter(s) enabled.",
+                "BULK_DISABLE" => $"{rows} meter(s) disabled. Historical readings were preserved.",
+                _ => $"{rows} meter(s) updated in bulk."
+            };
+        }
+
+        private static string BuildDeleteBlockedSummary(
+            string meterName,
+            MeterDependencySummary dependencies)
+        {
+            return $"Meter '{meterName}' cannot be permanently deleted: " +
+                   $"{dependencies.HistoricalReadingCount} historical/aggregate reading row(s), " +
+                   $"{dependencies.BillLineCount} invoice line reference(s), " +
+                   $"{dependencies.ChildMeterCount} child meter(s).";
+        }
+
+        private static int? ParseOptionalId(
+            string? value,
+            string fieldName,
+            ICollection<string> errors)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            if (int.TryParse(value, out var id) && id > 0)
+                return id;
+
+            errors.Add($"{fieldName} is invalid.");
+            return null;
+        }
+
+        private static string NormalizeSearchField(string? field) =>
+            field is "Type" or "Tenant" ? field : "Name";
+
+        private IActionResult RedirectDatabaseNotConfigured()
+        {
+            TempData["ErrorMessage"] = "Database not configured. Please set up database first.";
+            return RedirectToAction("General", "Settings");
+        }
+
+        private sealed class MeterAuditSnapshot
+        {
+            public int Id { get; init; }
+            public string Name { get; init; } = "";
+            public string? Label { get; init; }
+            public string Unit { get; init; } = "";
+            public int? ParentId { get; init; }
+            public string Type { get; init; } = "";
+            public bool Active { get; init; }
+            public int? TenantId { get; init; }
+            public string? TenantName { get; init; }
+        }
+    }
+}
