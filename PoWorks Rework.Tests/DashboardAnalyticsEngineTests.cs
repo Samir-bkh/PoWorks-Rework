@@ -196,6 +196,25 @@ public class DashboardAnalyticsEngineTests
     }
 
     [Fact]
+    public void CoverageDetectsCompletelyMissingCalendarBuckets()
+    {
+        var query = BaseQuery("temperature", "aggregate", "average");
+        query.StartDate = new DateTime(2026, 9, 15);
+        query.EndDate = new DateTime(2026, 9, 17, 23, 59, 59);
+
+        var rows = new List<MeasurementBucketResult>
+        {
+            StateRow(1, "Room", 10, "Tenant", "2026-09-15", 21, "°C"),
+            StateRow(1, "Room", 10, "Tenant", "2026-09-17", 22, "°C")
+        };
+
+        var result = DashboardAnalyticsEngine.Build(query, rows);
+
+        Assert.Equal(2, result.Summary.DataBuckets);
+        Assert.Equal(66.66666666666667d, result.Summary.CoveragePercent, 6);
+    }
+
+    [Fact]
     public void QuantityAndStateMetricsExposeDifferentKpis()
     {
         var energy = DashboardAnalyticsEngine.Build(
