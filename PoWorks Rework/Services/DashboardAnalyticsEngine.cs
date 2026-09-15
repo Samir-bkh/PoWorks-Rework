@@ -561,9 +561,19 @@ namespace PoWorks_Rework.Services
             if (rows.Count == 0)
                 return 0d;
 
-            return definition.ValueKind == "quantity"
-                ? rows.Sum(row => row.Value)
-                : rows.Average(row => row.Value);
+            if (definition.ValueKind == "quantity")
+                return rows.Sum(row => row.Value);
+
+            var bucketScores = rows
+                .GroupBy(row => row.ReadingDate, StringComparer.Ordinal)
+                .Select(group => definition.ValueKind == "rate"
+                    ? group.Sum(row => row.Value)
+                    : group.Average(row => row.Value))
+                .ToList();
+
+            return bucketScores.Count == 0
+                ? 0d
+                : bucketScores.Average();
         }
 
         private static string NormalizeScope(string? scope)
