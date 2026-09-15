@@ -601,6 +601,11 @@
             .filter(Number.isFinite);
     }
 
+    function rawUnitKey(meter) {
+        const unit = String(meter?.unit || '').trim();
+        return unit || '(unspecified)';
+    }
+
     function availableRawUnits() {
         if (valueOf('measurementMetric', 'energy') !== 'raw') return [];
 
@@ -609,10 +614,7 @@
                 .filter(function (meter) {
                     return (meter.compatibleMetrics || []).includes('raw');
                 })
-                .map(function (meter) {
-                    return String(meter.unit || '').trim();
-                })
-                .filter(Boolean)
+                .map(rawUnitKey)
         )).sort();
     }
 
@@ -626,9 +628,8 @@
                     const meter = meters.find(function (item) {
                         return Number(item.id) === id;
                     });
-                    return String(meter?.unit || '').trim();
+                    return rawUnitKey(meter);
                 })
-                .filter(Boolean)
         );
 
         return units.size === 1 ? Array.from(units)[0] : null;
@@ -646,7 +647,7 @@
             });
             if (!meter || !(meter.compatibleMetrics || []).includes('raw')) return;
 
-            const sameUnit = String(meter.unit || '').trim() === unit;
+            const sameUnit = rawUnitKey(meter) === unit;
             if (!sameUnit && checkbox.checked) checkbox.checked = false;
             checkbox.disabled = !sameUnit;
             checkbox.closest('.dashboard-meter-item')?.classList.toggle('is-incompatible', !sameUnit);
