@@ -439,7 +439,7 @@
             '</div>' +
             '<div class="d-flex justify-content-between">' +
             '<button type="button" class="btn btn-sm btn-link text-decoration-none p-0 fw-semibold" id="selectAllMeters">Select compatible</button>' +
-            '<button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-danger" id="clearAllMeters">Clear selection</button>' +
+            '<button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-secondary" id="clearAllMeters">Use automatic scope</button>' +
             '</div>';
         container.appendChild(toolbar);
 
@@ -660,7 +660,7 @@
         if (hint) {
             hint.textContent =
                 'Raw mode is locked to unit “' + unit +
-                '” for this selection. Clear the selection to choose another raw unit.';
+                '” for this selection. Use automatic scope to choose another raw unit.';
         }
     }
 
@@ -733,6 +733,11 @@
     async function loadChartData() {
         if (!validateDateRange()) return;
 
+        // Never let export actions use a payload from an older filter state
+        // after the current analytical view has become invalid or failed.
+        lastAnalyticsPayload = null;
+        lastAnalyticsRequest = null;
+
         if (rawSelectionNeedsChoice()) {
             disposeChart();
             clearSummary();
@@ -763,9 +768,6 @@
             if (!response.ok) throw new Error('HTTP ' + response.status);
             const payload = await response.json();
 
-            lastAnalyticsPayload = payload;
-            lastAnalyticsRequest = request;
-
             if (payload.success === false) {
                 disposeChart();
                 setChartEmpty(
@@ -791,6 +793,9 @@
                 updateDataStatus(payload.message || 'No compatible data found.', 'warning');
                 return;
             }
+
+            lastAnalyticsPayload = payload;
+            lastAnalyticsRequest = request;
 
             let chartData = chartCore.toTimeSeries(payload.chartData, 'Current period');
 
