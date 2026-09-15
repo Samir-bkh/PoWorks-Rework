@@ -114,6 +114,7 @@ public class DashboardModernizationTests
         var result = service.ProcessChartData(data);
 
         var dataset = Assert.Single(result.Datasets);
+        Assert.Equal(7, dataset.MeterId);
         Assert.Equal("Light1", dataset.MeterName);
         Assert.Equal("Arcinfo", dataset.TenantName);
         Assert.Equal("kWh", dataset.Unit);
@@ -162,30 +163,27 @@ public class DashboardModernizationTests
     }
 
     [Fact]
-    public void DashboardChart_UsesCurveProximityHoverWithoutPermanentPointCloud()
+    public void DashboardChart_UsesDeterministicDataPointHitTargets()
     {
         var script = ReadSource("wwwroot", "js", "energy-dashboard.js");
+        var core = ReadSource("wwwroot", "js", "energy-chart-core.js");
         var view = ReadSource("Views", "Home", "Index.cshtml");
 
-        Assert.Contains("chart.plotContainer.events.on('globalpointermove'", script);
-        Assert.Contains("chart.plotContainer.toLocal(ev.point)", script);
-        Assert.Contains("distanceToSegment", script);
-        Assert.Contains("clampTooltipPosition", script);
+        Assert.Contains("series.bullets.push((bulletRoot, _series, dataItem)", script);
+        Assert.Contains("hit.events.on('pointerover'", script);
+        Assert.Contains("hit.events.on('pointerout'", script);
+        Assert.Contains("fillOpacity: .001", script);
+        Assert.Contains("hit.states.create('hover'", script);
         Assert.Contains("poworks-chart-hover-tooltip", script);
-        Assert.Contains("best.distance <= 12", script);
-        Assert.Contains("showCurveHover", script);
-        Assert.Contains("hideCurveHover", script);
-        Assert.Contains("pointToPlotPixels", script);
-        Assert.Contains("tooltipText:", script);
-        Assert.DoesNotContain("cursor.events.on('cursormoved'", script);
-        Assert.DoesNotContain("curveHoverLabel", script);
-        Assert.DoesNotContain("cursor.set('snapToSeries'", script);
-        Assert.DoesNotContain("cursor.set('maxTooltipDistance'", script);
-        Assert.Contains("dateFilter === 'hourly' ? 'hour'", script);
-        Assert.Contains("tabHourly", view);
-        Assert.Contains("Hover close to a curve", view);
-        Assert.Contains("setChartEmpty", script);
-        Assert.Contains("Intl.NumberFormat", script);
+        Assert.Contains("chartCore.validateData(data)", script);
+        Assert.DoesNotContain("globalpointermove", script);
+        Assert.DoesNotContain("distanceToSegment", script);
+        Assert.DoesNotContain("snapToSeries", script);
+        Assert.DoesNotContain("min: startTs", script);
+        Assert.Contains("getCommonUnit", core);
+        Assert.Contains("buildComparisonPairs", core);
+        Assert.Contains("energy-chart-core.js", view);
+        Assert.Contains("Hover a measured bucket", view);
     }
 
     [Fact]
