@@ -125,6 +125,10 @@ namespace PoWorks_Rework.Services
 
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
                 {
+                    var tenantFilter = tenantId.HasValue
+                        ? @" AND m.""TenantID"" = @TenantId"
+                        : string.Empty;
+
                     var query = @"
                         SELECT 
                             MIN(mr.""Timestamp"") as earliest_reading,
@@ -133,15 +137,19 @@ namespace PoWorks_Rework.Services
                             COUNT(DISTINCT mr.""MeterId"") as meters_with_data,
                             COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data
                         FROM ""MeterReadings"" mr
-                        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                        AND (@TenantId IS NULL OR m.""TenantID"" = @TenantId)";
+                        INNER JOIN ""Meters"" m
+                          ON mr.""MeterId"" = m.""MeterId""
+                         AND mr.""CompanyId"" = m.""CompanyId""
+                        WHERE m.""Active"" = true
+                          AND m.""CompanyId"" = @CompanyId""
+                        + tenantFilter;
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
-                    cmd.Parameters.AddWithValue(
-                        "@TenantId",
-                        tenantId.HasValue ? tenantId.Value : DBNull.Value);
+                    if (tenantId.HasValue)
+                    {
+                        cmd.Parameters.AddWithValue("@TenantId", tenantId.Value);
+                    }
                     using var reader = await cmd.ExecuteReaderAsync();
 
                     if (await reader.ReadAsync())
