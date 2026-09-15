@@ -69,38 +69,21 @@ namespace PoWorks_Rework.Services
                 // Emergency logging must never hide the original failure.
             }
         }
-    }
 
-    public sealed class PoWorksFileLoggerProvider : ILoggerProvider
-    {
-        private readonly string _root;
-        private readonly int _retentionDays;
-        private readonly object _sync = new();
-
-        public PoWorksFileLoggerProvider(IConfiguration configuration)
-        {
-            _root = FileDiagnostics.ResolveLogRoot(configuration);
-            _retentionDays = int.TryParse(configuration["Diagnostics:RetentionDays"], out var days)
-                ? Math.Max(1, days)
-                : 30;
-
-            CleanupOldLogs();
-        }
-
-        public ILogger CreateLogger(string categoryName) => new PoWorksFileLogger(categoryName, _root, _sync);
-
-        public void Dispose()
-        {
-        }
-
-        private void CleanupOldLogs()
+        public static void CleanupOldLogs(IConfiguration? configuration = null)
         {
             try
             {
-                var threshold = DateTime.UtcNow.Date.AddDays(-_retentionDays);
-                DeleteOlderThan(_root, "poworks-*.log", threshold);
+                var root = ResolveLogRoot(configuration);
+                var retentionDays = int.TryParse(configuration?["Diagnostics:RetentionDays"], out var configuredDays)
+                    ? Math.Max(1, configuredDays)
+                    : 30;
+                var threshold = DateTime.UtcNow.Date.AddDays(-retentionDays);
 
-                var auditDirectory = Path.Combine(_root, "audit");
+                DeleteOlderThan(root, "poworks-*.log", threshold);
+                DeleteOlderThan(root, "console-*.log", threshold);
+
+                var auditDirectory = Path.Combine(root, "audit");
                 if (Directory.Exists(auditDirectory))
                     DeleteOlderThan(auditDirectory, "audit-*.jsonl", threshold);
             }
@@ -117,6 +100,24 @@ namespace PoWorks_Rework.Services
                 if (File.GetLastWriteTimeUtc(file) < threshold)
                     File.Delete(file);
             }
+        }
+    }
+
+    public sealed class PoWorksFileLoggerProvider : ILoggerProvider
+    {
+        private readonly string _root;
+        private readonly object _sync = new();
+
+        public PoWorksFileLoggerProvider(IConfiguration configuration)
+        {
+            _root = FileDiagnostics.ResolveLogRoot(configuration);
+            FileDiagnostics.CleanupOldLogs(configuration);
+        }
+
+        public ILogger CreateLogger(string categoryName) => new PoWorksFileLogger(categoryName, _root, _sync);
+
+        public void Dispose()
+        {
         }
     }
 
