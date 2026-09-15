@@ -43,6 +43,9 @@ namespace PoWorks_Rework.Services
             if (tenant.Deposit < 0)
                 errors.Add("Deposit cannot be negative.");
 
+            if (tenant.MonthlyFee < 0)
+                errors.Add("Monthly fixed fee cannot be negative.");
+
             if (!DateTime.TryParse(tenant.StartDate, out _))
                 errors.Add("Start date is invalid.");
 
