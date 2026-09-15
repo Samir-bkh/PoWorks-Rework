@@ -35,7 +35,6 @@ public class AuditLoggingTests
         Assert.True(AuditRequestClassifier.ShouldAudit(meterUpdate.Request));
     }
 
-
     [Fact]
     public void AuditLogFilter_DoesNotReuseMvcActionRouteValue()
     {
@@ -53,7 +52,6 @@ public class AuditLoggingTests
         Assert.DoesNotContain("name=\"action\"", view);
     }
 
-
     [Fact]
     public void AuditLogView_ShowsBrowserLocalTimeAndKeepsTechnicalIdsOutOfMainTable()
     {
@@ -66,6 +64,28 @@ public class AuditLoggingTests
         Assert.Contains("Guid.TryParse(item.EntityId", view);
         Assert.Contains("Technical ID:", view);
         Assert.Contains("UTC:", view);
+    }
+
+    [Fact]
+    public void AuditLogView_IsCompactAndTechnicalMutationNoiseIsOptional()
+    {
+        var controller = ReadSource("Controllers", "AuditLogController.cs");
+        var view = ReadSource("Views", "AuditLog", "Index.cshtml");
+        var model = ReadSource("Models", "AuditModels.cs");
+
+        Assert.Contains("bool showTechnical = false", controller);
+        Assert.Contains("NOT IN ('MUTATION', 'MUTATION_FAILED')", controller);
+        Assert.Contains("PageSize = 20", controller);
+        Assert.Contains("PageSize { get; set; } = 20", model);
+
+        Assert.Contains("audit-table-wrap", view);
+        Assert.Contains("max-height: 62vh", view);
+        Assert.Contains("position: sticky", view);
+        Assert.Contains("Technical duplicates hidden", view);
+        Assert.Contains("name=\"showTechnical\"", view);
+        Assert.Contains("asp-route-showTechnical", view);
+        Assert.Contains("table table-sm", view);
+        Assert.Contains("text-overflow: ellipsis", view);
     }
 
     [Fact]
