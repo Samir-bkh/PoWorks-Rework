@@ -9,6 +9,21 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: poworks_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d poworks_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,4 +43,6 @@ jobs:
         run: dotnet restore "PoWorks Rework.Tests/PoWorks Rework.Tests.csproj"
 
       - name: Run full regression suite
+        env:
+          POWORKS_TEST_POSTGRES: Host=localhost;Port=5432;Database=poworks_test;Username=postgres;Password=postgres;SSL Mode=Disable
         run: dotnet test "PoWorks Rework.Tests/PoWorks Rework.Tests.csproj" --configuration Release --no-restore --verbosity normal
