@@ -394,6 +394,11 @@ namespace PoWorks_Rework.Controllers
                         DateFilter = query.DateFilter,
                         TenantId = query.TenantId,
                         MeterIds = query.MeterIds.ToList(),
+                        SeriesKeys = current.ChartData.Datasets
+                            .Select(dataset => dataset.SeriesKey)
+                            .Where(key => !string.IsNullOrWhiteSpace(key))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
                         StartDate = compareStart.Value,
                         EndDate = compareEnd.Value,
                         MaxSeries = query.MaxSeries,
