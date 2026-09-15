@@ -80,9 +80,10 @@ public class AuditLoggingTests
         Assert.Equal(15, parameters["pageSize"].DefaultValue);
 
         var controller = ReadSource("Controllers", "AuditLogController.cs");
-        Assert.Contains(@"""Action"" = 'MUTATION'", controller);
-        Assert.Contains(@"""Success"" = TRUE", controller);
-        Assert.DoesNotContain(@"""Action"" = 'MUTATION_FAILED' AND ""Success"" = TRUE", controller);
+        Assert.Contains("if (!showTechnical)", controller);
+        Assert.Contains("'MUTATION'", controller);
+        Assert.Contains(@"""""Success"""" = TRUE", controller);
+        Assert.DoesNotContain("'MUTATION_FAILED' AND", controller);
         Assert.Contains("NormalizePageSize", controller);
     }
 
