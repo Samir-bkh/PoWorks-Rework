@@ -108,10 +108,7 @@ namespace PoWorks_Rework.Services
                                 SELECT
                                     COALESCE(""TenantID"", 0) AS ""MeterId"",
                                     COALESCE(NULLIF(""TenantName"", ''), 'Unassigned') AS ""MeterName"",
-                                    CASE
-                                        WHEN COUNT(DISTINCT NULLIF(""Unit"", '')) = 1 THEN MIN(""Unit"")
-                                        ELSE 'mixed'
-                                    END AS ""Unit"",
+                                    'kWh' AS ""Unit"",
                                     {bucket} AS ""ReadingDate"",
                                     COALESCE(SUM(""ConsumptionDelta""), 0) AS ""TotalConsumption"",
                                     COALESCE(AVG(""ConsumptionDelta""), 0) AS ""AvgConsumption"",
@@ -128,7 +125,7 @@ namespace PoWorks_Rework.Services
                                 SELECT
                                     ""MeterId"",
                                     ""MeterName"",
-                                    COALESCE(""Unit"", '') AS ""Unit"",
+                                    'kWh' AS ""Unit"",
                                     {bucket} AS ""ReadingDate"",
                                     COALESCE(SUM(""ConsumptionDelta""), 0) AS ""TotalConsumption"",
                                     COALESCE(AVG(""ConsumptionDelta""), 0) AS ""AvgConsumption"",
@@ -137,7 +134,7 @@ namespace PoWorks_Rework.Services
                                     COALESCE(""TenantName"", '') AS ""TenantName""
                                 FROM normalized
                                 GROUP BY
-                                    ""MeterId"", ""MeterName"", ""Unit"",
+                                    ""MeterId"", ""MeterName"",
                                     ""TenantID"", ""TenantName"", {bucket}
                                 ORDER BY {bucket} ASC, ""MeterName""";
                         }
@@ -197,6 +194,9 @@ namespace PoWorks_Rework.Services
                 ? @" AND m.""MeterId"" = ANY(@MeterIds)"
                 : string.Empty;
 
+            var supportedEnergyUnit =
+                ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
+
             return $@"
                 WITH source AS (
                     SELECT
@@ -225,6 +225,7 @@ namespace PoWorks_Rework.Services
                     WHERE m.""CompanyId"" = @CompanyId
                       AND mr.""CompanyId"" = @CompanyId
                       AND m.""Active"" = TRUE
+                      AND {supportedEnergyUnit}
                       AND mr.""Timestamp"" >= @StartDate
                       AND mr.""Timestamp"" <= @EndDate
                       {tenantFilter}
