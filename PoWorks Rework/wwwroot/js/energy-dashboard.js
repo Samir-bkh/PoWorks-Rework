@@ -807,7 +807,16 @@
             strokeOpacity: .35,
             strokeDasharray: [3, 3]
         });
-        cursor.set('maxTooltipDistance', -1);
+        // Tooltips are deliberately bound to rendered data elements below.
+        // The cursor remains available for crosshair/zoom, but must not trigger
+        // a tooltip just because the pointer is somewhere in the plot area.
+        const bindHoverTooltip = (target, tooltip) => {
+            target.setAll({
+                tooltip,
+                tooltipPosition: 'pointer',
+                interactive: true
+            });
+        };
 
         const colors = [
             am5.color(0x2563EB), am5.color(0x0EA5E9), am5.color(0x10B981),
@@ -826,8 +835,6 @@
                 nextColorIndex++;
             }
         });
-
-        const createdSeries = [];
 
         data.datasets.forEach(ds => {
             const color = ds.isOthers
@@ -856,7 +863,7 @@
                 fill: am5.color(0x0F172A),
                 fontSize: 12,
                 lineHeight: 17,
-                maxWidth: 250,
+                maxWidth: 220,
                 oversizedBehavior: 'wrap',
                 paddingTop: 8,
                 paddingRight: 10,
@@ -877,8 +884,7 @@
                     valueYField: 'y',
                     valueXField: 'x',
                     fill: color,
-                    stroke: color,
-                    tooltip
+                    stroke: color
                 }));
                 series.columns.template.setAll({
                     cornerRadiusTL: 5,
@@ -887,6 +893,7 @@
                     fillOpacity: ds.isCompare ? .35 : (ds.isOthers ? .48 : .82),
                     strokeOpacity: .9
                 });
+                bindHoverTooltip(series.columns.template, tooltip);
             } else {
                 series = chart.series.push(am5xy.LineSeries.new(root, {
                     name: ds.label,
@@ -896,7 +903,6 @@
                     valueXField: 'x',
                     fill: color,
                     stroke: color,
-                    tooltip,
                     connect: false,
                     minBulletDistance: 18
                 }));
@@ -917,23 +923,20 @@
                     fillOpacity: ds.isOthers ? .05 : (ds.isCompare ? .03 : .12)
                 });
 
-                series.bullets.push(() => am5.Bullet.new(root, {
-                    sprite: am5.Circle.new(root, {
+                series.bullets.push(() => {
+                    const marker = am5.Circle.new(root, {
                         radius: ds.isCompare ? 3 : 4.5,
                         fill: color,
                         stroke: am5.color(0xFFFFFF),
                         strokeWidth: 2
-                    })
-                }));
+                    });
+                    bindHoverTooltip(marker, tooltip);
+                    return am5.Bullet.new(root, { sprite: marker });
+                });
             }
 
             series.data.setAll(ds.data);
-            createdSeries.push(series);
         });
-
-        if (createdSeries.length > 0) {
-            cursor.set('snapToSeries', createdSeries);
-        }
 
         const legend = chart.children.push(am5.Legend.new(root, {
             centerX: am5.p50,

@@ -143,17 +143,21 @@ public class DashboardModernizationTests
     }
 
     [Fact]
-    public void DashboardChart_HasRichHoverTooltipAxisUnitAndCursorSnap()
+    public void DashboardChart_ShowsCompactTooltipOnlyOnHoveredDataElements()
     {
         var script = ReadSource("wwwroot", "js", "energy-dashboard.js");
 
         Assert.Contains("Tenant: {tenantName}", script);
         Assert.Contains("{valueY.formatNumber('#,###.00')} {unit}", script);
         Assert.Contains("Consumption ($" + "{axisUnit})", script);
-        Assert.Contains("cursor.set('snapToSeries'", script);
-        Assert.Contains("cursor.set('maxTooltipDistance', -1)", script);
+        Assert.Contains("bindHoverTooltip(series.columns.template, tooltip)", script);
+        Assert.Contains("bindHoverTooltip(marker, tooltip)", script);
+        Assert.Contains("tooltipPosition: 'pointer'", script);
+        Assert.Contains("interactive: true", script);
+        Assert.DoesNotContain("cursor.set('snapToSeries'", script);
+        Assert.DoesNotContain("cursor.set('maxTooltipDistance'", script);
         Assert.Contains("fill: am5.color(0xFFFFFF)", script);
-        Assert.Contains("maxWidth: 250", script);
+        Assert.Contains("maxWidth: 220", script);
         Assert.DoesNotContain("pointerOrientation: 'vertical'", script);
         Assert.DoesNotContain("tooltip: am5.Tooltip.new(root, {})", script);
         Assert.Contains("setChartEmpty", script);
