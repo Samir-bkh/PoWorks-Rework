@@ -230,6 +230,11 @@ public class ConsumptionBillingConsistencyTests
             consumptionService,
             NullLogger<DashboardDataService>.Instance);
 
+        var analyticsService = new DashboardAnalyticsService(
+            database,
+            companyContext,
+            NullLogger<DashboardAnalyticsService>.Instance);
+
         var billingService = new BillingService(
             database,
             companyContext,
@@ -282,9 +287,108 @@ public class ConsumptionBillingConsistencyTests
             });
 
         Assert.Contains(visibleMeters, meter => meter.MeterId == 101);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 102);
         Assert.Contains(visibleMeters, meter => meter.MeterId == 103);
-        Assert.DoesNotContain(visibleMeters, meter => meter.MeterId == 102);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 104);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 105);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 106);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 107);
+        Assert.Contains(visibleMeters, meter => meter.MeterId == 108);
         Assert.DoesNotContain(visibleMeters, meter => meter.MeterId == 201);
+
+        var temperature = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "temperature",
+                ScopeMode = "aggregate",
+                Aggregation = "auto",
+                TenantId = 10,
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily",
+                MaxSeries = 10,
+                RankingLimit = 5
+            });
+
+        var temperatureSeries = Assert.Single(temperature.ChartData.Datasets);
+        Assert.Equal("°C", temperatureSeries.Unit);
+        Assert.Equal(22.5d, temperatureSeries.Data.Single()!.Value, 6);
+        Assert.Equal(2, temperatureSeries.SourceCount);
+
+        var power = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "power",
+                ScopeMode = "aggregate",
+                Aggregation = "auto",
+                MeterIds = new List<int> { 103 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily"
+            });
+
+        Assert.Equal(20d, Assert.Single(power.ChartData.Datasets).Data.Single()!.Value, 6);
+        Assert.Equal("kW", power.Summary.Unit);
+
+        var derivedEnergy = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "energy",
+                ScopeMode = "aggregate",
+                Aggregation = "sum",
+                MeterIds = new List<int> { 103 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily"
+            });
+
+        Assert.Equal(30d, Assert.Single(derivedEnergy.ChartData.Datasets).Data.Single()!.Value, 6);
+        Assert.Equal("kWh", derivedEnergy.Summary.Unit);
+
+        var pressure = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "pressure",
+                ScopeMode = "aggregate",
+                Aggregation = "average",
+                MeterIds = new List<int> { 105 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily"
+            });
+
+        Assert.Equal(1.1d, Assert.Single(pressure.ChartData.Datasets).Data.Single()!.Value, 6);
+        Assert.Equal("bar", pressure.Summary.Unit);
+
+        var volume = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "volume",
+                ScopeMode = "aggregate",
+                Aggregation = "sum",
+                MeterIds = new List<int> { 106, 107 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily"
+            });
+
+        Assert.Equal(22.2d, Assert.Single(volume.ChartData.Datasets).Data.Single()!.Value, 6);
+        Assert.Equal("m³", volume.Summary.Unit);
+
+        var raw = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "raw",
+                ScopeMode = "aggregate",
+                Aggregation = "average",
+                MeterIds = new List<int> { 108 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "daily"
+            });
+
+        Assert.Equal(1500d, Assert.Single(raw.ChartData.Datasets).Data.Single()!.Value, 6);
+        Assert.Equal("rpm", raw.Summary.Unit);
 
         var bill = await billingService.CalculateBillAsync(10, start, end);
 
@@ -435,6 +539,11 @@ public class ConsumptionBillingConsistencyTests
                 (101, 'Known.kWh', 'kWh', TRUE, 10, 1),
                 (102, 'Room.Temperature', '°C', TRUE, 10, 1),
                 (103, 'Plant.Power', 'kW', TRUE, NULL, 1),
+                (104, 'Room.TemperatureF', '°F', TRUE, 10, 1),
+                (105, 'Pipe.Pressure', 'kPa', TRUE, 10, 1),
+                (106, 'Water.Counter', 'm³', TRUE, 10, 1),
+                (107, 'Water.Flow', 'L/min', TRUE, 10, 1),
+                (108, 'Motor.Speed', 'rpm', TRUE, 10, 1),
                 (201, 'OtherWorkspace.kWh', 'kWh', TRUE, 20, 2);
 
             INSERT INTO ""MeterReadings"" (
@@ -449,6 +558,20 @@ public class ConsumptionBillingConsistencyTests
                 (103, '2026-09-01 00:00:00', 10, 1),
                 (103, '2026-09-01 01:00:00', 20, 1),
                 (103, '2026-09-01 02:00:00', 30, 1),
+                (104, '2026-09-01 00:00:00', 68, 1),
+                (104, '2026-09-01 01:00:00', 71.6, 1),
+                (104, '2026-09-01 02:00:00', 75.2, 1),
+                (105, '2026-09-01 00:00:00', 100, 1),
+                (105, '2026-09-01 01:00:00', 120, 1),
+                (106, '2026-09-01 00:00:00', 100, 1),
+                (106, '2026-09-01 01:00:00', 110, 1),
+                (106, '2026-09-01 02:00:00', 115, 1),
+                (107, '2026-09-01 00:00:00', 60, 1),
+                (107, '2026-09-01 01:00:00', 60, 1),
+                (107, '2026-09-01 02:00:00', 60, 1),
+                (108, '2026-09-01 00:00:00', 1400, 1),
+                (108, '2026-09-01 01:00:00', 1500, 1),
+                (108, '2026-09-01 02:00:00', 1600, 1),
                 (201, '2026-09-01 00:00:00', 1000, 2),
                 (201, '2026-09-01 01:00:00', 9000, 2);";
 
