@@ -824,9 +824,21 @@
             strokeOpacity: .35,
             strokeDasharray: [3, 3]
         });
-        // Keep the cursor for engineering-style inspection and zooming, but
-        // drive line/area hover ourselves. A tooltip is shown only when the
-        // pointer is physically close to a rendered curve (12 px tolerance).
+        // Use the real pointer position in the plot area. This prevents
+        // ghost/random hover hits caused by translating XYCursor positions.
+        // The popup itself is a normal HTML overlay so amCharts layout cannot
+        // stretch it to the height of the plot.
+        chartdiv.querySelectorAll('.poworks-chart-hover-tooltip')
+            .forEach(element => element.remove());
+        if (window.getComputedStyle(chartdiv).position === 'static') {
+            chartdiv.style.position = 'relative';
+        }
+
+        const hoverOverlay = document.createElement('div');
+        hoverOverlay.className = 'poworks-chart-hover-tooltip';
+        hoverOverlay.setAttribute('aria-hidden', 'true');
+        chartdiv.appendChild(hoverOverlay);
+
         const curveHoverMarker = chart.plotContainer.children.push(am5.Circle.new(root, {
             radius: 5,
             fill: am5.color(0x2563EB),
@@ -835,35 +847,6 @@
             visible: false,
             interactive: false,
             layer: 1000
-        }));
-
-        const curveHoverLabel = chart.plotContainer.children.push(am5.Label.new(root, {
-            fill: am5.color(0x0F172A),
-            fontSize: 12,
-            lineHeight: 18,
-            maxWidth: 260,
-            oversizedBehavior: 'wrap',
-            paddingTop: 8,
-            paddingRight: 10,
-            paddingBottom: 8,
-            paddingLeft: 10,
-            visible: false,
-            interactive: false,
-            layer: 1001,
-            background: am5.RoundedRectangle.new(root, {
-                fill: am5.color(0xFFFFFF),
-                fillOpacity: 1,
-                stroke: am5.color(0xCBD5E1),
-                strokeOpacity: 1,
-                cornerRadiusTL: 8,
-                cornerRadiusTR: 8,
-                cornerRadiusBL: 8,
-                cornerRadiusBR: 8,
-                shadowColor: am5.color(0x0F172A),
-                shadowBlur: 12,
-                shadowOffsetY: 4,
-                shadowOpacity: .12
-            })
         }));
 
         const hoverSeries = [];
@@ -883,20 +866,32 @@
             const lengthSquared = dx * dx + dy * dy;
 
             if (lengthSquared === 0) {
-                return { distance: Math.hypot(point.x - start.x, point.y - start.y), t: 0 };
+                return Math.hypot(point.x - start.x, point.y - start.y);
             }
 
             const rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
             const t = Math.max(0, Math.min(1, rawT));
-            const projected = {
-                x: start.x + t * dx,
-                y: start.y + t * dy
-            };
+            const projectedX = start.x + t * dx;
+            const projectedY = start.y + t * dy;
+            return Math.hypot(point.x - projectedX, point.y - projectedY);
+        };
 
-            return {
-                distance: Math.hypot(point.x - projected.x, point.y - projected.y),
-                t
-            };
+        const clampTooltipPosition = (pointer, popupSize, containerSize) => {
+            const offset = 14;
+            const margin = 8;
+            let left = pointer.x + offset;
+            let top = pointer.y - popupSize.height - offset;
+
+            if (left + popupSize.width > containerSize.width - margin) {
+                left = pointer.x - popupSize.width - offset;
+            }
+            if (top < margin) {
+                top = pointer.y + offset;
+            }
+
+            left = Math.max(margin, Math.min(left, containerSize.width - popupSize.width - margin));
+            top = Math.max(margin, Math.min(top, containerSize.height - popupSize.height - margin));
+            return { left, top };
         };
 
         const formatHoverDate = timestamp => {
@@ -912,10 +907,11 @@
 
         const hideCurveHover = () => {
             curveHoverMarker.set('visible', false);
-            curveHoverLabel.set('visible', false);
+            hoverOverlay.style.display = 'none';
+            hoverOverlay.setAttribute('aria-hidden', 'true');
         };
 
-        const showCurveHover = (model, point, coords) => {
+        const showCurveHover = (model, point, coords, originalEvent) => {
             const value = new Intl.NumberFormat(undefined, {
                 maximumFractionDigits: 2
             }).format(point.y);
@@ -930,24 +926,26 @@
                 visible: true
             });
 
-            curveHoverLabel.set('text',
-                `${model.dataset.meterName || model.dataset.label}\n` +
-                `${formatHoverDate(point.x)} · ${value} ${unit}\n` +
-                `Tenant: ${tenant} · ${period}`);
+            hoverOverlay.textContent =
+                (model.dataset.meterName || model.dataset.label) + '\n' +
+                formatHoverDate(point.x) + ' · ' + value + ' ' + unit + '\n' +
+                'Tenant: ' + tenant + ' · ' + period;
+            hoverOverlay.style.display = 'block';
+            hoverOverlay.setAttribute('aria-hidden', 'false');
 
-            const plotWidth = chart.plotContainer.width();
-            const placeLeft = coords.x > Math.max(280, plotWidth - 285);
-            const placeBelow = coords.y < 90;
+            const chartRect = chartdiv.getBoundingClientRect();
+            const pointer = {
+                x: originalEvent.clientX - chartRect.left,
+                y: originalEvent.clientY - chartRect.top
+            };
+            const placement = clampTooltipPosition(
+                pointer,
+                { width: hoverOverlay.offsetWidth, height: hoverOverlay.offsetHeight },
+                { width: chartRect.width, height: chartRect.height });
 
-            curveHoverLabel.setAll({
-                x: placeLeft ? coords.x - 12 : coords.x + 12,
-                centerX: placeLeft ? am5.p100 : 0,
-                y: placeBelow ? coords.y + 12 : coords.y - 12,
-                centerY: placeBelow ? 0 : am5.p100,
-                visible: true
-            });
+            hoverOverlay.style.left = placement.left + 'px';
+            hoverOverlay.style.top = placement.top + 'px';
         };
-
         const colors = [
             am5.color(0x2563EB), am5.color(0x0EA5E9), am5.color(0x10B981),
             am5.color(0x8B5CF6), am5.color(0xF59E0B), am5.color(0xEF4444),
@@ -992,7 +990,6 @@
                 tooltip.label.setAll({
                     fill: am5.color(0x0F172A),
                     fontSize: 12,
-                    lineHeight: 17,
                     maxWidth: 220,
                     oversizedBehavior: 'wrap'
                 });
@@ -1066,19 +1063,23 @@
         });
 
         if (chartType !== 'bar') {
-            cursor.events.on('cursormoved', ev => {
-                const positionX = ev.target.getPrivate('positionX');
-                const positionY = ev.target.getPrivate('positionY');
+            chart.plotContainer.events.on('globalpointermove', ev => {
+                const originalEvent = ev.originalEvent;
 
-                if (!Number.isFinite(positionX) || !Number.isFinite(positionY)) {
+                if (!originalEvent || originalEvent.buttons) {
                     hideCurveHover();
                     return;
                 }
 
-                const cursorPoint = {
-                    x: xRenderer.positionToCoordinate(positionX),
-                    y: yRenderer.positionToCoordinate(positionY)
-                };
+                const pointer = chart.plotContainer.toLocal(ev.point);
+                const plotWidth = chart.plotContainer.width();
+                const plotHeight = chart.plotContainer.height();
+
+                if (pointer.x < 0 || pointer.y < 0 ||
+                    pointer.x > plotWidth || pointer.y > plotHeight) {
+                    hideCurveHover();
+                    return;
+                }
 
                 let best = null;
 
@@ -1091,8 +1092,8 @@
 
                         const currentPixels = pointToPlotPixels(current);
                         const pointDistance = Math.hypot(
-                            cursorPoint.x - currentPixels.x,
-                            cursorPoint.y - currentPixels.y);
+                            pointer.x - currentPixels.x,
+                            pointer.y - currentPixels.y);
 
                         if (!best || pointDistance < best.distance) {
                             best = {
@@ -1107,16 +1108,16 @@
                         if (!isFinitePoint(next)) continue;
 
                         const nextPixels = pointToPlotPixels(next);
-                        const segmentHit = distanceToSegment(cursorPoint, currentPixels, nextPixels);
+                        const segmentDistance = distanceToSegment(pointer, currentPixels, nextPixels);
 
-                        if (!best || segmentHit.distance < best.distance) {
-                            const currentXDistance = Math.abs(cursorPoint.x - currentPixels.x);
-                            const nextXDistance = Math.abs(cursorPoint.x - nextPixels.x);
+                        if (!best || segmentDistance < best.distance) {
+                            const currentXDistance = Math.abs(pointer.x - currentPixels.x);
+                            const nextXDistance = Math.abs(pointer.x - nextPixels.x);
                             const exactPoint = currentXDistance <= nextXDistance ? current : next;
                             const exactCoords = exactPoint === current ? currentPixels : nextPixels;
 
                             best = {
-                                distance: segmentHit.distance,
+                                distance: segmentDistance,
                                 model,
                                 point: exactPoint,
                                 coords: exactCoords
@@ -1126,15 +1127,15 @@
                 });
 
                 if (best && best.distance <= 12) {
-                    showCurveHover(best.model, best.point, best.coords);
+                    showCurveHover(best.model, best.point, best.coords, originalEvent);
                 } else {
                     hideCurveHover();
                 }
             });
 
-            cursor.events.on('cursorhidden', hideCurveHover);
+            chartdiv.onmouseleave = hideCurveHover;
+            chartdiv.onpointerdown = hideCurveHover;
         }
-
         const legend = chart.children.push(am5.Legend.new(root, {
             centerX: am5.p50,
             x: am5.p50,

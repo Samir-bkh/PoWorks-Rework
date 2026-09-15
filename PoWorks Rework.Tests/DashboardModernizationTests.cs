@@ -167,13 +167,18 @@ public class DashboardModernizationTests
         var script = ReadSource("wwwroot", "js", "energy-dashboard.js");
         var view = ReadSource("Views", "Home", "Index.cshtml");
 
-        Assert.Contains("cursor.events.on('cursormoved'", script);
+        Assert.Contains("chart.plotContainer.events.on('globalpointermove'", script);
+        Assert.Contains("chart.plotContainer.toLocal(ev.point)", script);
         Assert.Contains("distanceToSegment", script);
+        Assert.Contains("clampTooltipPosition", script);
+        Assert.Contains("poworks-chart-hover-tooltip", script);
         Assert.Contains("best.distance <= 12", script);
         Assert.Contains("showCurveHover", script);
         Assert.Contains("hideCurveHover", script);
         Assert.Contains("pointToPlotPixels", script);
         Assert.Contains("tooltipText:", script);
+        Assert.DoesNotContain("cursor.events.on('cursormoved'", script);
+        Assert.DoesNotContain("curveHoverLabel", script);
         Assert.DoesNotContain("cursor.set('snapToSeries'", script);
         Assert.DoesNotContain("cursor.set('maxTooltipDistance'", script);
         Assert.Contains("dateFilter === 'hourly' ? 'hour'", script);
