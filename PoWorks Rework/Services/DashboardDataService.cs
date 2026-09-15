@@ -14,15 +14,21 @@ namespace PoWorks_Rework.Services
     {
         private readonly DatabaseService _databaseService;
         private readonly ICompanyContext _companyContext;
+        private readonly ConsumptionCalculationService _consumptionCalculationService;
         private readonly ILogger<DashboardDataService> _logger;
 
         /// <summary>
         /// Initializes the dashboard data service with database, company, and logging services.
         /// </summary>
-        public DashboardDataService(DatabaseService databaseService, ICompanyContext companyContext, ILogger<DashboardDataService> logger)
+        public DashboardDataService(
+            DatabaseService databaseService,
+            ICompanyContext companyContext,
+            ConsumptionCalculationService consumptionCalculationService,
+            ILogger<DashboardDataService> logger)
         {
             _databaseService = databaseService;
             _companyContext = companyContext;
+            _consumptionCalculationService = consumptionCalculationService;
             _logger = logger;
         }
 
@@ -397,157 +403,15 @@ namespace PoWorks_Rework.Services
         /// <returns>A list of consumption query results.</returns>
         public async Task<List<ConsumptionQueryResult>> GetMeterReadingsAsync(MeterReadingFilters filters)
         {
-            var data = new List<ConsumptionQueryResult>();
-            int currentCompanyId = _companyContext.CurrentCompanyId;
-
             try
             {
-                if (!_databaseService.IsInitialized) return data;
-
-                return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
-                {
-                    var (startDate, endDate) = filters.GetDateRange();
-                    string query;
-                    var parameters = new List<NpgsqlParameter>
-                    {
-                        new NpgsqlParameter("@CompanyId", currentCompanyId)
-                    };
-
-                    string idColumn = filters.GroupBy == "tenant" ? "COALESCE(m.\"TenantID\", 0)" : "m.\"MeterId\"";
-                    string nameColumn = filters.GroupBy == "tenant" ? "COALESCE(t.\"DisplayName\", 'Zones Communes')" : "m.\"Name\"";
-                    string unitColumn = filters.GroupBy == "tenant" ? "'kWh'::text" : "COALESCE(m.\"Unit\", 'kWh')";
-                    string groupColumns = filters.GroupBy == "tenant" ? "m.\"TenantID\", t.\"DisplayName\"" : "m.\"MeterId\", m.\"Name\", m.\"Unit\"";
-
-                    if (filters.IsComparisonMode)
-                    {
-                        string curveNameSql = "";
-                        string xAxisSql = "";
-                        string entityNameSql = filters.GroupBy == "tenant" ? "COALESCE(t.\"DisplayName\", m.\"Name\")" : "m.\"Name\"";
-
-                        if (filters.DateFilter == "daily")
-                        {
-                            string periodSql = @"CASE EXTRACT(ISODOW FROM mr.""Timestamp"") WHEN 1 THEN 'Lundi' WHEN 2 THEN 'Mardi' WHEN 3 THEN 'Mercredi' WHEN 4 THEN 'Jeudi' WHEN 5 THEN 'Vendredi' WHEN 6 THEN 'Samedi' WHEN 7 THEN 'Dimanche' END";
-                            curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
-                            xAxisSql = @"to_char(DATE_TRUNC('hour', mr.""Timestamp""), 'HH24:00')";
-                        }
-                        else if (filters.DateFilter == "monthly")
-                        {
-                            string periodSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM-YYYY')";
-                            curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
-                            xAxisSql = @"to_char(DATE_TRUNC('day', mr.""Timestamp""), 'DD')";
-                        }
-                        else
-                        {
-                            string periodSql = @"to_char(DATE_TRUNC('year', mr.""Timestamp""), 'YYYY')";
-                            curveNameSql = $"{entityNameSql} || ' [' || {periodSql} || ']'";
-                            xAxisSql = @"to_char(DATE_TRUNC('month', mr.""Timestamp""), 'MM')";
-                        }
-
-                        query = $@"
-                            SELECT 
-                                {idColumn} as ""MeterId"",
-                                {curveNameSql} as MeterName,
-                                {unitColumn} as Unit,
-                                {xAxisSql} as ReadingDate,
-                                SUM(mr.""Value"") as TotalConsumption,
-                                AVG(mr.""Value"") as AvgConsumption,
-                                MAX(mr.""Value"") as MaxConsumption,
-                                m.""TenantID"",
-                                '' as TenantName
-                            FROM ""MeterReadings"" mr
-                            INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                            LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                            WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            AND mr.""Timestamp"" >= @StartDate::timestamp
-                            AND mr.""Timestamp"" <= @EndDate::timestamp";
-
-                        parameters.Add(new NpgsqlParameter("@StartDate", startDate));
-                        parameters.Add(new NpgsqlParameter("@EndDate", endDate));
-
-                        if (filters.TenantId.HasValue)
-                        {
-                            query += " AND m.\"TenantID\" = @TenantId";
-                            parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
-                        }
-                        if (filters.MeterIds != null && filters.MeterIds.Any())
-                        {
-                            query += " AND m.\"MeterId\" = ANY(@MeterIds)";
-                            parameters.Add(new NpgsqlParameter("@MeterIds", filters.MeterIds.ToArray()));
-                        }
-
-                        query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {curveNameSql}, {xAxisSql} ORDER BY {xAxisSql} ASC";
-                    }
-                    else
-                    {
-                        string timeGrouping = "to_char(DATE_TRUNC('day', mr.\"Timestamp\"), 'YYYY-MM-DD')";
-                        if (filters.DateFilter?.ToLower() == "yearly") timeGrouping = "to_char(DATE_TRUNC('year', mr.\"Timestamp\"), 'YYYY')";
-                        else if (filters.DateFilter?.ToLower() == "monthly") timeGrouping = "to_char(DATE_TRUNC('month', mr.\"Timestamp\"), 'YYYY-MM')";
-                        else if (filters.DateFilter?.ToLower() == "hourly") timeGrouping = "to_char(DATE_TRUNC('hour', mr.\"Timestamp\"), 'YYYY-MM-DD HH24:00')";
-
-                        query = $@"
-                            SELECT 
-                                {idColumn} as ""MeterId"",
-                                {nameColumn} as MeterName,
-                                {unitColumn} as Unit,
-                                {timeGrouping} as ReadingDate,
-                                SUM(mr.""Value"") as TotalConsumption,
-                                AVG(mr.""Value"") as AvgConsumption,
-                                MAX(mr.""Value"") as MaxConsumption,
-                                m.""TenantID"",
-                                COALESCE(t.""DisplayName"", '') as TenantName
-                            FROM ""MeterReadings"" mr
-                            INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                            LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                            WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            AND mr.""Timestamp"" >= @StartDate::timestamp
-                            AND mr.""Timestamp"" <= @EndDate::timestamp";
-
-                        parameters.Add(new NpgsqlParameter("@StartDate", startDate));
-                        parameters.Add(new NpgsqlParameter("@EndDate", endDate));
-
-                        if (filters.TenantId.HasValue)
-                        {
-                            query += " AND m.\"TenantID\" = @TenantId";
-                            parameters.Add(new NpgsqlParameter("@TenantId", filters.TenantId.Value));
-                        }
-                   
-                        if (filters.MeterIds != null && filters.MeterIds.Any())
-                        {
-                            query += " AND m.\"MeterId\" = ANY(@MeterIds)";
-                            parameters.Add(new NpgsqlParameter("@MeterIds", filters.MeterIds.ToArray()));
-                        }
-
-                        query += $" GROUP BY {groupColumns}, m.\"TenantID\", t.\"DisplayName\", {timeGrouping} ORDER BY {timeGrouping} ASC, {nameColumn}";
-                    }
-
-                    using var cmd = new NpgsqlCommand(query, connection, transaction);
-                    foreach (var param in parameters) cmd.Parameters.Add(param);
-                    using var reader = await cmd.ExecuteReaderAsync();
-
-                    while (await reader.ReadAsync())
-                    {
-                        data.Add(new ConsumptionQueryResult
-                        {
-                            MeterId = reader.GetInt32(reader.GetOrdinal("MeterId")),
-                            MeterName = reader.GetString(reader.GetOrdinal("MeterName")),
-                            Unit = reader.GetString(reader.GetOrdinal("Unit")),
-                            ReadingDate = reader.GetString(reader.GetOrdinal("ReadingDate")),
-                            TotalConsumption = Convert.ToDouble(reader.GetDecimal(reader.GetOrdinal("TotalConsumption"))),
-                            AvgConsumption = Convert.ToDouble(reader.GetDecimal(reader.GetOrdinal("AvgConsumption"))),
-                            MaxConsumption = Convert.ToDouble(reader.GetDecimal(reader.GetOrdinal("MaxConsumption"))),
-                            TenantId = reader.IsDBNull(reader.GetOrdinal("TenantID")) ? null : reader.GetInt32(reader.GetOrdinal("TenantID")),
-                            TenantName = reader.IsDBNull(reader.GetOrdinal("TenantName")) ? string.Empty : reader.GetString(reader.GetOrdinal("TenantName"))
-                        });
-                    }
-                    return data;
-                });
+                return await _consumptionCalculationService.GetConsumptionSeriesAsync(filters);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting meter readings");
+                _logger.LogError(ex, "Error getting normalized meter consumption");
+                return new List<ConsumptionQueryResult>();
             }
-
-            return data;
         }
 
         /// <summary>
