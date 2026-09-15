@@ -286,10 +286,15 @@ namespace PoWorks_Rework.Models
     public class ChartDataset
     {
         public int MeterId { get; set; }
+        public int? TenantId { get; set; }
+        public string SeriesKey { get; set; } = string.Empty;
         public string Label { get; set; } = string.Empty;
         public string MeterName { get; set; } = string.Empty;
         public string Unit { get; set; } = string.Empty;
         public string TenantName { get; set; } = string.Empty;
+        public string MeasurementMetric { get; set; } = "energy";
+        public bool IsAggregate { get; set; }
+        public int SourceCount { get; set; } = 1;
         public List<double?> Data { get; set; } = new List<double?>();
         public string BackgroundColor { get; set; } = string.Empty;
         public string BorderColor { get; set; } = string.Empty;
@@ -299,15 +304,166 @@ namespace PoWorks_Rework.Models
             return new
             {
                 meterId = MeterId,
+                tenantId = TenantId,
+                seriesKey = SeriesKey,
                 label = Label,
                 meterName = MeterName,
                 unit = Unit,
                 tenantName = TenantName,
+                measurementMetric = MeasurementMetric,
+                isAggregate = IsAggregate,
+                sourceCount = SourceCount,
                 data = Data,
                 backgroundColor = BackgroundColor,
                 borderColor = BorderColor
             };
         }
+    }
+
+    /// <summary>
+    /// Dashboard analytics query after controller-level authorization has been applied.
+    /// </summary>
+    public class DashboardAnalyticsQuery
+    {
+        public string Metric { get; set; } = "energy";
+        public string ScopeMode { get; set; } = "aggregate";
+        public string Aggregation { get; set; } = "auto";
+        public string DateFilter { get; set; } = "daily";
+        public int? TenantId { get; set; }
+        public List<int> MeterIds { get; set; } = new();
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public int MaxSeries { get; set; } = 10;
+        public int RankingLimit { get; set; } = 5;
+    }
+
+    /// <summary>
+    /// One normalized metric value for one meter and one time bucket.
+    /// </summary>
+    public class MeasurementBucketResult
+    {
+        public int MeterId { get; set; }
+        public string MeterName { get; set; } = string.Empty;
+        public int? TenantId { get; set; }
+        public string TenantName { get; set; } = string.Empty;
+        public string SourceUnit { get; set; } = string.Empty;
+        public string CanonicalUnit { get; set; } = string.Empty;
+        public string ReadingDate { get; set; } = string.Empty;
+        public double Value { get; set; }
+    }
+
+    public class DashboardKpi
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public double Value { get; set; }
+        public string Unit { get; set; } = string.Empty;
+        public string Detail { get; set; } = string.Empty;
+
+        public object ToApiResponse() => new
+        {
+            key = Key,
+            label = Label,
+            value = Math.Round(Value, 4),
+            unit = Unit,
+            detail = Detail
+        };
+    }
+
+    public class DashboardRankingItem
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string TenantName { get; set; } = string.Empty;
+        public double Value { get; set; }
+        public string Unit { get; set; } = string.Empty;
+        public int MeterCount { get; set; }
+
+        public object ToApiResponse() => new
+        {
+            key = Key,
+            name = Name,
+            tenantName = TenantName,
+            value = Math.Round(Value, 4),
+            unit = Unit,
+            meterCount = MeterCount
+        };
+    }
+
+    public class DashboardAnalyticsSummary
+    {
+        public string Metric { get; set; } = "energy";
+        public string MetricLabel { get; set; } = "Energy consumption";
+        public string Unit { get; set; } = "kWh";
+        public string ScopeMode { get; set; } = "aggregate";
+        public string Aggregation { get; set; } = "sum";
+        public int ActiveMeters { get; set; }
+        public int SeriesCount { get; set; }
+        public int PeriodDays { get; set; }
+        public int DataBuckets { get; set; }
+        public double CoveragePercent { get; set; }
+        public List<DashboardKpi> Kpis { get; set; } = new();
+
+        public object ToApiResponse() => new
+        {
+            metric = Metric,
+            metricLabel = MetricLabel,
+            unit = Unit,
+            scopeMode = ScopeMode,
+            aggregation = Aggregation,
+            activeMeters = ActiveMeters,
+            seriesCount = SeriesCount,
+            periodDays = PeriodDays,
+            dataBuckets = DataBuckets,
+            coveragePercent = Math.Round(CoveragePercent, 1),
+            kpis = Kpis.Select(k => k.ToApiResponse()).ToList()
+        };
+    }
+
+    public class DashboardAnalyticsMetadata
+    {
+        public string Metric { get; set; } = "energy";
+        public string MetricLabel { get; set; } = "Energy consumption";
+        public string Description { get; set; } = string.Empty;
+        public string ValueKind { get; set; } = "quantity";
+        public string CanonicalUnit { get; set; } = "kWh";
+        public string DefaultAggregation { get; set; } = "sum";
+        public List<string> AllowedAggregations { get; set; } = new();
+        public string ScopeMode { get; set; } = "aggregate";
+        public string Aggregation { get; set; } = "sum";
+        public int SourceMeterCount { get; set; }
+        public int OmittedSeries { get; set; }
+
+        public object ToApiResponse() => new
+        {
+            metric = Metric,
+            metricLabel = MetricLabel,
+            description = Description,
+            valueKind = ValueKind,
+            canonicalUnit = CanonicalUnit,
+            defaultAggregation = DefaultAggregation,
+            allowedAggregations = AllowedAggregations,
+            scopeMode = ScopeMode,
+            aggregation = Aggregation,
+            sourceMeterCount = SourceMeterCount,
+            omittedSeries = OmittedSeries
+        };
+    }
+
+    public class DashboardAnalyticsResult
+    {
+        public ChartDataResult ChartData { get; set; } = new();
+        public DashboardAnalyticsSummary Summary { get; set; } = new();
+        public DashboardAnalyticsMetadata Metadata { get; set; } = new();
+        public List<DashboardRankingItem> Ranking { get; set; } = new();
+
+        public object ToApiResponse() => new
+        {
+            chartData = ChartData.ToApiResponse(),
+            summary = Summary.ToApiResponse(),
+            metadata = Metadata.ToApiResponse(),
+            ranking = Ranking.Select(r => r.ToApiResponse()).ToList()
+        };
     }
 
     /// <summary>
