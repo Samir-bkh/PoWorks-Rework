@@ -340,8 +340,8 @@ namespace PoWorks_Rework.Services
                             MeterId = reader.GetInt32("MeterId"),
                             Name = reader.GetString("Name"),
                             Label = reader.IsDBNull("Label") ? string.Empty : reader.GetString("Label"),
-                            Unit = reader.IsDBNull("Unit") ? "kWh" : reader.GetString("Unit"),
-                            Type = reader.IsDBNull("Type") ? "Energy" : reader.GetString("Type"),
+                            Unit = reader.IsDBNull("Unit") ? string.Empty : reader.GetString("Unit"),
+                            Type = reader.IsDBNull("Type") ? "Unknown" : reader.GetString("Type"),
                             Active = reader.GetBoolean("Active"),
                             TenantId = reader.IsDBNull("TenantID") ? null : reader.GetInt32("TenantID"),
                             TenantName = reader.IsDBNull("TenantName") ? string.Empty : reader.GetString("TenantName"),
@@ -420,8 +420,8 @@ namespace PoWorks_Rework.Services
                             MeterId = reader.GetInt32("MeterId"),
                             Name = reader.GetString("Name"),
                             Label = reader.IsDBNull("Label") ? string.Empty : reader.GetString("Label"),
-                            Unit = reader.IsDBNull("Unit") ? "kWh" : reader.GetString("Unit"),
-                            Type = reader.IsDBNull("Type") ? "Energy" : reader.GetString("Type"),
+                            Unit = reader.IsDBNull("Unit") ? string.Empty : reader.GetString("Unit"),
+                            Type = reader.IsDBNull("Type") ? "Unknown" : reader.GetString("Type"),
                             Active = reader.GetBoolean("Active"),
                             TenantId = reader.IsDBNull("TenantID") ? null : reader.GetInt32("TenantID"),
                             TenantName = reader.IsDBNull("TenantName") ? string.Empty : reader.GetString("TenantName"),
@@ -679,8 +679,8 @@ namespace PoWorks_Rework.Services
                         {
                             id = reader.GetInt32("id"),
                             name = reader.GetString("name"),
-                            unit = reader.IsDBNull("unit") ? "kWh" : reader.GetString("unit"),
-                            type = reader.IsDBNull("type") ? "Energy" : reader.GetString("type"),
+                            unit = reader.IsDBNull("unit") ? string.Empty : reader.GetString("unit"),
+                            type = reader.IsDBNull("type") ? "Unknown" : reader.GetString("type"),
                             active = reader.GetBoolean("active")
                         });
                     }
