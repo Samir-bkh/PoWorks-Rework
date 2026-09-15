@@ -84,8 +84,8 @@ public class TenantManagementTests
     {
         var source = ReadSource("Controllers", "TenantManagementController.cs");
 
-        Assert.Contains(@"""TenantID"" = @tenantId", source);
-        Assert.Contains(@"""CompanyId"" = @companyId", source);
+        Assert.Contains("WHERE \"\"TenantID\"\" = @tenantId", source);
+        Assert.Contains("\"\"CompanyId\"\" = @companyId", source);
         Assert.Contains("TenantExistsInWorkspace", source);
         Assert.DoesNotContain("GetCurrentUserId", source);
         Assert.Contains("ClaimTypes.NameIdentifier", source);
