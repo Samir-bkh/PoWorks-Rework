@@ -1,36 +1,30 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
-using System;
-using System.Collections.Generic;
 
 namespace PoWorks_Rework.Controllers
 {
     /// <summary>
-    /// Controller for tenant (customer) management and configuration.
-    /// Handles CRUD operations, search, filtering, and consumption data display for tenants.
+    /// Read/search side of tenant management. Every query is scoped to the
+    /// currently selected workspace.
     /// </summary>
     public class TenantController : BaseController
     {
         private readonly ILogger<TenantController> _logger;
         private readonly ICompanyContext _companyContext;
 
-        /// <summary>
-        /// Initializes the tenant controller with database, company context, and logging dependencies.
-        /// </summary>
-        public TenantController(DatabaseService databaseService, ICompanyContext companyContext, ILogger<TenantController> logger)
+        public TenantController(
+            DatabaseService databaseService,
+            ICompanyContext companyContext,
+            ILogger<TenantController> logger)
             : base(databaseService)
         {
             _logger = logger;
             _companyContext = companyContext;
         }
 
-        /// <summary>
-        /// Displays the tenant management page with search results and consumption data for a selected tenant.
-        /// Optionally loads a specific tenant by ID.
-        /// </summary>
+        [HttpGet]
         public IActionResult Management(int? id = null)
         {
             if (!_databaseService.IsInitialized)
@@ -39,330 +33,367 @@ namespace PoWorks_Rework.Controllers
                 return RedirectToAction("General", "Settings");
             }
 
-            var viewModel = new TenantViewModel
-            {
-                SearchCriteria = "Company Name",
-                SearchTerm = "",
-                ConsumptionData = new TenantConsumptionData(),
-                TotalPages = 1,
-                CurrentPage = 1,
-                TotalItems = 0
-            };
+            var model = BuildListModel("Company Name", "", 1);
 
-            try
+            if (id.HasValue && id.Value > 0)
             {
-                var results = GetTenants("Company Name", "", 1, 10);
-                viewModel.SearchResults = results.Items;
-                viewModel.TotalItems = results.TotalCount;
-                viewModel.TotalPages = results.TotalPages;
-
-                if (id.HasValue && id.Value > 0)
-                {
-                    viewModel.SelectedTenant = GetTenantDetailsById(id.Value);
-                }
-                else if (viewModel.SearchResults.Count > 0)
-                {
-                    viewModel.SelectedTenant = GetTenantDetailsById(viewModel.SearchResults[0].Id);
-                }
-                else
-                {
-                    viewModel.SelectedTenant = new Tenant
-                    {
-                        StartDate = DateTime.Now.ToString("yyyy-MM-dd"),
-                        Period = "Monthly",
-                        TariffType = "Company",
-                        BaseRate = 0.5m,
-                        Threshold1 = 100m,
-                        Threshold1Rate = 0.6m,
-                        Threshold2 = 200m,
-                        Threshold2Rate = 0.8m,
-                        Deposit = 0m,
-                        Active = true,
-                        EmailAlert = true,
-                        PrintBill = true,
-                        EmailBill = true
-                    };
-                }
+                if (!LoadSelection(model, id.Value))
+                    TempData["ErrorMessage"] = "Tenant not found in the current workspace.";
             }
-            catch (Exception ex)
+            else if (model.SearchResults.Count > 0)
             {
-                _logger.LogError(ex, "Error loading tenant data");
-                TempData["ErrorMessage"] = $"Database error: {ex.Message}";
+                LoadSelection(model, model.SearchResults[0].Id);
+            }
+            else
+            {
+                model.SelectedTenant = CreateDefaultTenant();
             }
 
-            return View(viewModel);
+            return View(model);
         }
 
-        /// <summary>
-        /// Searches tenants by the given criteria and term with pagination.
-        /// </summary>
-        /// <param name="searchCriteria">The field to search by (Company Name, Contact, Email, Phone).</param>
-        /// <param name="searchTerm">The term to look for.</param>
-        /// <param name="page">The page number to display (1-based).</param>
-        /// <returns>The tenant management view with the filtered results.</returns>
-        [HttpPost]
-        public IActionResult Search(string searchCriteria, string searchTerm, int page = 1)
+        [HttpGet]
+        public IActionResult Search(string searchCriteria = "Company Name", string searchTerm = "", int page = 1)
         {
             if (!_databaseService.IsInitialized)
             {
-                TempData["ErrorMessage"] = "Database not configured";
+                TempData["ErrorMessage"] = "Database not configured.";
                 return RedirectToAction("General", "Settings");
             }
 
-            var viewModel = new TenantViewModel
+            var model = BuildListModel(searchCriteria, searchTerm, Math.Max(1, page));
+            if (model.SearchResults.Count > 0)
+                LoadSelection(model, model.SearchResults[0].Id);
+            else
+                model.SelectedTenant = CreateDefaultTenant();
+
+            return View("Management", model);
+        }
+
+        private TenantViewModel BuildListModel(string searchCriteria, string searchTerm, int page)
+        {
+            var model = new TenantViewModel
             {
                 SearchCriteria = searchCriteria,
                 SearchTerm = searchTerm,
-                CurrentPage = page,
-                SelectedTenant = new Tenant(),
-                ConsumptionData = new TenantConsumptionData()
+                CurrentPage = page
             };
 
             try
             {
                 var results = GetTenants(searchCriteria, searchTerm, page, 10);
-                viewModel.SearchResults = results.Items;
-                viewModel.TotalItems = results.TotalCount;
-                viewModel.TotalPages = results.TotalPages;
-
-                if (viewModel.SearchResults.Count > 0)
-                {
-                    viewModel.SelectedTenant = GetTenantDetailsById(viewModel.SearchResults[0].Id);
-                }
+                model.SearchResults = results.Items;
+                model.TotalItems = results.TotalCount;
+                model.TotalPages = Math.Max(1, results.TotalPages);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching tenants");
-                TempData["ErrorMessage"] = $"Database error: {ex.Message}";
+                _logger.LogError(ex, "Error loading tenant list for workspace {CompanyId}", _companyContext.CurrentCompanyId);
+                TempData["ErrorMessage"] = "Unable to load tenants.";
             }
 
-            return View("Management", viewModel);
+            return model;
         }
 
-        /// <summary>
-        /// Holds the paginated results of a tenant search.
-        /// </summary>
-        private class SearchResult
+        private bool LoadSelection(TenantViewModel model, int tenantId)
         {
-            /// <summary>
-            /// The list of tenants on the current page.
-            /// </summary>
-            public List<Tenant> Items { get; set; } = new List<Tenant>();
+            try
+            {
+                var tenant = GetTenantDetailsById(tenantId);
+                if (tenant == null)
+                    return false;
 
-            /// <summary>
-            /// The total number of tenants matching the search criteria.
-            /// </summary>
+                model.SelectedTenant = tenant;
+                model.Dependencies = GetDependencies(tenantId);
+                model.ConsumptionData = GetConsumptionData(tenantId);
+                model.SelectedTenant.Outstanding = model.ConsumptionData.TotalBilledOutstanding;
+                model.SelectedTenant.Overdue = model.ConsumptionData.Overdue;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading tenant {TenantId} in workspace {CompanyId}", tenantId, _companyContext.CurrentCompanyId);
+                TempData["ErrorMessage"] = "Unable to load tenant details.";
+                return false;
+            }
+        }
+
+        private sealed class SearchResult
+        {
+            public List<Tenant> Items { get; set; } = new();
             public int TotalCount { get; set; }
-
-            /// <summary>
-            /// The total number of pages available.
-            /// </summary>
             public int TotalPages { get; set; }
         }
 
-        /// <summary>
-        /// Searches the database for tenants matching the given criteria, with pagination.
-        /// </summary>
-        /// <param name="searchCriteria">The field to search by.</param>
-        /// <param name="searchTerm">The term to look for.</param>
-        /// <param name="page">The page number to retrieve.</param>
-        /// <param name="pageSize">The number of results per page.</param>
-        /// <returns>A SearchResult containing the matching tenants and pagination information.</returns>
         private SearchResult GetTenants(string searchCriteria, string searchTerm, int page, int pageSize)
         {
             var result = new SearchResult();
+            var companyId = _companyContext.CurrentCompanyId;
+            var filter = string.IsNullOrWhiteSpace(searchTerm)
+                ? ""
+                : searchCriteria switch
+                {
+                    "Contact" => @" AND COALESCE(td.""ContactName"", '') ILIKE @searchTerm",
+                    "Email" => @" AND COALESCE(td.""ContactEmail"", '') ILIKE @searchTerm",
+                    "Phone" => @" AND COALESCE(td.""ContactPhone"", '') ILIKE @searchTerm",
+                    _ => @" AND COALESCE(td.""CompanyName"", t.""DisplayName"", '') ILIKE @searchTerm"
+                };
 
-            try
+            using var connection = _databaseService.CreateNewConnection();
+            connection.Open();
+
+            var countSql = @"
+                SELECT COUNT(*)
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""CompanyId"" = @companyId" + filter;
+
+            using (var count = new NpgsqlCommand(countSql, connection))
             {
-                string whereClause = string.IsNullOrEmpty(searchTerm) ? "" :
-                    searchCriteria switch
-                    {
-                        "Company Name" => @"WHERE ""td"".""CompanyName"" ILIKE @searchTerm",
-                        "Contact" => @"WHERE ""td"".""ContactName"" ILIKE @searchTerm",
-                        "Email" => @"WHERE ""td"".""ContactEmail"" ILIKE @searchTerm",
-                        "Phone" => @"WHERE ""td"".""ContactPhone"" ILIKE @searchTerm",
-                        _ => @"WHERE ""td"".""CompanyName"" ILIKE @searchTerm"
-                    };
+                count.Parameters.AddWithValue("companyId", companyId);
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                    count.Parameters.AddWithValue("searchTerm", $"%{searchTerm.Trim()}%");
 
-                string connString = _databaseService.GetConnectionString();
-                using var connection = new NpgsqlConnection(connString);
-                connection.Open();
-
-                int currentCompanyId = _companyContext.CurrentCompanyId;
-
-             
-                if (string.IsNullOrEmpty(whereClause))
-                {
-                    whereClause = @"WHERE ""t"".""CompanyId"" = @companyId";
-                }
-                else
-                {
-                    whereClause += @" AND ""t"".""CompanyId"" = @companyId";
-                }
-
-                string countSql = @"
-                    SELECT COUNT(*) 
-                    FROM ""Tenants"" ""t""
-                    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
-                    " + whereClause;
-
-                using (var countCommand = new NpgsqlCommand(countSql, connection))
-                {
-                    countCommand.Parameters.AddWithValue("@companyId", currentCompanyId);
-
-                    if (!string.IsNullOrEmpty(searchTerm))
-                    {
-                        countCommand.Parameters.AddWithValue("@searchTerm", $"%{searchTerm}%");
-                    }
-
-                    result.TotalCount = Convert.ToInt32(countCommand.ExecuteScalar());
-                    result.TotalPages = (int)Math.Ceiling(result.TotalCount / (double)pageSize);
-                }
-
-                int offset = (page - 1) * pageSize;
-                string searchSql = @"
-                    SELECT 
-                        ""t"".""TenantID"",
-                        ""td"".""CompanyName"",
-                        ""td"".""ContactName"",
-                        ""td"".""ContactEmail"",
-                        ""td"".""ContactPhone"",
-                        0 AS Outstanding,
-                        0 AS Overdue,
-                        COALESCE(""td"".""Active"", TRUE) AS Active
-                    FROM ""Tenants"" ""t""
-                    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
-                    " + whereClause + @"
-                    ORDER BY ""td"".""CompanyName""
-                    LIMIT @pageSize OFFSET @offset";
-
-                using (var searchCommand = new NpgsqlCommand(searchSql, connection))
-                {
-                    searchCommand.Parameters.AddWithValue("@companyId", currentCompanyId);
-
-                    if (!string.IsNullOrEmpty(searchTerm))
-                    {
-                        searchCommand.Parameters.AddWithValue("@searchTerm", $"%{searchTerm}%");
-                    }
-
-                    searchCommand.Parameters.AddWithValue("@pageSize", pageSize);
-                    searchCommand.Parameters.AddWithValue("@offset", offset);
-
-                    using (var reader = searchCommand.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            result.Items.Add(new Tenant
-                            {
-                                Id = reader.GetInt32(0),
-                                CompanyName = !reader.IsDBNull(1) ? reader.GetString(1) : "",
-                                Contact = !reader.IsDBNull(2) ? reader.GetString(2) : "",
-                                Email = !reader.IsDBNull(3) ? reader.GetString(3) : "",
-                                Phone = !reader.IsDBNull(4) ? reader.GetString(4) : "",
-                                Outstanding = reader.GetDecimal(5),
-                                Overdue = reader.GetDecimal(6),
-                                Active = reader.GetBoolean(7)
-                            });
-                        }
-                    }
-                }
+                result.TotalCount = Convert.ToInt32(count.ExecuteScalar());
+                result.TotalPages = (int)Math.Ceiling(result.TotalCount / (double)pageSize);
             }
-            catch (Exception ex)
+
+            var sql = @"
+                SELECT
+                    t.""TenantID"",
+                    COALESCE(td.""CompanyName"", t.""DisplayName"", ''),
+                    COALESCE(td.""ContactName"", ''),
+                    COALESCE(td.""ContactEmail"", ''),
+                    COALESCE(td.""ContactPhone"", ''),
+                    COALESCE(td.""Active"", TRUE),
+                    (SELECT COUNT(*) FROM ""Meters"" m
+                     WHERE m.""TenantID"" = t.""TenantID"" AND m.""CompanyId"" = @companyId) AS MeterCount,
+                    (SELECT COUNT(*) FROM ""Bills"" b
+                     WHERE b.""TenantID"" = t.""TenantID"" AND b.""CompanyId"" = @companyId) AS BillCount,
+                    (SELECT COUNT(DISTINCT tc.""UserId"")
+                     FROM ""AspNetUserClaims"" tc
+                     INNER JOIN ""AspNetUserClaims"" cc
+                       ON cc.""UserId"" = tc.""UserId""
+                      AND cc.""ClaimType"" = 'CompanyId'
+                      AND cc.""ClaimValue"" = CAST(@companyId AS text)
+                     WHERE tc.""ClaimType"" = 'TenantId'
+                       AND tc.""ClaimValue"" = CAST(t.""TenantID"" AS text)) AS UserCount
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""CompanyId"" = @companyId" + filter + @"
+                ORDER BY COALESCE(td.""CompanyName"", t.""DisplayName"")
+                LIMIT @pageSize OFFSET @offset";
+
+            using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+            cmd.Parameters.AddWithValue("pageSize", pageSize);
+            cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+                cmd.Parameters.AddWithValue("searchTerm", $"%{searchTerm.Trim()}%");
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                _logger.LogError(ex, "Error getting tenants");
-                throw;
+                result.Items.Add(new Tenant
+                {
+                    Id = reader.GetInt32(0),
+                    CompanyName = reader.GetString(1),
+                    Contact = reader.GetString(2),
+                    Email = reader.GetString(3),
+                    Phone = reader.GetString(4),
+                    Active = reader.GetBoolean(5),
+                    AssignedMeterCount = Convert.ToInt32(reader.GetInt64(6)),
+                    BillCount = Convert.ToInt32(reader.GetInt64(7)),
+                    UserCount = Convert.ToInt32(reader.GetInt64(8))
+                });
             }
 
             return result;
         }
 
-        /// <summary>
-        /// Retrieves the detailed information for a specific tenant.
-        /// </summary>
-        /// <param name="id">The tenant ID to retrieve.</param>
-        /// <returns>The tenant details, or an empty tenant if not found.</returns>
-        private Tenant GetTenantDetailsById(int id)
+        private Tenant? GetTenantDetailsById(int tenantId)
         {
-            var tenant = new Tenant();
+            var companyId = _companyContext.CurrentCompanyId;
+            using var connection = _databaseService.CreateNewConnection();
+            connection.Open();
 
-            try
+            const string sql = @"
+                SELECT
+                    t.""TenantID"",
+                    COALESCE(td.""CompanyName"", t.""DisplayName"", ''),
+                    COALESCE(td.""ContactName"", ''),
+                    COALESCE(td.""ContactEmail"", ''),
+                    COALESCE(td.""ContactPhone"", ''),
+                    COALESCE(td.""Address1"", ''),
+                    COALESCE(td.""Address2"", ''),
+                    COALESCE(td.""PostCode"", ''),
+                    COALESCE(td.""City"", ''),
+                    COALESCE(td.""Unit"", t.""Misc"", ''),
+                    COALESCE(td.""TariffType"", 'Company'),
+                    COALESCE(td.""BaseRate"", td.""Tarif_1""::numeric, 0.5),
+                    COALESCE(td.""Threshold1"", 100),
+                    COALESCE(td.""Threshold1Rate"", td.""Tarif_2""::numeric, 0.6),
+                    COALESCE(td.""Threshold2"", 200),
+                    COALESCE(td.""Threshold2Rate"", td.""Tarif_3""::numeric, 0.8),
+                    COALESCE(td.""StartDate"", CURRENT_DATE),
+                    COALESCE(td.""Period"", 'Monthly'),
+                    COALESCE(td.""Deposit""::numeric, 0),
+                    COALESCE(td.""Active"", TRUE),
+                    COALESCE(td.""EmailAlert"", TRUE),
+                    COALESCE(td.""PrintBill"", TRUE),
+                    COALESCE(td.""EmailBill"", TRUE)
+                FROM ""Tenants"" t
+                LEFT JOIN ""TenantDetails"" td
+                  ON td.""TenantID"" = t.""TenantID""
+                 AND td.""CompanyId"" = t.""CompanyId""
+                WHERE t.""TenantID"" = @tenantId
+                  AND t.""CompanyId"" = @companyId";
+
+            using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("tenantId", tenantId);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read())
+                return null;
+
+            return new Tenant
             {
-                string connString = _databaseService.GetConnectionString();
-                using var connection = new NpgsqlConnection(connString);
-                connection.Open();
+                Id = reader.GetInt32(0),
+                CompanyName = reader.GetString(1),
+                Contact = reader.GetString(2),
+                Email = reader.GetString(3),
+                Phone = reader.GetString(4),
+                Address1 = reader.GetString(5),
+                Address2 = reader.GetString(6),
+                PostCode = reader.GetString(7),
+                City = reader.GetString(8),
+                Unit = reader.GetString(9),
+                TariffType = reader.GetString(10),
+                BaseRate = reader.GetDecimal(11),
+                Threshold1 = reader.GetDecimal(12),
+                Threshold1Rate = reader.GetDecimal(13),
+                Threshold2 = reader.GetDecimal(14),
+                Threshold2Rate = reader.GetDecimal(15),
+                StartDate = reader.GetDateTime(16).ToString("yyyy-MM-dd"),
+                Period = reader.GetString(17),
+                Deposit = reader.GetDecimal(18),
+                Active = reader.GetBoolean(19),
+                EmailAlert = reader.GetBoolean(20),
+                PrintBill = reader.GetBoolean(21),
+                EmailBill = reader.GetBoolean(22)
+            };
+        }
 
-                int currentCompanyId = _companyContext.CurrentCompanyId;
+        private TenantDependencySummary GetDependencies(int tenantId)
+        {
+            var companyId = _companyContext.CurrentCompanyId;
+            using var connection = _databaseService.CreateNewConnection();
+            connection.Open();
 
-                var command = new NpgsqlCommand(@"
-                    SELECT 
-                        ""t"".""TenantID"", 
-                        ""td"".""CompanyName"", 
-                        ""td"".""ContactName"", 
-                        ""td"".""ContactEmail"", 
-                        ""td"".""ContactPhone"",
-                        ""td"".""CompanyAddress"",
-                        ""td"".""CompanyLocation"",
-                        ""td"".""CompanyMisc"",
-                        COALESCE(""td"".""Tarif_1""::numeric, 0.0),
-                        COALESCE(""td"".""Tarif_2""::numeric, 0.0),
-                        COALESCE(""td"".""Tarif_3""::numeric, 0.0),
-                        ""td"".""StartDate"",
-                        ""td"".""Period"",
-                        COALESCE(""td"".""Deposit""::numeric, 0.0),
-                        COALESCE(""td"".""Active"", TRUE),
-                        COALESCE(""td"".""EmailAlert"", TRUE),
-                        COALESCE(""td"".""PrintBill"", TRUE),
-                        COALESCE(""td"".""EmailBill"", TRUE)
-                    FROM ""Tenants"" ""t""
-                    LEFT JOIN ""TenantDetails"" ""td"" ON ""t"".""TenantID"" = ""td"".""TenantID""
-                    WHERE ""t"".""TenantID"" = @tenantId AND ""t"".""CompanyId"" = @companyId", connection);
+            const string sql = @"
+                SELECT
+                    (SELECT COUNT(DISTINCT tc.""UserId"")
+                     FROM ""AspNetUserClaims"" tc
+                     INNER JOIN ""AspNetUserClaims"" cc
+                       ON cc.""UserId"" = tc.""UserId""
+                      AND cc.""ClaimType"" = 'CompanyId'
+                      AND cc.""ClaimValue"" = CAST(@companyId AS text)
+                     WHERE tc.""ClaimType"" = 'TenantId'
+                       AND tc.""ClaimValue"" = CAST(@tenantId AS text)),
+                    (SELECT COUNT(*) FROM ""Meters""
+                     WHERE ""TenantID"" = @tenantId AND ""CompanyId"" = @companyId),
+                    (SELECT COUNT(*) FROM ""Bills""
+                     WHERE ""TenantID"" = @tenantId AND ""CompanyId"" = @companyId),
+                    (SELECT COUNT(*) FROM ""Payments""
+                     WHERE ""TenantID"" = @tenantId AND ""CompanyId"" = @companyId)";
 
-                command.Parameters.AddWithValue("@tenantId", id);
-                command.Parameters.AddWithValue("@companyId", currentCompanyId);
+            using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("tenantId", tenantId);
+            cmd.Parameters.AddWithValue("companyId", companyId);
+            using var reader = cmd.ExecuteReader();
+            reader.Read();
 
-                using (var reader = command.ExecuteReader())
+            return new TenantDependencySummary
+            {
+                UserCount = Convert.ToInt32(reader.GetInt64(0)),
+                MeterCount = Convert.ToInt32(reader.GetInt64(1)),
+                BillCount = Convert.ToInt32(reader.GetInt64(2)),
+                PaymentCount = Convert.ToInt32(reader.GetInt64(3))
+            };
+        }
+
+        private TenantConsumptionData GetConsumptionData(int tenantId)
+        {
+            var companyId = _companyContext.CurrentCompanyId;
+            var data = new TenantConsumptionData();
+
+            using var connection = _databaseService.CreateNewConnection();
+            connection.Open();
+
+            const string meterSql = @"
+                SELECT ""MeterId"", ""Name"", ""Unit"", COALESCE(""LastReading"", 0), COALESCE(""Active"", TRUE)
+                FROM ""Meters""
+                WHERE ""TenantID"" = @tenantId
+                  AND ""CompanyId"" = @companyId
+                ORDER BY ""Name""";
+
+            using (var cmd = new NpgsqlCommand(meterSql, connection))
+            {
+                cmd.Parameters.AddWithValue("tenantId", tenantId);
+                cmd.Parameters.AddWithValue("companyId", companyId);
+                using var reader = cmd.ExecuteReader();
+
+                while (reader.Read())
                 {
-                    if (reader.Read())
+                    data.Meters.Add(new MeterData
                     {
-                        tenant.Id = reader.GetInt32(0);
-                        tenant.CompanyName = !reader.IsDBNull(1) ? reader.GetString(1) : "";
-                        tenant.Contact = !reader.IsDBNull(2) ? reader.GetString(2) : "";
-                        tenant.Email = !reader.IsDBNull(3) ? reader.GetString(3) : "";
-                        tenant.Phone = !reader.IsDBNull(4) ? reader.GetString(4) : "";
-
-                        string address = !reader.IsDBNull(5) ? reader.GetString(5) : "";
-                        string[] addressParts = address.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
-                        tenant.Address1 = addressParts.Length > 0 ? addressParts[0] : "";
-                        tenant.Address2 = addressParts.Length > 1 ? addressParts[1] : "";
-
-                        string location = !reader.IsDBNull(6) ? reader.GetString(6) : "";
-                        var locationParts = location.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        tenant.City = locationParts.Length > 0 ? locationParts[0] : "";
-                        tenant.PostCode = locationParts.Length > 1 ? locationParts[1] : "";
-
-                        tenant.Unit = !reader.IsDBNull(7) ? reader.GetString(7) : "";
-                        tenant.BaseRate = reader.GetDecimal(8);
-                        tenant.Threshold1Rate = reader.GetDecimal(9);
-                        tenant.Threshold2Rate = reader.GetDecimal(10);
-
-                        tenant.StartDate = reader.IsDBNull(11) ? DateTime.Now.ToString("yyyy-MM-dd") : reader.GetDateTime(11).ToString("yyyy-MM-dd");
-                        tenant.Period = reader.IsDBNull(12) ? "Monthly" : reader.GetString(12);
-                        tenant.Deposit = reader.IsDBNull(13) ? 0m : reader.GetDecimal(13);
-                        tenant.Threshold1 = 100;
-                        tenant.Threshold2 = 200;
-                        tenant.Active = !reader.IsDBNull(14) && reader.GetBoolean(14);
-                        tenant.EmailAlert = reader.IsDBNull(15) || reader.GetBoolean(15);
-                        tenant.PrintBill = reader.IsDBNull(16) || reader.GetBoolean(16);
-                        tenant.EmailBill = reader.IsDBNull(17) || reader.GetBoolean(17);
-                    }
+                        Id = reader.GetInt32(0),
+                        Name = reader.GetString(1),
+                        Unit = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        LastReading = reader.GetInt32(3).ToString(),
+                        Active = reader.GetBoolean(4)
+                    });
                 }
             }
-            catch (Exception ex)
+
+            const string outstandingSql = @"
+                SELECT COALESCE(SUM(
+                    CASE WHEN COALESCE(""Status"", 'Draft') <> 'Paid'
+                         THEN COALESCE(NULLIF(""GrandTotal"", 0), ""MontantTTC"", 0)
+                         ELSE 0 END), 0)
+                FROM ""Bills""
+                WHERE ""TenantID"" = @tenantId
+                  AND ""CompanyId"" = @companyId";
+
+            using (var cmd = new NpgsqlCommand(outstandingSql, connection))
             {
-                _logger.LogError(ex, $"Error getting tenant ID {id}");
+                cmd.Parameters.AddWithValue("tenantId", tenantId);
+                cmd.Parameters.AddWithValue("companyId", companyId);
+                data.TotalBilledOutstanding = Convert.ToDecimal(cmd.ExecuteScalar());
             }
 
-            return tenant;
+            return data;
         }
+
+        private static Tenant CreateDefaultTenant() => new()
+        {
+            StartDate = DateTime.Now.ToString("yyyy-MM-dd"),
+            Period = "Monthly",
+            TariffType = "Company",
+            BaseRate = 0.5m,
+            Threshold1 = 100m,
+            Threshold1Rate = 0.6m,
+            Threshold2 = 200m,
+            Threshold2Rate = 0.8m,
+            Active = true,
+            EmailAlert = true,
+            PrintBill = true,
+            EmailBill = true
+        };
     }
 }
