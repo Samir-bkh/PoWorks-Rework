@@ -1,698 +1,914 @@
-﻿@* 
-    Meter Management View (PoWorks)
-    
-    Provides a comprehensive management interface for metering infrastructure.
-    Features include advanced search/filtering, paginated results table with single and 
-    cross-page bulk selection ("Select all matching in database"), individual meter details 
-    editing (parent hierarchy, label, tenant assignment, active status), sub-meter 
-    hierarchy visualization, bulk edit modal (multi-property updates), and bulk deletion capabilities.
-*@
-
 @model PoWorks_Rework.Models.MeterManagementViewModel
 @{
     ViewData["Title"] = "Meter Management";
+    var selected = Model.SelectedMeter;
 }
 
-@* Feedback Alerts: Operations Status Notifications *@
-@if (TempData["SuccessMessage"] != null)
-{
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        @TempData["SuccessMessage"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-}
+<style>
+    .meter-summary-card {
+        min-height: 88px;
+    }
 
-@if (TempData["ErrorMessage"] != null)
-{
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        @TempData["ErrorMessage"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-}
+    .meter-table-wrap {
+        max-height: 58vh;
+        overflow: auto;
+    }
 
-<div class="card">
-    @* Card Header *@
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h4>Meters</h4>
-    </div>
-    <div class="card-body">
-        
-        @* Section Navigation Tabs *@
-        <ul class="nav nav-tabs mb-4">
-            <li class="nav-item">
-                <a class="nav-link" asp-controller="Meter" asp-action="Readings">Meter Readings</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link active" asp-controller="Meter" asp-action="Management">Meter Management</a>
-            </li>
-        </ul>
+    .meter-table-wrap thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--bs-tertiary-bg);
+    }
 
-        @* SECTION 1: Meter Search and Filter Form *@
-        <form asp-action="Search" method="post" id="searchForm">
-            <div class="meter-search-area mb-4">
-                @* Criteria Selection Row *@
-                <div class="row mb-2">
-                    <div class="col-md-2">
-                        <label for="SearchField" class="form-label">Search Criteria</label>
-                    </div>
-                    <div class="col-md-4">
-                        <select class="form-select" id="SearchField" asp-for="SearchCriteria.SearchField" onchange="updateMeterSearchOptions()">
-                            <option value="Name">Name or Label</option>
-                            <option value="Type">Type</option>
-                            <option value="Tenant">Tenant</option>
-                        </select>
+    .meter-name {
+        max-width: 290px;
+    }
+
+    .meter-name .technical {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .meter-bulk-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 3;
+    }
+</style>
+
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h3 class="mb-1">Meter Management</h3>
+            <p class="text-muted mb-0">Configure meters, tenant assignments and lifecycle within the current workspace.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a asp-controller="Meter" asp-action="Readings" class="btn btn-outline-secondary">
+                <i class="bi bi-graph-up"></i> Meter Readings
+            </a>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newMeterModal">
+                <i class="bi bi-plus-lg"></i> New Meter
+            </button>
+        </div>
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="row g-3 mb-3">
+        <div class="col-xl col-md-4 col-6">
+            <div class="card shadow-sm meter-summary-card h-100">
+                <div class="card-body py-3">
+                    <div class="small text-muted">Total meters</div>
+                    <div class="fs-4 fw-semibold">@Model.Summary.Total</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl col-md-4 col-6">
+            <a class="text-decoration-none text-body"
+               asp-action="Management"
+               asp-route-statusFilter="Active">
+                <div class="card shadow-sm meter-summary-card h-100">
+                    <div class="card-body py-3">
+                        <div class="small text-muted">Active</div>
+                        <div class="fs-4 fw-semibold text-success">@Model.Summary.Active</div>
                     </div>
                 </div>
-
-                @* Dynamic Search Value Input Row *@
-                <div class="row mb-3">
-                    <div class="col-md-2">
-                        <label for="SearchTerm" class="form-label">Search Term</label>
+            </a>
+        </div>
+        <div class="col-xl col-md-4 col-6">
+            <a class="text-decoration-none text-body"
+               asp-action="Management"
+               asp-route-statusFilter="Disabled">
+                <div class="card shadow-sm meter-summary-card h-100">
+                    <div class="card-body py-3">
+                        <div class="small text-muted">Disabled</div>
+                        <div class="fs-4 fw-semibold">@Model.Summary.Disabled</div>
                     </div>
-                    <div class="col-md-4">
-                        <div id="searchTermContainer">
-                            @* Free Text Search (Name/Label) *@
-                            <input type="text" class="form-control" id="textInput" asp-for="SearchCriteria.SearchTerm"
-                                   style="display: @(Model.SearchCriteria?.SearchField == "Name" ? "block" : "none")">
-                            
-                            @* Type Select Dropdown *@
-                            <select class="form-select" id="typeSelect" name="SearchCriteria.SearchTerm"
-                                    style="display: @(Model.SearchCriteria?.SearchField == "Type" ? "block" : "none")">
-                                <option value="">Select Type</option>
-                                <option value="Main" selected="@(Model.SearchCriteria?.SearchTerm == "Main")">Main</option>
-                                <option value="Sub" selected="@(Model.SearchCriteria?.SearchTerm == "Sub")">Sub</option>
-                            </select>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl col-md-6 col-6">
+            <a class="text-decoration-none text-body"
+               asp-action="Management"
+               asp-route-assignmentFilter="Assigned">
+                <div class="card shadow-sm meter-summary-card h-100">
+                    <div class="card-body py-3">
+                        <div class="small text-muted">Assigned</div>
+                        <div class="fs-4 fw-semibold">@Model.Summary.Assigned</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl col-md-6 col-6">
+            <a class="text-decoration-none text-body"
+               asp-action="Management"
+               asp-route-assignmentFilter="Unassigned">
+                <div class="card shadow-sm meter-summary-card h-100">
+                    <div class="card-body py-3">
+                        <div class="small text-muted">Unassigned</div>
+                        <div class="fs-4 fw-semibold text-warning">@Model.Summary.Unassigned</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
 
-                            @* Tenant Select Dropdown *@
-                            <select class="form-select" id="tenantSelect" name="SearchCriteria.SearchTerm"
-                                    style="display: @(Model.SearchCriteria?.SearchField == "Tenant" ? "block" : "none")">
-                                <option value="">Select Tenant</option>
-                                @if(Model.TenantOptions != null) {
-                                    @foreach (var tenant in Model.TenantOptions)
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-3">
+            <form asp-action="Management" method="get" class="row g-2 align-items-end">
+                <div class="col-xl-2 col-md-4">
+                    <label class="form-label small mb-1" for="searchField">Search by</label>
+                    <select class="form-select form-select-sm" id="searchField" name="searchField">
+                        <option value="Name" selected="@(Model.SearchCriteria.SearchField == "Name")">Name / label</option>
+                        <option value="Type" selected="@(Model.SearchCriteria.SearchField == "Type")">Type</option>
+                        <option value="Tenant" selected="@(Model.SearchCriteria.SearchField == "Tenant")">Tenant</option>
+                    </select>
+                </div>
+                <div class="col-xl-4 col-md-8">
+                    <label class="form-label small mb-1" for="searchTerm">Search</label>
+                    <input class="form-control form-control-sm"
+                           id="searchTerm"
+                           name="searchTerm"
+                           value="@Model.SearchCriteria.SearchTerm"
+                           placeholder="Meter, label, type or tenant..." />
+                </div>
+                <div class="col-xl-2 col-md-4">
+                    <label class="form-label small mb-1" for="statusFilter">Status</label>
+                    <select class="form-select form-select-sm" id="statusFilter" name="statusFilter">
+                        <option value="All" selected="@(Model.SearchCriteria.StatusFilter == "All")">All</option>
+                        <option value="Active" selected="@(Model.SearchCriteria.StatusFilter == "Active")">Active</option>
+                        <option value="Disabled" selected="@(Model.SearchCriteria.StatusFilter == "Disabled")">Disabled</option>
+                    </select>
+                </div>
+                <div class="col-xl-2 col-md-4">
+                    <label class="form-label small mb-1" for="assignmentFilter">Tenant assignment</label>
+                    <select class="form-select form-select-sm" id="assignmentFilter" name="assignmentFilter">
+                        <option value="All" selected="@(Model.SearchCriteria.AssignmentFilter == "All")">All</option>
+                        <option value="Assigned" selected="@(Model.SearchCriteria.AssignmentFilter == "Assigned")">Assigned</option>
+                        <option value="Unassigned" selected="@(Model.SearchCriteria.AssignmentFilter == "Unassigned")">Unassigned</option>
+                    </select>
+                </div>
+                <div class="col-xl-2 col-md-4 d-flex gap-2">
+                    <button class="btn btn-sm btn-primary flex-fill" type="submit">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                    <a asp-action="Management" class="btn btn-sm btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <strong>@Model.TotalItems meter(s)</strong>
+                @if (Model.SearchCriteria.StatusFilter != "All" || Model.SearchCriteria.AssignmentFilter != "All" || !string.IsNullOrWhiteSpace(Model.SearchCriteria.SearchTerm))
+                {
+                    <span class="badge text-bg-light border ms-2">Filtered</span>
+                }
+            </div>
+            <span class="text-muted small">Page @Model.CurrentPage / @Model.TotalPages · @Model.PageSize per page</span>
+        </div>
+
+        <div class="table-responsive meter-table-wrap">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width:42px">
+                            <input class="form-check-input" type="checkbox" id="selectAllMeters" aria-label="Select visible meters" />
+                        </th>
+                        <th style="min-width:260px">Meter</th>
+                        <th style="min-width:125px">Type / Parent</th>
+                        <th style="min-width:90px">Unit</th>
+                        <th style="min-width:180px">Tenant</th>
+                        <th style="min-width:105px">Status</th>
+                        <th style="min-width:120px">Last reading</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="selectAllBannerRow" class="d-none">
+                        <td colspan="8" class="text-center bg-primary-subtle py-2">
+                            <span id="bannerVisible">
+                                All <strong><span id="visibleSelectionCount">0</span></strong> visible meters are selected.
+                                <button class="btn btn-link btn-sm p-0 ms-2" type="button" onclick="selectAllAcrossPages()">
+                                    Select all @Model.TotalItems filtered meter(s)
+                                </button>
+                            </span>
+                            <span id="bannerAll" class="d-none">
+                                <i class="bi bi-check-circle-fill"></i>
+                                All @Model.TotalItems filtered meter(s) are selected.
+                                <button class="btn btn-link btn-sm text-danger p-0 ms-2" type="button" onclick="clearAllAcrossPages()">
+                                    Clear
+                                </button>
+                            </span>
+                        </td>
+                    </tr>
+
+                    @if (Model.SearchResults.Any())
+                    {
+                        @foreach (var meter in Model.SearchResults)
+                        {
+                            <tr class="@(selected?.Id == meter.Id ? "table-primary" : "")">
+                                <td class="text-center">
+                                    <input class="form-check-input meter-checkbox" type="checkbox" value="@meter.Id" />
+                                </td>
+                                <td class="meter-name">
+                                    <a class="fw-semibold text-decoration-none"
+                                       asp-action="Management"
+                                       asp-route-id="@meter.Id"
+                                       asp-route-searchField="@Model.SearchCriteria.SearchField"
+                                       asp-route-searchTerm="@Model.SearchCriteria.SearchTerm"
+                                       asp-route-statusFilter="@Model.SearchCriteria.StatusFilter"
+                                       asp-route-assignmentFilter="@Model.SearchCriteria.AssignmentFilter"
+                                       asp-route-page="@Model.CurrentPage">
+                                        @(string.IsNullOrWhiteSpace(meter.Label) ? meter.Name : meter.Label)
+                                    </a>
+                                    @if (!string.IsNullOrWhiteSpace(meter.Label))
                                     {
-                                        <option value="@tenant.Text" selected="@(Model.SearchCriteria?.SearchTerm == tenant.Text)">@tenant.Text</option>
+                                        <div class="small text-muted technical" title="@meter.Name">@meter.Name</div>
                                     }
-                                }
-                            </select>
-                        </div>
-                    </div>
-                    
-                    @* Search Actions *@
-                    <div class="col-md-6 d-flex align-items-center">
-                        <button type="submit" class="btn btn-primary me-2">Search</button>
-                        <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#newMeterModal">New Meter</button>
-                    </div>
-                </div>
-            </div>
-        </form>
-
-        @* SECTION 2: Search Results Table Container *@
-        <div class="card mb-4">
-            <div class="card-header bg-light">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h5 class="mb-0">Search Results</h5>
-                </div>
-                
-                @* Bulk Action Operations Bar (Revealed dynamically when items are checked) *@
-                <div id="bulkActionBar" class="bg-primary-subtle p-2 rounded d-flex align-items-center justify-content-between border border-primary" style="display: none !important;">
-                    <div>
-                        <span class="badge bg-primary fs-6"><span id="selectedCount">0</span> selected</span>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <button class="btn btn-sm btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#bulkEditModal"><i class="bi bi-pencil-square"></i> Edit Selected</button>
-                        <button class="btn btn-sm btn-warning fw-bold text-dark" onclick="unassignBulkTenant()"><i class="bi bi-person-x"></i> Unassign</button>
-                        <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="setBulkMetersActive(false)"><i class="bi bi-pause-circle"></i> Disable</button>
-                        <button class="btn btn-sm btn-outline-success fw-bold" onclick="setBulkMetersActive(true)"><i class="bi bi-play-circle"></i> Enable</button>
-                        <div class="vr mx-1"></div>
-                        <button class="btn btn-sm btn-danger fw-bold" onclick="deleteBulkMeters()"><i class="bi bi-trash"></i> Delete permanently</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover mb-0">
-                        @* Table Headers *@
-                        <thead>
-                            <tr>
-                                <th class="text-center" style="width: 50px;">
-                                    <input class="form-check-input" type="checkbox" id="selectAllMeters">
-                                </th>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Parent</th>
-                                <th>Last Reading</th>
-                                <th>Unit</th>
-                                <th>Tenant</th>
-                                <th>Active</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            @* Banner Row: Cross-Page Global Selection Option *@
-                            <tr id="selectAllBannerRow" style="display: none;">
-                                <td colspan="8" class="text-center bg-primary-subtle text-primary border-primary py-2">
-                                    <span id="bannerTextNormal">
-                                        All <strong><span id="bannerPageCount">50</span></strong> meters on this page are selected. 
-                                        <a href="#" class="fw-bold text-decoration-none ms-2" onclick="selectAllAcrossPages(event)">
-                                            Select all matching meters in database
-                                        </a>
-                                    </span>
-                                    <span id="bannerTextAll" style="display: none;">
-                                        <i class="bi bi-check-circle-fill"></i> All matching meters are selected.
-                                        <a href="#" class="fw-bold text-decoration-none ms-2 text-danger" onclick="clearAllAcrossPages(event)">
-                                            Clear selection
-                                        </a>
-                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge text-bg-light border">@meter.Type</span>
+                                    @if (!string.IsNullOrWhiteSpace(meter.ParentMeterName))
+                                    {
+                                        <div class="small text-muted mt-1">@meter.ParentMeterName</div>
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(meter.Unit) ? "—" : meter.Unit)</td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(meter.TenantName))
+                                    {
+                                        <span class="text-muted">Unassigned</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@meter.TenantName</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (meter.Active)
+                                    {
+                                        <span class="badge text-bg-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-secondary">Disabled</span>
+                                    }
+                                </td>
+                                <td>@meter.LastReading</td>
+                                <td class="text-end">
+                                    <a class="btn btn-sm btn-outline-primary py-0 px-2"
+                                       asp-action="Management"
+                                       asp-route-id="@meter.Id">
+                                        Open
+                                    </a>
                                 </td>
                             </tr>
-                            
-                            @* Result Rows *@
-                            @if(Model.SearchResults != null) {
-                                @foreach (var meter in Model.SearchResults)
-                                {
-                                    <tr class="@(Model.SelectedMeter?.Id == meter.Id ? "table-primary" : "")">
-                                        <td class="text-center">
-                                            <input class="form-check-input meter-checkbox" type="checkbox" value="@meter.Id">
-                                        </td>
-                                        <td><a asp-action="Management" asp-route-id="@meter.Id">@meter.Name</a></td>
-                                        <td>@meter.Type</td>
-                                        <td>@meter.ParentMeterName</td>
-                                        <td>@meter.LastReading</td>
-                                        <td>@meter.Unit</td>
-                                        <td>@meter.TenantName</td>
-                                        <td class="text-center">
-                                            @if (meter.Active) { <i class="bi bi-check"></i> }
-                                        </td>
-                                    </tr>
-                                }
-                            }
-                            
-                            @* Empty State Row *@
-                            @if (Model.SearchResults == null || !Model.SearchResults.Any())
-                            {
-                                <tr><td colspan="8" class="text-center">No meters found.</td></tr>
-                            }
-                        </tbody>
-                    </table>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">No meters match the current filters.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div id="bulkActionBar" class="meter-bulk-bar border-top bg-body p-2 d-none">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <span class="badge text-bg-primary"><span id="selectedCount">0</span> selected</span>
+                    <span id="allMatchingLabel" class="small text-muted ms-2 d-none">across all filtered pages</span>
                 </div>
-                
-                @* Table Pagination Controls *@
-                <div class="d-flex justify-content-between align-items-center p-2 bg-light border-top">
-                    <div>
-                        <nav aria-label="Page navigation">
-                            <ul class="pagination mb-0">
-                                @if (Model.CurrentPage > 1)
-                                {
-                                    <li class="page-item">
-                                        <a class="page-link" asp-action="Management" asp-route-page="@(Model.CurrentPage - 1)" aria-label="Previous">&laquo;</a>
-                                    </li>
-                                }
-                                @for (int i = Math.Max(1, Model.CurrentPage - 2); i <= Math.Min(Model.TotalPages, Model.CurrentPage + 2); i++)
-                                {
-                                    <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
-                                        <a class="page-link" asp-action="Management" asp-route-page="@i">@i</a>
-                                    </li>
-                                }
-                                @if (Model.CurrentPage < Model.TotalPages)
-                                {
-                                    <li class="page-item">
-                                        <a class="page-link" asp-action="Management" asp-route-page="@(Model.CurrentPage + 1)" aria-label="Next">&raquo;</a>
-                                    </li>
-                                }
-                            </ul>
-                        </nav>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#bulkEditModal">
+                        <i class="bi bi-pencil-square"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="quickAssignSelected()">
+                        <i class="bi bi-person-check"></i> Assign
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="unassignBulkTenant()">
+                        <i class="bi bi-person-x"></i> Unassign
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" type="button" onclick="setBulkMetersActive(true)">
+                        Enable
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" type="button" onclick="setBulkMetersActive(false)">
+                        Disable
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteBulkMeters()">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-footer bg-white py-2 d-flex justify-content-between align-items-center">
+            <a class="btn btn-sm btn-outline-secondary @(Model.CurrentPage <= 1 ? "disabled" : "")"
+               asp-action="Management"
+               asp-route-searchField="@Model.SearchCriteria.SearchField"
+               asp-route-searchTerm="@Model.SearchCriteria.SearchTerm"
+               asp-route-statusFilter="@Model.SearchCriteria.StatusFilter"
+               asp-route-assignmentFilter="@Model.SearchCriteria.AssignmentFilter"
+               asp-route-page="@(Model.CurrentPage - 1)"
+               asp-route-pageSize="@Model.PageSize">Previous</a>
+
+            <span class="small text-muted">@Model.CurrentPage / @Model.TotalPages</span>
+
+            <a class="btn btn-sm btn-outline-secondary @(Model.CurrentPage >= Model.TotalPages ? "disabled" : "")"
+               asp-action="Management"
+               asp-route-searchField="@Model.SearchCriteria.SearchField"
+               asp-route-searchTerm="@Model.SearchCriteria.SearchTerm"
+               asp-route-statusFilter="@Model.SearchCriteria.StatusFilter"
+               asp-route-assignmentFilter="@Model.SearchCriteria.AssignmentFilter"
+               asp-route-page="@(Model.CurrentPage + 1)"
+               asp-route-pageSize="@Model.PageSize">Next</a>
+        </div>
+    </div>
+
+    @if (selected != null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-xl-8">
+                <form asp-action="Update" method="post" class="card shadow-sm h-100">
+                    <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <strong>Meter configuration</strong>
+                            <span class="text-muted small ms-2">#@selected.Id</span>
+                        </div>
+                        @if (selected.Active)
+                        {
+                            <span class="badge text-bg-success">Active</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-secondary">Disabled</span>
+                        }
                     </div>
-                    <div>
-                        <span class="text-muted">@Model.CurrentPage of @Model.TotalPages pages (@Model.TotalItems items)</span>
+                    <div class="card-body">
+                        <input type="hidden" name="Id" value="@selected.Id" />
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="meterName">Technical name *</label>
+                                <input class="form-control" id="meterName" name="Name" value="@selected.Name" required maxlength="100" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="meterLabel">Display label</label>
+                                <input class="form-control" id="meterLabel" name="Label" value="@selected.Label" maxlength="150" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="meterUnit">Unit</label>
+                                <input class="form-control" id="meterUnit" name="Unit" value="@selected.Unit" maxlength="20" placeholder="kWh, m³..." />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="meterType">Type</label>
+                                <select class="form-select" id="meterType" name="Type">
+                                    <option value="Main" selected="@(selected.Type == "Main")">Main</option>
+                                    <option value="Sub" selected="@(selected.Type == "Sub")">Sub</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Last reading</label>
+                                <div class="form-control bg-body-tertiary">@selected.LastReading</div>
+                                <div class="form-text">Read-only. Updated by imported meter data.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="meterTenant">Tenant</label>
+                                <select class="form-select" id="meterTenant" name="TenantId">
+                                    @foreach (var option in Model.TenantOptions)
+                                    {
+                                        <option value="@option.Value"
+                                                disabled="@option.Disabled"
+                                                selected="@(option.Value == selected.TenantId)">
+                                            @option.Text
+                                        </option>
+                                    }
+                                </select>
+                                <div class="form-text">A tenant can own multiple meters. Disabled tenants cannot receive new assignments.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="meterParent">Parent meter</label>
+                                <select class="form-select" id="meterParent" name="ParentMeterId">
+                                    @foreach (var option in Model.ParentMeterOptions.Where(o => o.Value != selected.Id.ToString()))
+                                    {
+                                        <option value="@option.Value"
+                                                disabled="@option.Disabled"
+                                                selected="@(option.Value == selected.ParentMeterId)">
+                                            @option.Text
+                                        </option>
+                                    }
+                                </select>
+                                <div class="form-text">Only Main meters from this workspace can be selected as parents.</div>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="meterActive" name="Active" value="true" checked="@selected.Active" />
+                                    <input type="hidden" name="Active" value="false" />
+                                    <label class="form-check-label" for="meterActive">Active meter</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white text-end">
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-save"></i> Save changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="col-xl-4">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-white"><strong>Lifecycle</strong></div>
+                    <div class="card-body">
+                        <p class="small text-muted">
+                            Disable a meter to preserve its readings and invoice history while removing it from normal active operations.
+                        </p>
+
+                        <div class="d-grid gap-2">
+                            @if (selected.Active)
+                            {
+                                <form asp-action="DisableMeter" method="post">
+                                    <input type="hidden" name="meterId" value="@selected.Id" />
+                                    <button class="btn btn-outline-warning w-100" type="submit"
+                                            onclick="return confirm('Disable this meter? Historical readings will be preserved.');">
+                                        Disable meter
+                                    </button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form asp-action="EnableMeter" method="post">
+                                    <input type="hidden" name="meterId" value="@selected.Id" />
+                                    <button class="btn btn-outline-success w-100" type="submit">
+                                        Enable meter
+                                    </button>
+                                </form>
+                            }
+
+                            <form asp-action="DeleteMeter" method="post">
+                                <input type="hidden" name="meterId" value="@selected.Id" />
+                                <button class="btn btn-outline-danger w-100"
+                                        type="submit"
+                                        disabled="@(!Model.SelectedMeterDependencies.CanDelete ? "disabled" : null)"
+                                        onclick="return confirm('Permanently delete this empty meter? This cannot be undone.');">
+                                    Delete permanently
+                                </button>
+                            </form>
+                        </div>
+
+                        @if (!Model.SelectedMeterDependencies.CanDelete)
+                        {
+                            <div class="alert alert-light border small mt-3 mb-0">
+                                <strong>Permanent deletion protected.</strong>
+                                <div class="mt-1">
+                                    @Model.SelectedMeterDependencies.HistoricalReadingCount history row(s) ·
+                                    @Model.SelectedMeterDependencies.BillLineCount invoice line(s) ·
+                                    @Model.SelectedMeterDependencies.ChildMeterCount child meter(s)
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white"><strong>Assignment</strong></div>
+                    <div class="card-body small">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Tenant</span>
+                            <span class="fw-semibold">@(selected.TenantName ?? "Unassigned")</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">Parent</span>
+                            <span class="fw-semibold">@(selected.ParentMeterName ?? "Top level")</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Sub meters</span>
+                            <span class="fw-semibold">@Model.SubMeters.Count</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        @* SECTION 3: Selected Meter Configuration & Sub-Meter Hierarchy *@
-        @if (Model.SelectedMeter != null)
-        {
-            @* Detailed Configuration Form *@
-            <form method="post">
-                <div class="card mb-4">
-                    <div class="card-header bg-light">
-                        <h5 class="mb-0">Meter Details</h5>
-                    </div>
-                    <div class="card-body">
-                        <input type="hidden" name="Id" value="@Model.SelectedMeter.Id" />
-
-                        @* Name and Parent Meter Selection *@
-                        <div class="row mb-3">
-                            <div class="col-md-2"><label for="Name" class="form-label">Name</label></div>
-                            <div class="col-md-4">
-                                <input type="text" class="form-control" id="Name" name="Name" value="@Model.SelectedMeter.Name">
-                                <small class="form-text text-muted">Technical name used internally</small>
-                            </div>
-                            <div class="col-md-2"><label for="ParentMeterId" class="form-label">Parent</label></div>
-                            <div class="col-md-4">
-                                @{
-                                    var parentOptions = new List<SelectListItem> { new SelectListItem { Value = "", Text = "None" } };
-                                    if(Model.SearchResults != null) {
-                                        foreach (var meter in Model.SearchResults.Where(m => m.Id != Model.SelectedMeter.Id))
-                                        {
-                                            bool isSelected = meter.Id.ToString() == Model.SelectedMeter.ParentMeterId;
-                                            parentOptions.Add(new SelectListItem { Value = meter.Id.ToString(), Text = meter.Name, Selected = isSelected });
-                                        }
-                                    }
-                                }
-                                <select class="form-select" id="ParentMeterId" name="ParentMeterId" asp-items="parentOptions"></select>
-                            </div>
-                        </div>
-
-                        @* Display Label and Tenant Association *@
-                        <div class="row mb-3">
-                            <div class="col-md-2"><label for="Label" class="form-label">Label</label></div>
-                            <div class="col-md-4">
-                                <input type="text" class="form-control" id="Label" name="Label" value="@Model.SelectedMeter.Label" placeholder="Display name for this meter">
-                                <small class="form-text text-muted">Friendly name displayed in the interface</small>
-                            </div>
-                            <div class="col-md-2"><label for="TenantId" class="form-label">Tenant</label></div>
-                            <div class="col-md-4">
-                                <select class="form-select" id="TenantId" name="TenantId" asp-items="Model.TenantOptions ?? new List<SelectListItem>()"></select>
-                                <small class="form-text text-muted">Link this meter to a tenant from the database</small>
-                            </div>
-                        </div>
-
-                        @* Engineering Unit and Read-Only Last Reading *@
-                        <div class="row mb-3">
-                            <div class="col-md-2"><label for="Unit" class="form-label">Unit</label></div>
-                            <div class="col-md-4"><input type="text" class="form-control" id="Unit" name="Unit" value="@Model.SelectedMeter.Unit"></div>
-                            <div class="col-md-2"><label for="LastReading" class="form-label">Last Reading</label></div>
-                            <div class="col-md-4"><input type="text" class="form-control bg-light" id="LastReading" name="LastReading" value="@Model.SelectedMeter.LastReading" readonly></div>
-                        </div>
-
-                        @* Meter Classification Type and Active Status *@
-                        <div class="row mb-3">
-                            <div class="col-md-2"><label for="Type" class="form-label">Type</label></div>
-                            <div class="col-md-4">
-                                @{
-                                    var typeOptions = new List<SelectListItem> {
-                                        new SelectListItem { Value = "Main", Text = "Main", Selected = Model.SelectedMeter.Type == "Main" },
-                                        new SelectListItem { Value = "Sub", Text = "Sub", Selected = Model.SelectedMeter.Type == "Sub" }
-                                    };
-                                }
-                                <select class="form-select" id="Type" name="Type" asp-items="typeOptions"></select>
-                            </div>
-                            <div class="col-md-2"><label for="Active" class="form-label">Active</label></div>
-                            <div class="col-md-4">
-                                <div class="form-check mt-2">
-                                    @Html.CheckBox("Active", Model.SelectedMeter.Active, new { @class = "form-check-input" })
-                                    <label class="form-check-label" for="Active">Active</label>
-                                </div>
-                            </div>
-                        </div>
-
-                        @* Individual Meter Actions *@
-                        <div class="text-end">
-                            <button type="submit" class="btn btn-primary me-2" asp-action="Update">Update</button>
-                            <button type="submit" class="btn btn-success" asp-action="Create">Save as New</button>
-                        </div>
-                    </div>
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>Sub meters</strong>
+                    <div class="small text-muted">Direct children of this meter in the current workspace.</div>
                 </div>
-            </form>
-            
-            @* Sub-Meters Hierarchy Grid *@
-            <div class="card">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Sub Meters</h5>
-                </div>
-                <div class="card-body">
-                    @if (Model.SubMeters != null && Model.SubMeters.Any())
+                <span class="badge text-bg-light border">@Model.SubMeters.Count</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Meter</th>
+                            <th>Tenant</th>
+                            <th>Unit</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @if (Model.SubMeters.Any())
                     {
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Type</th>
-                                        <th>Last Reading</th>
-                                        <th>Unit</th>
-                                        <th>Tenant</th>
-                                        <th>Active</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var subMeter in Model.SubMeters)
+                        @foreach (var sub in Model.SubMeters)
+                        {
+                            <tr>
+                                <td>
+                                    <a asp-action="Management" asp-route-id="@sub.Id">@(sub.Label ?? sub.Name)</a>
+                                    @if (!string.IsNullOrWhiteSpace(sub.Label))
                                     {
-                                        <tr>
-                                            <td><a asp-action="Management" asp-route-id="@subMeter.Id">@subMeter.Name</a></td>
-                                            <td>@subMeter.Type</td>
-                                            <td>@subMeter.LastReading</td>
-                                            <td>@subMeter.Unit</td>
-                                            <td>@subMeter.TenantName</td>
-                                            <td class="text-center">@if (subMeter.Active) { <i class="bi bi-check"></i> }</td>
-                                        </tr>
+                                        <div class="small text-muted">@sub.Name</div>
                                     }
-                                </tbody>
-                            </table>
-                        </div>
+                                </td>
+                                <td>@(sub.TenantName ?? "Unassigned")</td>
+                                <td>@(string.IsNullOrWhiteSpace(sub.Unit) ? "—" : sub.Unit)</td>
+                                <td>
+                                    @if (sub.Active)
+                                    {
+                                        <span class="badge text-bg-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-secondary">Disabled</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
                     }
                     else
                     {
-                        <p class="text-muted">No sub meters found.</p>
+                        <tr><td colspan="4" class="text-center text-muted py-3">No child meters.</td></tr>
                     }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="modal fade" id="newMeterModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <form asp-action="Create" method="post" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">New Meter</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="newMeterName">Technical name *</label>
+                        <input class="form-control" id="newMeterName" name="Name" maxlength="100" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="newMeterLabel">Display label</label>
+                        <input class="form-control" id="newMeterLabel" name="Label" maxlength="150" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="newMeterUnit">Unit</label>
+                        <input class="form-control" id="newMeterUnit" name="Unit" maxlength="20" placeholder="kWh, m³..." />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="newMeterType">Type</label>
+                        <select class="form-select" id="newMeterType" name="Type">
+                            <option value="Main">Main</option>
+                            <option value="Sub">Sub</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="newMeterActive" name="Active" value="true" checked />
+                            <input type="hidden" name="Active" value="false" />
+                            <label class="form-check-label" for="newMeterActive">Active</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="newMeterTenant">Tenant</label>
+                        <select class="form-select" id="newMeterTenant" name="TenantId">
+                            @foreach (var option in Model.TenantOptions)
+                            {
+                                <option value="@option.Value" disabled="@option.Disabled">@option.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="newMeterParent">Parent meter</label>
+                        <select class="form-select" id="newMeterParent" name="ParentMeterId">
+                            @foreach (var option in Model.ParentMeterOptions)
+                            {
+                                <option value="@option.Value" disabled="@option.Disabled">@option.Text</option>
+                            }
+                        </select>
+                    </div>
                 </div>
             </div>
-        }
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create meter</button>
+            </div>
+        </form>
     </div>
 </div>
 
-@* MODAL 1: Bulk Edit Selected Meters *@
 <div class="modal fade" id="bulkEditModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Bulk Edit Meters</h5>
+                <h5 class="modal-title">Bulk edit meters</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                @* Bulk Field: Tenant Update *@
                 <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="cbUpdateTenant" onchange="toggleBulkField('bulkTenantSelect')">
-                    <label class="form-check-label fw-bold" for="cbUpdateTenant">Change Tenant</label>
+                    <input class="form-check-input" type="checkbox" id="cbUpdateTenant" />
+                    <label class="form-check-label fw-semibold" for="cbUpdateTenant">Change tenant</label>
                 </div>
-                <select class="form-select mb-4" id="bulkTenantSelect" disabled>
-                    <option value="">-- Select a Tenant --</option>
-                    @if(Model.TenantOptions != null) {
-                        @foreach (var tenant in Model.TenantOptions.Where(t => t.Value != ""))
-                        {
-                            <option value="@tenant.Value">@tenant.Text</option>
-                        }
+                <select class="form-select mb-3" id="bulkTenantSelect">
+                    @foreach (var option in Model.TenantOptions)
+                    {
+                        <option value="@option.Value" disabled="@option.Disabled">@option.Text</option>
                     }
                 </select>
 
-                @* Bulk Field: Unit Update *@
                 <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="cbUpdateUnit" onchange="toggleBulkField('bulkUnitInput')">
-                    <label class="form-check-label fw-bold" for="cbUpdateUnit">Change Unit</label>
+                    <input class="form-check-input" type="checkbox" id="cbUpdateUnit" />
+                    <label class="form-check-label fw-semibold" for="cbUpdateUnit">Change unit</label>
                 </div>
-                <input type="text" class="form-control mb-4" id="bulkUnitInput" disabled placeholder="e.g. kWh, m3...">
+                <input class="form-control mb-3" id="bulkUnitInput" maxlength="20" placeholder="kWh, m³..." />
 
-                @* Bulk Field: Meter Type Update *@
                 <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="cbUpdateType" onchange="toggleBulkField('bulkTypeSelect')">
-                    <label class="form-check-label fw-bold" for="cbUpdateType">Change Type</label>
+                    <input class="form-check-input" type="checkbox" id="cbUpdateType" />
+                    <label class="form-check-label fw-semibold" for="cbUpdateType">Change type</label>
                 </div>
-                <select class="form-select mb-4" id="bulkTypeSelect" disabled>
+                <select class="form-select mb-3" id="bulkTypeSelect">
                     <option value="Main">Main</option>
                     <option value="Sub">Sub</option>
                 </select>
 
-                @* Bulk Field: Parent Meter Hierarchy Update *@
                 <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="cbUpdateParent" onchange="toggleBulkField('bulkParentSelect')">
-                    <label class="form-check-label fw-bold" for="cbUpdateParent">Change Parent Meter</label>
+                    <input class="form-check-input" type="checkbox" id="cbUpdateParent" />
+                    <label class="form-check-label fw-semibold" for="cbUpdateParent">Change parent</label>
                 </div>
-                <select class="form-select mb-2" id="bulkParentSelect" disabled>
-                    <option value="">None (Top Level)</option>
-                    @if(Model.SearchResults != null) {
-                        @foreach (var meter in Model.SearchResults)
-                        {
-                            <option value="@meter.Id">@meter.Name</option>
-                        }
+                <select class="form-select" id="bulkParentSelect">
+                    @foreach (var option in Model.ParentMeterOptions)
+                    {
+                        <option value="@option.Value" disabled="@option.Disabled">@option.Text</option>
                     }
                 </select>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="applyBulkEdit()">Save Changes</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="applyBulkEdit()">Apply changes</button>
             </div>
         </div>
     </div>
 </div>
 
-@* MODAL 2: Create Single New Meter *@
-<div class="modal fade" id="newMeterModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+<div class="modal fade" id="quickAssignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
         <div class="modal-content">
-            <form asp-action="Create" method="post">
-                <div class="modal-header">
-                    <h5 class="modal-title">New Meter</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-md-3"><label class="form-label">Name</label></div>
-                        <div class="col-md-9"><input type="text" class="form-control" name="Name" required></div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-3"><label class="form-label">Label</label></div>
-                        <div class="col-md-9"><input type="text" class="form-control" name="Label"></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create</button>
-                </div>
-            </form>
+            <div class="modal-header">
+                <h5 class="modal-title">Assign selected meters</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label" for="quickTenantSelect">Tenant</label>
+                <select class="form-select" id="quickTenantSelect">
+                    @foreach (var option in Model.TenantOptions.Where(o => !string.IsNullOrWhiteSpace(o.Value)))
+                    {
+                        <option value="@option.Value" disabled="@option.Disabled">@option.Text</option>
+                    }
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="confirmQuickAssign()">Assign</button>
+            </div>
         </div>
     </div>
 </div>
 
-@* Client-Side Management Scripts *@
 @section Scripts {
-    <script>
-        /**
-         * Dynamic Search Input Handler
-         * Updates input element visibility and name attributes based on the selected search field criteria.
-         */
-        function updateMeterSearchOptions() {
-            const criteria = document.getElementById('SearchField').value;
-            
-            document.getElementById('textInput').style.display = 'none';
-            document.getElementById('typeSelect').style.display = 'none';
-            document.getElementById('tenantSelect').style.display = 'none';
-            
-            document.getElementById('textInput').name = '';
-            document.getElementById('typeSelect').name = '';
-            document.getElementById('tenantSelect').name = '';
-            
-            if (criteria === 'Name') {
-                document.getElementById('textInput').style.display = 'block';
-                document.getElementById('textInput').name = 'SearchCriteria.SearchTerm';
-            } else if (criteria === 'Type') {
-                document.getElementById('typeSelect').style.display = 'block';
-                document.getElementById('typeSelect').name = 'SearchCriteria.SearchTerm';
-            } else if (criteria === 'Tenant') {
-                document.getElementById('tenantSelect').style.display = 'block';
-                document.getElementById('tenantSelect').name = 'SearchCriteria.SearchTerm';
-            }
+<script>
+    let selectAllMatching = false;
+
+    function selectedMeterIds() {
+        return Array.from(document.querySelectorAll('.meter-checkbox:checked'))
+            .map(cb => Number.parseInt(cb.value, 10))
+            .filter(Number.isFinite);
+    }
+
+    function updateBulkUi() {
+        const checkboxes = Array.from(document.querySelectorAll('.meter-checkbox'));
+        const selected = selectedMeterIds();
+        const allVisible = checkboxes.length > 0 && selected.length === checkboxes.length;
+        const bar = document.getElementById('bulkActionBar');
+        const banner = document.getElementById('selectAllBannerRow');
+        const header = document.getElementById('selectAllMeters');
+
+        if (header) header.checked = allVisible && !selectAllMatching;
+
+        if (selectAllMatching) {
+            bar?.classList.remove('d-none');
+            document.getElementById('selectedCount').textContent = '@Model.TotalItems';
+            document.getElementById('allMatchingLabel')?.classList.remove('d-none');
+            banner?.classList.remove('d-none');
+            document.getElementById('bannerVisible')?.classList.add('d-none');
+            document.getElementById('bannerAll')?.classList.remove('d-none');
+            return;
         }
 
-        // Initialize view state and restore selected tenant options on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            updateMeterSearchOptions();
-            
-            const tenantId = '@Model.SelectedMeter?.TenantId';
-            if (tenantId) {
-                const tenantSelect = document.getElementById('TenantId');
-                if (tenantSelect) {
-                    for (let i = 0; i < tenantSelect.options.length; i++) {
-                        if (tenantSelect.options[i].value === tenantId) {
-                            tenantSelect.options[i].selected = true;
-                            break;
-                        }
-                    }
-                }
-            }
+        document.getElementById('allMatchingLabel')?.classList.add('d-none');
+        document.getElementById('selectedCount').textContent = selected.length.toString();
+        bar?.classList.toggle('d-none', selected.length === 0);
+        banner?.classList.toggle('d-none', !allVisible);
+        document.getElementById('visibleSelectionCount').textContent = selected.length.toString();
+        document.getElementById('bannerVisible')?.classList.remove('d-none');
+        document.getElementById('bannerAll')?.classList.add('d-none');
+    }
+
+    document.getElementById('selectAllMeters')?.addEventListener('change', event => {
+        selectAllMatching = false;
+        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = event.target.checked);
+        updateBulkUi();
+    });
+
+    document.querySelectorAll('.meter-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            selectAllMatching = false;
+            updateBulkUi();
+        });
+    });
+
+    window.selectAllAcrossPages = function() {
+        if (@Model.TotalItems <= 0) return;
+        selectAllMatching = true;
+        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = true);
+        updateBulkUi();
+    };
+
+    window.clearAllAcrossPages = function() {
+        selectAllMatching = false;
+        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = false);
+        const header = document.getElementById('selectAllMeters');
+        if (header) header.checked = false;
+        updateBulkUi();
+    };
+
+    function verificationToken() {
+        return document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': verificationToken()
+            },
+            body: JSON.stringify(payload)
         });
 
-        // Global flag tracking whether "Select All Matching Across Database Pages" is active
-        let isSelectingAcrossPages = false;
-        
-        /**
-         * Updates the bulk actions bar visibility, counter, and selection banner states.
-         */
-        function updateBulkUI() {
-            const selectAll = document.getElementById('selectAllMeters');
-            const checkboxes = document.querySelectorAll('.meter-checkbox');
-            const bulkActionBar = document.getElementById('bulkActionBar');
-            const selectedCount = document.getElementById('selectedCount');
-            const selectAllBannerRow = document.getElementById('selectAllBannerRow');
-            
-            const checkedCount = document.querySelectorAll('.meter-checkbox:checked').length;
-            const itemsOnPage = checkboxes.length;
-            
-            if (isSelectingAcrossPages) {
-                selectedCount.innerText = "All matching";
-                bulkActionBar.style.setProperty('display', 'flex', 'important');
-                return;
-            }
-
-            selectedCount.innerText = checkedCount;
-            bulkActionBar.style.setProperty('display', checkedCount > 0 ? 'flex' : 'none', 'important');
-            
-            if(selectAll) {
-                selectAll.checked = (checkedCount === itemsOnPage && itemsOnPage > 0);
-            }
-
-            if (selectAll && selectAll.checked && itemsOnPage > 0) {
-                selectAllBannerRow.style.display = 'table-row';
-                document.getElementById('bannerPageCount').innerText = itemsOnPage;
-                document.getElementById('bannerTextNormal').style.display = 'inline';
-                document.getElementById('bannerTextAll').style.display = 'none';
-            } else {
-                if(selectAllBannerRow) selectAllBannerRow.style.display = 'none';
-            }
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Operation failed.');
         }
 
-        /**
-         * Activates global selection across all paginated records in the database.
-         */
-        window.selectAllAcrossPages = function(e) {
-            e.preventDefault();
-            isSelectingAcrossPages = true;
-            document.getElementById('bannerTextNormal').style.display = 'none';
-            document.getElementById('bannerTextAll').style.display = 'inline';
-            updateBulkUI();
+        return data;
+    }
+
+    function baseBulkPayload() {
+        return {
+            MeterIds: selectedMeterIds(),
+            SelectAllMatching: selectAllMatching,
+            SearchField: '@Model.SearchCriteria.SearchField',
+            SearchTerm: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.SearchCriteria.SearchTerm)),
+            StatusFilter: '@Model.SearchCriteria.StatusFilter',
+            AssignmentFilter: '@Model.SearchCriteria.AssignmentFilter'
         };
+    }
 
-        /**
-         * Resets cross-page global selection state.
-         */
-        window.clearAllAcrossPages = function(e) {
-            e.preventDefault();
-            isSelectingAcrossPages = false;
-            document.getElementById('selectAllMeters').checked = false;
-            document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = false);
-            updateBulkUI();
-        };
+    async function sendBulkEditRequest(editData) {
+        if (!selectAllMatching && selectedMeterIds().length === 0) {
+            alert('Select at least one meter.');
+            return;
+        }
 
-        // Header checkbox listener to toggle all visible rows
-        document.getElementById('selectAllMeters')?.addEventListener('change', e => {
-            isSelectingAcrossPages = false;
-            document.querySelectorAll('.meter-checkbox').forEach(cb => cb.checked = e.target.checked);
-            updateBulkUI();
-        });
-
-        // Individual row checkbox listeners
-        document.querySelectorAll('.meter-checkbox').forEach(cb => cb.addEventListener('change', () => {
-            isSelectingAcrossPages = false;
-            updateBulkUI();
-        }));
-
-        /**
-         * Enables/disables form inputs within the bulk edit modal.
-         */
-        window.toggleBulkField = function(fieldId) {
-            const field = document.getElementById(fieldId);
-            field.disabled = !field.disabled;
-        };
-
-        /**
-         * Unassigns tenant associations from all selected meters.
-         */
-        window.unassignBulkTenant = function() {
-            if(!confirm('Are you sure you want to unassign tenants for selected meters?')) return;
-            sendBulkEditRequest({ UpdateTenant: true, TenantId: null });
-        };
-
-        /**
-         * Compiles user inputs from the bulk edit modal and submits the request.
-         */
-        window.applyBulkEdit = function() {
-            const updateTenant = document.getElementById('cbUpdateTenant').checked;
-            const tenantId = document.getElementById('bulkTenantSelect').value;
-            const updateUnit = document.getElementById('cbUpdateUnit').checked;
-            const unit = document.getElementById('bulkUnitInput').value;
-            const updateType = document.getElementById('cbUpdateType').checked;
-            const type = document.getElementById('bulkTypeSelect').value;
-            const updateParent = document.getElementById('cbUpdateParent').checked;
-            const parentId = document.getElementById('bulkParentSelect').value;
-
-            if(!updateTenant && !updateUnit && !updateType && !updateParent) {
-                alert("Please select at least one field to update.");
-                return;
-            }
-
-            sendBulkEditRequest({
-                UpdateTenant: updateTenant, TenantId: tenantId ? parseInt(tenantId) : null,
-                UpdateUnit: updateUnit, Unit: unit,
-                UpdateType: updateType, Type: type,
-                UpdateParent: updateParent, ParentId: parentId ? parseInt(parentId) : null
-            });
-        };
-
-        /**
-         * Sends an asynchronous bulk edit HTTP POST request to the server API.
-         */
-        function sendBulkEditRequest(editData) {
-            const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
-            const searchField = document.getElementById('SearchField') ? document.getElementById('SearchField').value : null;
-            const searchTerm = document.querySelector('input[name="SearchCriteria.SearchTerm"]') ? document.querySelector('input[name="SearchCriteria.SearchTerm"]').value : null;
-
-            if(selectedIds.length === 0 && !isSelectingAcrossPages) return;
-
-            const payload = { 
-                MeterIds: selectedIds, 
-                SelectAllMatching: isSelectingAcrossPages,
-                SearchField: searchField,
-                SearchTerm: searchTerm,
+        try {
+            const data = await postJson('/Meter/BulkEditMeters', {
+                ...baseBulkPayload(),
                 ...editData
-            };
-
-            fetch('/Meter/BulkEditMeters', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(res => res.json()).then(data => {
-                if (data.success) location.reload();
-                else alert('Error: ' + data.message);
             });
+            alert(data.message);
+            location.reload();
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+
+    window.quickAssignSelected = function() {
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('quickAssignModal'));
+        modal.show();
+    };
+
+    window.confirmQuickAssign = function() {
+        const value = document.getElementById('quickTenantSelect').value;
+        if (!value) {
+            alert('Select a tenant.');
+            return;
         }
 
-        /**
-         * Enables or disables the selected meters without deleting historical readings.
-         */
-        window.setBulkMetersActive = function(active) {
-            const action = active ? 'enable' : 'disable';
-            if (!confirm(`Are you sure you want to ${action} the selected meters? Historical readings will be preserved.`)) return;
+        sendBulkEditRequest({
+            UpdateTenant: true,
+            TenantId: Number.parseInt(value, 10)
+        });
+    };
 
-            sendBulkEditRequest({
-                UpdateTenant: false,
-                UpdateUnit: false,
-                UpdateType: false,
-                UpdateParent: false,
-                UpdateActive: true,
-                Active: active
-            });
-        };
+    window.unassignBulkTenant = function() {
+        if (!confirm('Unassign the selected meter(s) from their tenant?')) return;
+        sendBulkEditRequest({ UpdateTenant: true, TenantId: null });
+    };
 
-        /**
-         * Permanently deletes selected meters and their historical readings.
-         * Existing invoice line items are preserved.
-         */
-        window.deleteBulkMeters = function() {
-            const selectedIds = Array.from(document.querySelectorAll('.meter-checkbox:checked')).map(cb => parseInt(cb.value));
+    window.setBulkMetersActive = function(active) {
+        const action = active ? 'enable' : 'disable';
+        if (!confirm(`Are you sure you want to ${action} the selected meter(s)? Historical readings will be preserved.`)) return;
 
-            if (isSelectingAcrossPages) {
-                alert('Permanent deletion is limited to explicitly checked meters. Clear "select all matching" and select the meters you want to delete.');
-                return;
-            }
+        sendBulkEditRequest({
+            UpdateActive: true,
+            Active: active
+        });
+    };
 
-            if (selectedIds.length === 0) {
-                alert('No meters selected.');
-                return;
-            }
+    window.applyBulkEdit = function() {
+        const updateTenant = document.getElementById('cbUpdateTenant').checked;
+        const updateUnit = document.getElementById('cbUpdateUnit').checked;
+        const updateType = document.getElementById('cbUpdateType').checked;
+        const updateParent = document.getElementById('cbUpdateParent').checked;
 
-            if(!confirm(`PERMANENT DELETE: ${selectedIds.length} meter(s) and all associated historical readings will be deleted. Existing invoice lines will be preserved. This action cannot be undone. Continue?`)) return;
+        if (!updateTenant && !updateUnit && !updateType && !updateParent) {
+            alert('Select at least one field to change.');
+            return;
+        }
 
-            fetch('/Meter/BulkDeleteMeters', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(selectedIds)
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.success) location.reload();
-                else alert('Error: ' + data.message);
-            });
-        };
-    </script>
+        const tenantValue = document.getElementById('bulkTenantSelect').value;
+        const parentValue = document.getElementById('bulkParentSelect').value;
+
+        sendBulkEditRequest({
+            UpdateTenant: updateTenant,
+            TenantId: tenantValue ? Number.parseInt(tenantValue, 10) : null,
+            UpdateUnit: updateUnit,
+            Unit: document.getElementById('bulkUnitInput').value,
+            UpdateType: updateType,
+            Type: document.getElementById('bulkTypeSelect').value,
+            UpdateParent: updateParent,
+            ParentId: parentValue ? Number.parseInt(parentValue, 10) : null
+        });
+    };
+
+    window.deleteBulkMeters = async function() {
+        if (selectAllMatching) {
+            alert('For safety, permanent deletion is only available for explicitly checked meters.');
+            return;
+        }
+
+        const ids = selectedMeterIds();
+        if (ids.length === 0) {
+            alert('Select at least one meter.');
+            return;
+        }
+
+        if (!confirm(`Permanently delete ${ids.length} selected empty meter(s)? Meters with readings, invoice references or child meters will be protected.`)) return;
+
+        try {
+            const data = await postJson('/Meter/BulkDeleteMeters', ids);
+            alert(data.message);
+            location.reload();
+        } catch (error) {
+            alert(error.message);
+        }
+    };
+
+    updateBulkUi();
+</script>
 }
