@@ -133,6 +133,18 @@ public class MeterManagementTests
     }
 
     [Fact]
+    public void ParentMeterQuery_DoesNotSendUntypedNullPostgresParameter()
+    {
+        var source = ReadSource("Repositories", "MeterRepository.cs");
+
+        Assert.Contains("var excludeClause = excludeMeterId.HasValue", source);
+        Assert.Contains("if (excludeMeterId.HasValue)", source);
+        Assert.Contains("cmd.Parameters.AddWithValue(\"@ExcludeMeterId\", excludeMeterId.Value)", source);
+        Assert.DoesNotContain("@ExcludeMeterId IS NULL", source);
+        Assert.DoesNotContain("excludeMeterId.HasValue ? excludeMeterId.Value : DBNull.Value", source);
+    }
+
+    [Fact]
     public void MeterView_ProvidesClientFriendlyFiltersBulkAssignmentAndCsrf()
     {
         var view = ReadSource("Views", "Meter", "Management.cshtml");
