@@ -168,11 +168,12 @@ public class ConsumptionBillingConsistencyTests
         var end = new DateTime(2026, 9, 1, 23, 59, 59);
 
         var totals = await consumptionService.GetMeterConsumptionTotalsAsync(
-            new[] { 101 },
+            new[] { 101, 201 },
             start,
             end);
 
         Assert.Equal(150m, totals[101]);
+        Assert.Equal(0m, totals[201]); // meter 201 belongs to workspace 2 and must never leak
 
         var dashboardSeries = await dashboardService.GetMeterReadingsAsync(
             new MeterReadingFilters
