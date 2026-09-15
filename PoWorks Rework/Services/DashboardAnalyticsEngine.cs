@@ -79,6 +79,16 @@ namespace PoWorks_Rework.Services
                 canonicalUnit,
                 labels);
 
+            if (query.SeriesKeys?.Count > 0)
+            {
+                var requestedSeries = query.SeriesKeys
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                candidates = candidates
+                    .Where(candidate => requestedSeries.Contains(candidate.SeriesKey))
+                    .ToList();
+            }
+
             if (scopeMode != "aggregate" && candidates.Count > query.MaxSeries)
             {
                 var keep = Math.Max(1, query.MaxSeries);
