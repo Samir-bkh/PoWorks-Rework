@@ -3,6 +3,10 @@ using System.Text;
 
 namespace PoWorks_Rework.Services
 {
+    /// <summary>
+    /// Starts before Program.Main and mirrors raw stdout/stderr to a persistent daily file.
+    /// This makes startup failures diagnosable even when the web application never becomes reachable.
+    /// </summary>
     public static class BootstrapFileDiagnostics
     {
         private static readonly object Sync = new();
@@ -172,7 +176,7 @@ namespace PoWorks_Rework.Services
 
                 _stream?.Dispose();
                 _streamDate = today;
-                var path = Path.Combine(_root, $"poworks-{today:yyyy-MM-dd}.log");
+                var path = Path.Combine(_root, $"console-{today:yyyy-MM-dd}.log");
                 _stream = new StreamWriter(
                     new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite),
                     new UTF8Encoding(false))
