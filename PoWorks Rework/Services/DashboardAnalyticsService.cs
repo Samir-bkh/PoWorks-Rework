@@ -116,22 +116,6 @@ namespace PoWorks_Rework.Services
                       {tenantFilter}
                       {meterFilter}
                 ),
-                seed_readings AS (
-                    SELECT DISTINCT ON (mr.""MeterId"")
-                        sm.""MeterId"",
-                        sm.""MeterName"",
-                        sm.""SourceUnit"",
-                        sm.""TenantID"",
-                        sm.""TenantName"",
-                        mr.""Timestamp"",
-                        mr.""Value""
-                    FROM selected_meters sm
-                    INNER JOIN ""MeterReadings"" mr
-                      ON mr.""MeterId"" = sm.""MeterId""
-                     AND mr.""CompanyId"" = @CompanyId
-                    WHERE mr.""Timestamp"" < @StartDate
-                    ORDER BY mr.""MeterId"", mr.""Timestamp"" DESC
-                ),
                 period_readings AS (
                     SELECT
                         sm.""MeterId"",
@@ -148,23 +132,18 @@ namespace PoWorks_Rework.Services
                     WHERE mr.""Timestamp"" >= @StartDate
                       AND mr.""Timestamp"" <= @EndDate
                 ),
-                all_readings AS (
-                    SELECT * FROM seed_readings
-                    UNION ALL
-                    SELECT * FROM period_readings
-                ),
                 ordered AS (
                     SELECT
-                        ar.*,
-                        LAG(ar.""Value"") OVER (
-                            PARTITION BY ar.""MeterId""
-                            ORDER BY ar.""Timestamp""
+                        pr.*,
+                        LAG(pr.""Value"") OVER (
+                            PARTITION BY pr.""MeterId""
+                            ORDER BY pr.""Timestamp""
                         ) AS ""PreviousValue"",
-                        LAG(ar.""Timestamp"") OVER (
-                            PARTITION BY ar.""MeterId""
-                            ORDER BY ar.""Timestamp""
+                        LAG(pr.""Timestamp"") OVER (
+                            PARTITION BY pr.""MeterId""
+                            ORDER BY pr.""Timestamp""
                         ) AS ""PreviousTimestamp""
-                    FROM all_readings ar
+                    FROM period_readings pr
                 ),
                 normalized AS (
                     SELECT
