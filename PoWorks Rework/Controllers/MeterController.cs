@@ -263,7 +263,8 @@ namespace PoWorks_Rework.Controllers
                     connection,
                     tx,
                     meter.Id,
-                    parentId);
+                    parentId,
+                    before.ParentId);
 
                 if (parentError != null)
                 {
@@ -1029,7 +1030,8 @@ namespace PoWorks_Rework.Controllers
             NpgsqlConnection connection,
             NpgsqlTransaction tx,
             int? meterId,
-            int? parentId)
+            int? parentId,
+            int? existingParentId = null)
         {
             if (!parentId.HasValue)
                 return null;
@@ -1038,7 +1040,7 @@ namespace PoWorks_Rework.Controllers
                 return "A meter cannot be its own parent.";
 
             const string parentSql = @"
-                SELECT LOWER(""Type"")
+                SELECT LOWER(""Type""), COALESCE(""Active"", TRUE)
                 FROM ""Meters""
                 WHERE ""MeterId"" = @ParentId
                   AND ""CompanyId"" = @CompanyId";
@@ -1047,13 +1049,17 @@ namespace PoWorks_Rework.Controllers
             {
                 parent.Parameters.AddWithValue("@ParentId", parentId.Value);
                 parent.Parameters.AddWithValue("@CompanyId", _companyContext.CurrentCompanyId);
-                var result = await parent.ExecuteScalarAsync();
 
-                if (result == null)
+                await using var reader = await parent.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
                     return "The selected parent meter does not belong to the current workspace.";
 
-                if (!string.Equals(Convert.ToString(result), "main", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(reader.GetString(0), "main", StringComparison.OrdinalIgnoreCase))
                     return "Only a Main meter can be used as a parent.";
+
+                var active = reader.GetBoolean(1);
+                if (!active && existingParentId != parentId)
+                    return "A disabled meter cannot receive new child meter assignments.";
             }
 
             if (!meterId.HasValue)
