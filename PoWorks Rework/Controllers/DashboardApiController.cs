@@ -369,15 +369,15 @@ namespace PoWorks_Rework.Controllers
                 if (request.CompareStartDate.HasValue)
                 {
                     // The meeting explicitly requested equal-duration comparisons.
-                    // Only the comparison start is user-selected; the end is derived.
-                    var inclusiveDays = Math.Max(
-                        1,
-                        (endDate.Date - startDate.Date).Days + 1);
+                    // Only the comparison start is user-selected; the end is server-derived.
+                    var resolvedComparison =
+                        DashboardComparisonPeriodResolver.Resolve(
+                            startDate,
+                            endDate,
+                            request.CompareStartDate.Value);
 
-                    compareStart = request.CompareStartDate.Value.Date;
-                    compareEnd = compareStart.Value
-                        .AddDays(inclusiveDays)
-                        .AddTicks(-1);
+                    compareStart = resolvedComparison.StartDate;
+                    compareEnd = resolvedComparison.EndDate;
 
                     var compareQuery = new DashboardAnalyticsQuery
                     {
