@@ -69,6 +69,39 @@ public class AuditLoggingTests
     }
 
     [Fact]
+    public void AuditLogPage_DefaultsToCompactMeaningfulEvents()
+    {
+        var method = typeof(AuditLogController).GetMethod(nameof(AuditLogController.Index));
+        Assert.NotNull(method);
+
+        var parameters = method!.GetParameters().ToDictionary(p => p.Name!);
+
+        Assert.Equal(false, parameters["showTechnical"].DefaultValue);
+        Assert.Equal(15, parameters["pageSize"].DefaultValue);
+
+        var controller = ReadSource("Controllers", "AuditLogController.cs");
+        Assert.Contains(@"""Action"" = 'MUTATION'", controller);
+        Assert.Contains(@"""Success"" = TRUE", controller);
+        Assert.DoesNotContain(@"""Action"" = 'MUTATION_FAILED' AND ""Success"" = TRUE", controller);
+        Assert.Contains("NormalizePageSize", controller);
+    }
+
+    [Fact]
+    public void AuditLogView_IsCompactAndPreservesDisplayOptions()
+    {
+        var view = ReadSource("Views", "AuditLog", "Index.cshtml");
+
+        Assert.Contains("table-sm table-hover audit-table", view);
+        Assert.Contains("audit-summary", view);
+        Assert.Contains("name=\"pageSize\"", view);
+        Assert.Contains("name=\"showTechnical\"", view);
+        Assert.Contains("Technical MUTATION events hidden", view);
+        Assert.Contains("asp-route-showTechnical", view);
+        Assert.Contains("asp-route-pageSize", view);
+        Assert.Contains("Offline log files", view);
+    }
+
+    [Fact]
     public void ConfiguredLogDirectory_IsCreatedAndResolved()
     {
         var root = Path.Combine(Path.GetTempPath(), "poworks-audit-tests", Guid.NewGuid().ToString("N"));
