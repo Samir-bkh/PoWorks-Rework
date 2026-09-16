@@ -1,5 +1,5 @@
 @{
-    ViewData["Title"] = "Building Analytics";
+    ViewData["Title"] = "Analytics";
     Layout = "_Layout";
 }
 
@@ -8,341 +8,275 @@
 <div class="dashboard-shell">
     @if (TempData["WarningMessage"] != null)
     {
-        <div class="alert alert-warning alert-dismissible fade show shadow-sm" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i>@TempData["WarningMessage"]
+        <div class="alert alert-warning alert-dismissible fade show dashboard-alert" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>@TempData["WarningMessage"]
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     }
 
-    <section class="dashboard-hero mb-3" aria-labelledby="dashboardTitle">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-            <div>
-                <div class="dashboard-eyebrow">POWORKS · BUILDING ANALYTICS</div>
-                <h1 class="dashboard-title" id="dashboardTitle">Operational analytics</h1>
-                <p class="dashboard-subtitle">
-                    Analyse consumption and building measurements without mixing incompatible physical quantities.
-                    Start with a global view, then drill down by tenant or meter when needed.
-                </p>
+    <header class="analytics-header">
+        <div class="analytics-heading">
+            <div class="analytics-title-row">
+                <h1>Analytics</h1>
+                <span class="analytics-workspace">
+                    <i class="bi bi-building"></i>
+                    <span id="dashboardWorkspaceContext">@ViewData["CurrentTenant"]</span>
+                </span>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
-                <button id="autoRefresh" class="btn btn-sm btn-outline-secondary dashboard-action" type="button"
-                        title="Refresh the current analytical view every 30 seconds">
-                    <i class="bi bi-broadcast-pin me-1"></i> Live refresh
-                </button>
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-primary dashboard-action dropdown-toggle"
-                            type="button"
-                            id="exportMenu"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                        <i class="bi bi-download me-1"></i> Export
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="exportMenu">
-                        <li>
-                            <button id="exportChart" class="dropdown-item" type="button">
-                                <i class="bi bi-image me-2"></i>Chart as PNG
-                            </button>
-                        </li>
-                        <li>
-                            <button id="exportCsv" class="dropdown-item" type="button">
-                                <i class="bi bi-filetype-csv me-2"></i>Data as CSV
-                            </button>
-                        </li>
-                    </ul>
-                </div>
+            <div class="analytics-context-line" aria-label="Current dashboard context">
+                <span><strong id="dashboardTenantContext">All tenants</strong></span>
+                <span class="analytics-context-separator">/</span>
+                <span><strong id="dashboardMetricContext">Energy consumption</strong></span>
+                <span class="analytics-context-separator">/</span>
+                <span id="dashboardViewContext">Aggregate</span>
+                <span class="analytics-context-separator">/</span>
+                <span id="dashboardPeriodContext">Loading…</span>
+                <span class="analytics-context-separator">/</span>
+                <span id="dashboardUnitContext">—</span>
             </div>
         </div>
 
-        <div class="dashboard-context">
-            <span class="dashboard-context-chip">
-                <i class="bi bi-building"></i>
-                Workspace <strong id="dashboardWorkspaceContext">@ViewData["CurrentTenant"]</strong>
-            </span>
-            <span class="dashboard-context-chip">
-                <i class="bi bi-person-badge"></i>
-                Tenant <strong id="dashboardTenantContext">All tenants</strong>
-            </span>
-            <span class="dashboard-context-chip">
-                <i class="bi bi-activity"></i>
-                Measurement <strong id="dashboardMetricContext">Energy consumption</strong>
-            </span>
-            <span class="dashboard-context-chip">
-                <i class="bi bi-diagram-3"></i>
-                View <strong id="dashboardViewContext">Aggregate</strong>
-            </span>
-            <span class="dashboard-context-chip">
-                <i class="bi bi-calendar-range"></i>
-                Period <strong id="dashboardPeriodContext">Loading…</strong>
-            </span>
-            <span class="dashboard-context-chip">
-                <i class="bi bi-rulers"></i>
-                Unit <strong id="dashboardUnitContext">—</strong>
-            </span>
+        <div class="analytics-header-actions">
+            <button id="autoRefresh" class="btn analytics-icon-btn" type="button"
+                    title="Toggle 30-second live refresh">
+                <i class="bi bi-broadcast-pin"></i>
+                <span class="d-none d-xxl-inline">Live</span>
+            </button>
+            <div class="dropdown">
+                <button class="btn analytics-icon-btn dropdown-toggle" type="button"
+                        id="exportMenu" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-download"></i>
+                    <span class="d-none d-xxl-inline">Export</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="exportMenu">
+                    <li>
+                        <button id="exportChart" class="dropdown-item" type="button">
+                            <i class="bi bi-image me-2"></i>Chart as PNG
+                        </button>
+                    </li>
+                    <li>
+                        <button id="exportCsv" class="dropdown-item" type="button">
+                            <i class="bi bi-filetype-csv me-2"></i>Data as CSV
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </header>
+
+    <section class="analytics-commandbar" aria-label="Dashboard filters">
+        <select id="dateFilter" class="d-none" aria-hidden="true">
+            <option value="hourly">Hourly</option>
+            <option value="daily" selected>Daily</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+        </select>
+
+        <div class="analytics-filter analytics-filter-tenant">
+            <label for="tenantFilter">Tenant</label>
+            <select id="tenantFilter" class="form-select form-select-sm">
+                <option value="">All tenants</option>
+            </select>
+        </div>
+
+        <div class="analytics-filter analytics-filter-metric">
+            <label for="measurementMetric">Measurement</label>
+            <select id="measurementMetric" class="form-select form-select-sm">
+                <option value="energy">Energy consumption</option>
+            </select>
+        </div>
+
+        <div class="analytics-filter analytics-filter-period">
+            <label>Period</label>
+            <div class="analytics-date-range">
+                <input type="date" id="startDate" class="form-control form-control-sm" aria-label="Start date" />
+                <span>–</span>
+                <input type="date" id="endDate" class="form-control form-control-sm" aria-label="End date" />
+            </div>
+        </div>
+
+        <div class="analytics-granularity" role="group" aria-label="Time aggregation">
+            <button type="button" class="btn btn-sm" id="tabHourly">Hour</button>
+            <button type="button" class="btn btn-sm active" id="tabDaily">Day</button>
+            <button type="button" class="btn btn-sm" id="tabMonthly">Month</button>
+            <button type="button" class="btn btn-sm" id="tabYearly">Year</button>
+        </div>
+
+        <div class="analytics-mode-switch" role="group" aria-label="Comparison mode">
+            <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
+            <label class="btn btn-sm" for="modeStandard">Standard</label>
+            <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
+            <label class="btn btn-sm" for="modeComparison">Compare</label>
+        </div>
+
+        <button id="applyFilters" class="btn btn-sm btn-primary analytics-apply-btn" type="button">
+            <i class="bi bi-arrow-repeat"></i>
+            <span>Apply</span>
+        </button>
+
+        <button class="btn btn-sm analytics-more-btn collapsed"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#advancedAnalyticsPanel"
+                aria-expanded="false"
+                aria-controls="advancedAnalyticsPanel">
+            <i class="bi bi-sliders"></i>
+            <span>More</span>
+        </button>
+    </section>
+
+    <section class="collapse analytics-advanced-panel" id="advancedAnalyticsPanel">
+        <div class="analytics-advanced-grid">
+            <div class="analytics-filter">
+                <label for="scopeMode">Series view</label>
+                <select id="scopeMode" class="form-select form-select-sm">
+                    <option value="aggregate" selected>Aggregate selection</option>
+                    <option value="tenant">Break down by tenant</option>
+                    <option value="meter">Individual meters</option>
+                </select>
+                <small id="scopeDescription">One physically meaningful line for the selected scope.</small>
+            </div>
+
+            <div class="analytics-filter">
+                <label for="aggregationMode">Aggregation</label>
+                <select id="aggregationMode" class="form-select form-select-sm"></select>
+                <small id="metricDescription"></small>
+            </div>
+
+            <div class="analytics-filter analytics-source-filter">
+                <label>Meters / sensors</label>
+                <div class="dropdown w-100">
+                    <button class="form-select form-select-sm text-start d-flex justify-content-between align-items-center"
+                            type="button"
+                            id="meterDropdownBtn"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            data-bs-auto-close="outside">
+                        <span id="meterDropdownText" class="text-truncate text-muted">All compatible sources</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    <ul class="dropdown-menu w-100 p-2 shadow-sm"
+                        aria-labelledby="meterDropdownBtn"
+                        id="meterFilterContainer">
+                        <li><span class="dropdown-item-text text-muted">Loading sources…</span></li>
+                    </ul>
+                </div>
+                <small id="meterCompatibilityHint">Compatible sources are selected automatically.</small>
+            </div>
+
+            <div class="analytics-filter">
+                <label for="chartType">Chart</label>
+                <select id="chartType" class="form-select form-select-sm">
+                    <option value="line" selected>Line</option>
+                    <option value="area">Area</option>
+                    <option value="bar">Bar</option>
+                </select>
+            </div>
+
+            <div class="analytics-filter">
+                <label for="meterLimit">Ranking</label>
+                <select id="meterLimit" class="form-select form-select-sm">
+                    <option value="3">Top 3</option>
+                    <option value="5" selected>Top 5</option>
+                    <option value="10">Top 10</option>
+                    <option value="20">Top 20</option>
+                </select>
+            </div>
+
+            <div class="analytics-filter">
+                <label for="maxCurves">Visible series</label>
+                <select id="maxCurves" class="form-select form-select-sm">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                </select>
+            </div>
+
+            <div class="analytics-advanced-actions">
+                <button id="refreshMeters" class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh sources
+                </button>
+                <button id="resetFilters" class="btn btn-sm btn-outline-secondary" type="button">
+                    Reset
+                </button>
+            </div>
         </div>
     </section>
 
-    <section class="row g-3 mb-3" aria-label="Analytical KPIs">
+    <section class="analytics-comparison-strip d-none" id="comparisonOptions">
+        <div class="analytics-comparison-title">
+            <i class="bi bi-intersect"></i>
+            <span>Compare</span>
+        </div>
+
+        <div class="analytics-filter analytics-comparison-filter">
+            <label for="comparePreset">Reference</label>
+            <select id="comparePreset" class="form-select form-select-sm">
+                <option value="previous" selected>Previous period</option>
+                <option value="lastYear">Same period last year</option>
+                <option value="custom">Custom start</option>
+            </select>
+        </div>
+
+        <div class="analytics-filter analytics-comparison-filter d-none" id="compareCustomDates">
+            <label for="compareStartDate">Start</label>
+            <input type="date" id="compareStartDate" class="form-control form-control-sm" />
+        </div>
+
+        <div class="analytics-comparison-resolved" id="comparisonResolvedRange">—</div>
+    </section>
+
+    <section class="analytics-kpi-strip" aria-label="Analytical KPIs">
         @for (var i = 1; i <= 4; i++)
         {
-            var icon = i switch
-            {
-                1 => "bi-activity",
-                2 => "bi-calculator",
-                3 => "bi-graph-up-arrow",
-                _ => "bi-speedometer2"
-            };
-            var tone = i switch
-            {
-                1 => "primary",
-                2 => "success",
-                3 => "warning",
-                _ => "info"
-            };
-
-            <div class="col-12 col-md-6 col-xl-3">
-                <article class="dashboard-kpi">
-                    <div class="dashboard-kpi-top">
-                        <div class="min-w-0">
-                            <div class="dashboard-kpi-label" id="kpi@(i)Label">—</div>
-                            <div class="dashboard-kpi-value" id="kpi@(i)Value">—</div>
-                        </div>
-                        <div class="dashboard-kpi-icon @tone"><i class="bi @icon"></i></div>
-                    </div>
-                    <small class="dashboard-kpi-detail" id="kpi@(i)Detail">Waiting for data</small>
-                    <small class="dashboard-kpi-compare d-none" id="kpi@(i)Compare"></small>
-                </article>
-            </div>
+            <article class="analytics-kpi">
+                <div class="analytics-kpi-label" id="kpi@(i)Label">—</div>
+                <div class="analytics-kpi-value" id="kpi@(i)Value">—</div>
+                <div class="analytics-kpi-detail" id="kpi@(i)Detail">Waiting for data</div>
+                <div class="dashboard-kpi-compare d-none" id="kpi@(i)Compare"></div>
+            </article>
         }
     </section>
 
-    <section class="card dashboard-card dashboard-filter-card mb-3">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div>
-                <div class="fw-bold"><i class="bi bi-sliders2 me-2 text-primary"></i>Analysis configuration</div>
-                <div class="dashboard-note mt-1">
-                    Choose the physical measurement first. PoWorks then exposes only mathematically valid aggregation options.
-                </div>
-            </div>
-            <button id="refreshMeters" class="btn btn-sm btn-outline-secondary dashboard-action" type="button">
-                <i class="bi bi-arrow-clockwise me-1"></i> Refresh sources
-            </button>
-        </div>
-
-        <div class="card-body">
-            <select id="dateFilter" class="d-none" aria-hidden="true">
-                <option value="hourly">Hourly</option>
-                <option value="daily" selected>Daily</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-            </select>
-
-            <div class="dashboard-filter-section">
-                <div class="dashboard-filter-section-title">Scope</div>
-                <div class="row g-3">
-                    <div class="col-12 col-md-6 col-xl-3">
-                        <label class="dashboard-filter-label" for="tenantFilter">Tenant</label>
-                        <select id="tenantFilter" class="form-select">
-                            <option value="">All tenants</option>
-                        </select>
+    <section class="analytics-workbench">
+        <article class="analytics-chart-panel">
+            <header class="analytics-panel-header">
+                <div class="analytics-chart-heading">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <h2 id="chartTitle">Energy consumption</h2>
+                        <span class="analytics-unit-badge" id="chartUnitBadge">
+                            <span>—</span>
+                        </span>
+                        <span class="dashboard-quality-pill" id="coverageBadge"
+                              title="Share of expected meter/bucket combinations containing data">
+                            <i class="bi bi-database-check"></i>
+                            <span>Coverage —</span>
+                        </span>
                     </div>
-
-                    <div class="col-12 col-md-6 col-xl-3">
-                        <label class="dashboard-filter-label" for="measurementMetric">Measurement</label>
-                        <select id="measurementMetric" class="form-select">
-                            <option value="energy">Energy consumption</option>
-                        </select>
-                        <div class="dashboard-field-help" id="metricDescription"></div>
-                    </div>
-
-                    <div class="col-12 col-md-6 col-xl-3">
-                        <label class="dashboard-filter-label" for="scopeMode">Series view</label>
-                        <select id="scopeMode" class="form-select">
-                            <option value="aggregate" selected>Aggregate selection</option>
-                            <option value="tenant">Break down by tenant</option>
-                            <option value="meter">Individual meters</option>
-                        </select>
-                        <div class="dashboard-field-help" id="scopeDescription">
-                            One physically meaningful line for the selected scope.
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-6 col-xl-3">
-                        <label class="dashboard-filter-label" for="aggregationMode">Aggregation</label>
-                        <select id="aggregationMode" class="form-select"></select>
-                        <div class="dashboard-field-help">Auto follows the recommended engineering calculation.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dashboard-filter-section">
-                <div class="dashboard-filter-section-title">Sources & presentation</div>
-                <div class="row g-3">
-                    <div class="col-12 col-lg-6 col-xl-5">
-                        <label class="dashboard-filter-label">Meters / sensors</label>
-                        <div class="dropdown w-100">
-                            <button class="form-control text-start d-flex justify-content-between align-items-center bg-white"
-                                    type="button"
-                                    id="meterDropdownBtn"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                    data-bs-auto-close="outside">
-                                <span id="meterDropdownText" class="text-truncate text-muted">All compatible sources</span>
-                                <i class="bi bi-chevron-down text-muted"></i>
-                            </button>
-                            <ul class="dropdown-menu w-100 p-2 shadow-sm"
-                                aria-labelledby="meterDropdownBtn"
-                                id="meterFilterContainer">
-                                <li><span class="dropdown-item-text text-muted">Loading sources…</span></li>
-                            </ul>
-                        </div>
-                        <div class="dashboard-field-help" id="meterCompatibilityHint">
-                            All sources remain visible. Incompatible units are shown but cannot be selected for the current measurement.
-                        </div>
-                    </div>
-
-                    <div class="col-6 col-md-4 col-xl-2">
-                        <label class="dashboard-filter-label" for="meterLimit">Ranking</label>
-                        <select id="meterLimit" class="form-select">
-                            <option value="3">Top 3</option>
-                            <option value="5" selected>Top 5</option>
-                            <option value="10">Top 10</option>
-                            <option value="20">Top 20</option>
-                        </select>
-                    </div>
-
-                    <div class="col-6 col-md-4 col-xl-2">
-                        <label class="dashboard-filter-label" for="chartType">Visualisation</label>
-                        <select id="chartType" class="form-select">
-                            <option value="line" selected>Line</option>
-                            <option value="area">Area</option>
-                            <option value="bar">Bar</option>
-                        </select>
-                    </div>
-
-                    <div class="col-12 col-md-4 col-xl-3">
-                        <label class="dashboard-filter-label" for="maxCurves">Maximum visible series</label>
-                        <select id="maxCurves" class="form-select">
-                            <option value="5">5</option>
-                            <option value="10" selected>10</option>
-                            <option value="20">20</option>
-                            <option value="50">50</option>
-                        </select>
-                        <div class="dashboard-field-help">Only affects tenant and individual-meter breakdowns.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dashboard-filter-section">
-                <div class="dashboard-filter-section-title">Period</div>
-                <div class="row g-3 align-items-end">
-                    <div class="col-12 col-lg-6">
-                        <label class="dashboard-filter-label">Primary date range</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
-                            <input type="date" id="startDate" class="form-control" aria-label="Start date" />
-                            <span class="input-group-text">to</span>
-                            <input type="date" id="endDate" class="form-control" aria-label="End date" />
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-lg-6 d-flex gap-2 flex-wrap">
-                        <button id="applyFilters" class="btn btn-primary dashboard-action px-4" type="button">
-                            <i class="bi bi-funnel-fill me-1"></i> Apply
-                        </button>
-                        <button id="resetFilters" class="btn btn-outline-secondary dashboard-action px-4" type="button">
-                            Reset view
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dashboard-comparison-panel d-none" id="comparisonOptions">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                    <div>
-                        <div class="fw-semibold">Comparison period</div>
-                        <div class="dashboard-note">
-                            Comparison always uses the same duration as the primary period.
-                        </div>
-                    </div>
-                    <span class="dashboard-comparison-range" id="comparisonResolvedRange">—</span>
-                </div>
-
-                <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <label class="dashboard-filter-label" for="comparePreset">Compare with</label>
-                        <select id="comparePreset" class="form-select">
-                            <option value="previous" selected>Previous period</option>
-                            <option value="lastYear">Same period last year</option>
-                            <option value="custom">Custom starting date</option>
-                        </select>
-                    </div>
-                    <div class="col-12 col-md-6 d-none" id="compareCustomDates">
-                        <label class="dashboard-filter-label" for="compareStartDate">Comparison start</label>
-                        <input type="date" id="compareStartDate" class="form-control" />
-                    </div>
-                </div>
-            </div>
-
-            <div id="dataStatus" class="dashboard-status alert alert-info mb-0">
-                <span id="dataStatusText">Loading dashboard context…</span>
-            </div>
-        </div>
-    </section>
-
-    <section class="card dashboard-card chart-card mb-3">
-        <div class="card-header chart-toolbar">
-            <div class="chart-title-wrap">
-                <div>
-                    <h2 class="chart-title" id="chartTitle">Energy consumption</h2>
-                    <div class="dashboard-note mt-1" id="chartSubtitle">
-                        Building total · all compatible meters
+                    <div id="chartSubtitle" class="analytics-panel-subtitle">
+                        Building aggregate
                     </div>
                 </div>
 
-                <span class="chart-unit-pill" id="chartUnitBadge">
-                    <i class="bi bi-rulers"></i><span>—</span>
-                </span>
-
-                <span class="dashboard-quality-pill" id="coverageBadge" title="Share of expected meter/bucket combinations containing data">
-                    <i class="bi bi-database-check"></i><span>Coverage —</span>
-                </span>
-
-                <div class="dashboard-segmented ms-lg-2" role="group" aria-label="Display mode">
-                    <input type="radio" class="btn-check" name="viewMode" id="modeStandard" value="standard" autocomplete="off" checked>
-                    <label class="btn btn-sm" for="modeStandard">Standard</label>
-
-                    <input type="radio" class="btn-check" name="viewMode" id="modeComparison" value="comparison" autocomplete="off">
-                    <label class="btn btn-sm" for="modeComparison">Compare</label>
+                <div class="analytics-chart-actions">
+                    <button id="resetZoomBtn" class="btn analytics-icon-btn" type="button" title="Reset zoom">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    <button id="fullscreenChart" class="btn analytics-icon-btn" type="button" title="Full screen">
+                        <i class="bi bi-arrows-fullscreen"></i>
+                    </button>
                 </div>
-            </div>
+            </header>
 
-            <div class="d-flex gap-2 chart-tools">
-                <button id="resetZoomBtn" class="btn btn-sm" type="button" title="Reset zoom">
-                    <i class="bi bi-arrow-counterclockwise"></i><span class="d-none d-xl-inline ms-1">Reset zoom</span>
-                </button>
-                <button id="fullscreenChart" class="btn btn-sm" type="button" title="Full screen">
-                    <i class="bi bi-arrows-fullscreen"></i>
-                </button>
-            </div>
-        </div>
-
-        <div class="card-body pt-3">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                <div class="dashboard-segmented" role="group" aria-label="Time aggregation">
-                    <button type="button" class="btn btn-sm" id="tabHourly">Hourly</button>
-                    <button type="button" class="btn btn-sm active" id="tabDaily">Daily</button>
-                    <button type="button" class="btn btn-sm" id="tabMonthly">Monthly</button>
-                    <button type="button" class="btn btn-sm" id="tabYearly">Annual</button>
-                </div>
-                <div class="dashboard-note">
-                    <i class="bi bi-mouse me-1"></i>
-                    Scroll to zoom · drag scrollbar to navigate · hover a real bucket for details
-                </div>
-            </div>
-
-            <div id="curveLimitWarning" class="alert alert-warning d-none mb-3">
-                <i class="bi bi-info-circle me-1"></i>
+            <div id="curveLimitWarning" class="analytics-inline-warning d-none">
+                <i class="bi bi-info-circle"></i>
                 <span id="curveLimitWarningText"></span>
+            </div>
+
+            <div id="dataStatus" class="analytics-status">
+                <span class="analytics-status-dot"></span>
+                <span id="dataStatusText">Loading dashboard context…</span>
             </div>
 
             <div class="chart-stage">
@@ -350,40 +284,40 @@
 
                 <div id="loadingSpinner" class="chart-loading-overlay d-none">
                     <div class="text-center">
-                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
-                        <div class="fw-semibold mt-3">Calculating analytical view</div>
-                        <div class="dashboard-note mt-1">Normalizing units and aggregating the selected scope…</div>
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading…</span>
+                        </div>
+                        <div class="fw-semibold mt-2">Updating analytics…</div>
                     </div>
                 </div>
 
                 <div id="chartEmptyState" class="chart-empty-state d-none">
                     <div class="chart-empty-content">
-                        <div class="chart-empty-icon"><i class="bi bi-bar-chart-line"></i></div>
-                        <h5 class="mb-2" id="chartEmptyTitle">No compatible data</h5>
-                        <p class="text-muted mb-0" id="chartEmptyMessage">
-                            Adjust the measurement, source selection or date range.
-                        </p>
+                        <div class="chart-empty-icon"><i class="bi bi-graph-up"></i></div>
+                        <h5 id="chartEmptyTitle">No compatible data</h5>
+                        <p id="chartEmptyMessage">Adjust the current selection.</p>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
+        </article>
 
-    <section class="card dashboard-card mb-3">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div>
-                <div class="fw-bold" id="topConsumersTitle">
-                    <i class="bi bi-trophy me-2 text-warning"></i>Ranking
+        <aside class="analytics-side-panel">
+            <header class="analytics-panel-header analytics-ranking-header">
+                <div>
+                    <h2 id="topConsumersTitle">
+                        <i class="bi bi-bar-chart-fill"></i> Ranking
+                    </h2>
+                    <div class="analytics-panel-subtitle" id="rankingDescription">
+                        Ranked within the current analytical scope.
+                    </div>
                 </div>
-                <div class="dashboard-note mt-1" id="rankingDescription">
-                    Ranked within the current analytical scope.
-                </div>
+                <span id="rankingScopeBadge" class="analytics-scope-badge">Workspace</span>
+            </header>
+
+            <div class="analytics-ranking-body" id="topConsumersList">
+                <div class="analytics-ranking-empty">Loading ranking…</div>
             </div>
-            <span class="badge rounded-pill text-bg-light border" id="rankingScopeBadge">Current workspace</span>
-        </div>
-        <div class="card-body" id="topConsumersList">
-            <div class="text-center text-muted py-3">Loading ranking…</div>
-        </div>
+        </aside>
     </section>
 </div>
 

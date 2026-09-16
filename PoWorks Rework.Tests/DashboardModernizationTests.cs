@@ -140,23 +140,31 @@ public class DashboardModernizationTests
     }
 
     [Fact]
-    public void DashboardView_ExposesProfessionalFlexibleAnalyticsControls()
+    public void DashboardView_UsesCompactEnterpriseWorkbenchWithoutMarketingHero()
     {
         var view = ReadSource("Views", "Home", "Index.cshtml");
         var css = ReadSource("wwwroot", "css", "dashboard-modern.css");
 
-        Assert.Contains("Operational analytics", view);
+        Assert.Contains("<h1>Analytics</h1>", view);
+        Assert.DoesNotContain("POWORKS · BUILDING ANALYTICS", view);
+        Assert.DoesNotContain("Operational analytics", view);
+        Assert.DoesNotContain("Analyse consumption and building measurements", view);
+
+        Assert.Contains("analytics-commandbar", view);
+        Assert.Contains("advancedAnalyticsPanel", view);
+        Assert.Contains("analytics-kpi-strip", view);
+        Assert.Contains("analytics-workbench", view);
+        Assert.Contains("analytics-chart-panel", view);
+        Assert.Contains("analytics-side-panel", view);
+
         Assert.Contains("measurementMetric", view);
         Assert.Contains("scopeMode", view);
         Assert.Contains("aggregationMode", view);
         Assert.Contains("Aggregate selection", view);
         Assert.Contains("Break down by tenant", view);
         Assert.Contains("Individual meters", view);
-        Assert.Contains("dashboardMetricContext", view);
-        Assert.Contains("dashboardViewContext", view);
         Assert.Contains("comparisonResolvedRange", view);
-        Assert.Contains("Comparison always uses the same duration", view);
-        Assert.Contains("Custom starting date", view);
+        Assert.Contains("Custom start", view);
         Assert.DoesNotContain("compareEndDate", view);
         Assert.Contains("coverageBadge", view);
         Assert.Contains("meterCompatibilityHint", view);
@@ -166,19 +174,19 @@ public class DashboardModernizationTests
         Assert.Contains("topConsumersList", view);
         Assert.Contains("exportChart", view);
         Assert.Contains("exportCsv", view);
-        Assert.Contains("Data as CSV", view);
         Assert.Contains("energy-chart-core.js", view);
 
-        Assert.DoesNotContain("radial-gradient", css);
-        Assert.DoesNotContain("linear-gradient(115deg", css);
-        Assert.Contains("background: #ffffff", css);
-        Assert.Contains("border-left: 4px solid var(--pw-primary)", css);
-        Assert.Contains(".dashboard-filter-section", css);
+        Assert.Contains(".analytics-commandbar", css);
+        Assert.Contains(".analytics-kpi-strip", css);
+        Assert.Contains(".analytics-workbench", css);
+        Assert.Contains(".analytics-side-panel", css);
+        Assert.Contains("height:clamp(350px,49vh,495px)", css);
         Assert.Contains(".dashboard-meter-item.is-incompatible", css);
         Assert.Contains(".dashboard-quality-pill", css);
         Assert.Contains(".dashboard-kpi-compare", css);
         Assert.Contains(".dashboard-ranking-row.is-actionable", css);
         Assert.Contains(":focus-visible", css);
+        Assert.DoesNotContain("linear-gradient(115deg", css);
     }
 
     [Fact]
