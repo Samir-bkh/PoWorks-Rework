@@ -1754,11 +1754,12 @@
     }
 
     function toggleFullscreen() {
-        const card = document.getElementById('chartdiv')?.closest('.card');
+        const panel = document.getElementById('chartdiv')
+            ?.closest('.analytics-chart-panel, .card');
         const icon = document.querySelector('#fullscreenChart i');
-        if (!card) return;
+        if (!panel) return;
 
-        const fullscreen = card.classList.toggle('chart-fullscreen');
+        const fullscreen = panel.classList.toggle('chart-fullscreen');
         document.body.style.overflow = fullscreen ? 'hidden' : '';
         icon?.classList.toggle('bi-arrows-fullscreen', !fullscreen);
         icon?.classList.toggle('bi-fullscreen-exit', fullscreen);
@@ -1800,7 +1801,7 @@
 
         const actualType = type || 'info';
         text.textContent = message;
-        container.className = 'dashboard-status alert alert-' + actualType + ' mb-0';
+        container.className = 'analytics-status dashboard-status alert alert-' + actualType + ' mb-0';
         container.style.display = 'block';
     }
 
