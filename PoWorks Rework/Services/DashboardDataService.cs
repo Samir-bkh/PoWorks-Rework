@@ -619,6 +619,7 @@ namespace PoWorks_Rework.Services
                         LEFT JOIN ""TenantDetails"" td
                           ON t.""TenantID"" = td.""TenantID""
                          AND t.""CompanyId"" = td.""CompanyId""
+                         AND td.""CompanyId"" = @CompanyId
                         WHERE t.""CompanyId"" = @CompanyId
                           AND COALESCE(td.""Active"", TRUE) = TRUE
                         ORDER BY Name";
