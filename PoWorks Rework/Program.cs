@@ -64,6 +64,7 @@ builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<SqlServerService>();
 builder.Services.AddScoped<ConsumptionCalculationService>();
 builder.Services.AddScoped<DashboardDataService>();
+builder.Services.AddScoped<DashboardAnalyticsService>();
 builder.Services.AddScoped<VarexpParserService>();
 builder.Services.AddScoped<VariableBrowseParsingService>();
 

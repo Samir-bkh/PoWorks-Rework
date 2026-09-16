@@ -132,7 +132,7 @@ public class DashboardModernizationTests
         };
 
         var result = service.ProcessChartData(data);
-        var meterB = Assert.Single(result.Datasets.Where(d => d.MeterName == "Electricity B"));
+        var meterB = Assert.Single(result.Datasets, d => d.MeterName == "Electricity B");
 
         Assert.Equal(2, meterB.Data.Count);
         Assert.Equal(8d, meterB.Data[0]);
@@ -140,36 +140,54 @@ public class DashboardModernizationTests
     }
 
     [Fact]
-    public void DashboardView_UsesModernContextKpisFiltersAndEmptyState()
+    public void DashboardView_ExposesProfessionalFlexibleAnalyticsControls()
     {
         var view = ReadSource("Views", "Home", "Index.cshtml");
         var css = ReadSource("wwwroot", "css", "dashboard-modern.css");
 
-        Assert.Contains("dashboard-hero", view);
-        Assert.Contains("Average per Day", view);
-        Assert.Contains("Peak Period Consumption", view);
-        Assert.Contains("dashboardTenantContext", view);
-        Assert.Contains("chartUnitBadge", view);
-        Assert.Contains("chartEmptyState", view);
-        Assert.Contains("Previous period (same duration)", view);
-        Assert.Contains("Same period last year", view);
+        Assert.Contains("Operational analytics", view);
+        Assert.Contains("measurementMetric", view);
+        Assert.Contains("scopeMode", view);
+        Assert.Contains("aggregationMode", view);
+        Assert.Contains("Aggregate selection", view);
+        Assert.Contains("Break down by tenant", view);
+        Assert.Contains("Individual meters", view);
+        Assert.Contains("dashboardMetricContext", view);
+        Assert.Contains("dashboardViewContext", view);
+        Assert.Contains("comparisonResolvedRange", view);
+        Assert.Contains("Comparison always uses the same duration", view);
+        Assert.Contains("Custom starting date", view);
+        Assert.DoesNotContain("compareEndDate", view);
+        Assert.Contains("coverageBadge", view);
+        Assert.Contains("meterCompatibilityHint", view);
+        Assert.Contains("id=\"kpi@(i)Label\"", view);
+        Assert.Contains("id=\"kpi@(i)Value\"", view);
+        Assert.Contains("id=\"kpi@(i)Detail\"", view);
+        Assert.Contains("topConsumersList", view);
+        Assert.Contains("exportChart", view);
+        Assert.Contains("exportCsv", view);
+        Assert.Contains("Data as CSV", view);
+        Assert.Contains("energy-chart-core.js", view);
 
         Assert.DoesNotContain("radial-gradient", css);
         Assert.DoesNotContain("linear-gradient(115deg", css);
         Assert.Contains("background: #ffffff", css);
         Assert.Contains("border-left: 4px solid var(--pw-primary)", css);
-        Assert.Contains(".dashboard-kpi", css);
-        Assert.Contains(".dashboard-ranking-row", css);
+        Assert.Contains(".dashboard-filter-section", css);
+        Assert.Contains(".dashboard-meter-item.is-incompatible", css);
+        Assert.Contains(".dashboard-quality-pill", css);
+        Assert.Contains(".dashboard-kpi-compare", css);
+        Assert.Contains(".dashboard-ranking-row.is-actionable", css);
+        Assert.Contains(":focus-visible", css);
     }
 
     [Fact]
-    public void DashboardChart_UsesDeterministicDataPointHitTargets()
+    public void DashboardChart_UsesOnlyRealBucketHitTargetsForTooltips()
     {
         var script = ReadSource("wwwroot", "js", "energy-dashboard.js");
         var core = ReadSource("wwwroot", "js", "energy-chart-core.js");
-        var view = ReadSource("Views", "Home", "Index.cshtml");
 
-        Assert.Contains("series.bullets.push((bulletRoot, _series, dataItem)", script);
+        Assert.Contains("series.bullets.push(function (bulletRoot, _series, dataItem)", script);
         Assert.Contains("hit.events.on('pointerover'", script);
         Assert.Contains("hit.events.on('pointerout'", script);
         Assert.Contains("fillOpacity: .001", script);
@@ -179,29 +197,72 @@ public class DashboardModernizationTests
         Assert.DoesNotContain("globalpointermove", script);
         Assert.DoesNotContain("distanceToSegment", script);
         Assert.DoesNotContain("snapToSeries", script);
-        Assert.DoesNotContain("min: startTs", script);
-        Assert.Contains("getCommonUnit", core);
+        Assert.DoesNotContain("cursor.events.on('cursormoved'", script);
+        Assert.Contains("seriesKey", core);
         Assert.Contains("buildComparisonPairs", core);
-        Assert.Contains("energy-chart-core.js", view);
-        Assert.Contains("Hover a measured bucket", view);
+        Assert.Contains("minY", core);
     }
 
     [Fact]
-    public void Dashboard_PreservesMeetingComparisonAndCurveReadabilityFeatures()
+    public void Dashboard_ImplementsMeetingAggregationComparisonAndClientFreedom()
     {
         var script = ReadSource("wwwroot", "js", "energy-dashboard.js");
         var view = ReadSource("Views", "Home", "Index.cshtml");
+        var controller = ReadSource("Controllers", "DashboardApiController.cs");
+        var dataService = ReadSource("Services", "DashboardDataService.cs");
 
-        Assert.Contains("lastYear", script);
-        Assert.Contains("computeCompareRange", script);
-        Assert.Contains("applyCurveLimit", script);
-        Assert.Contains("Others", script);
+        // Equal-duration comparison: custom mode selects only its starting date.
+        Assert.Contains("computeComparisonRange", script);
+        Assert.Contains("durationDays", script);
+        Assert.Contains("DashboardComparisonPeriodResolver.Resolve", controller);
+        Assert.Contains("request.CompareStartDate.Value", controller);
+        Assert.Contains("resolvedComparison.EndDate", controller);
+        Assert.Contains("SeriesKeys = current.ChartData.Datasets", controller);
+        Assert.Contains("dataset.SeriesKey", controller);
+        Assert.DoesNotContain("id=\"compareEndDate\"", view);
+
+        // Client can choose global aggregate, tenant breakdown or individual meters.
+        Assert.Contains("value=\"aggregate\"", view);
+        Assert.Contains("value=\"tenant\"", view);
+        Assert.Contains("value=\"meter\"", view);
+        Assert.Contains("measurementMetric", view);
+        Assert.Contains("aggregationMode", view);
+        Assert.Contains("maxCurves", view);
+        Assert.Contains("meterLimit", view);
+
+        // Granularity remains independent of the chosen primary date range.
         Assert.Contains("tabHourly", view);
         Assert.Contains("tabDaily", view);
         Assert.Contains("tabMonthly", view);
         Assert.Contains("tabYearly", view);
-        Assert.Contains("maxCurves", view);
-        Assert.Contains("modeComparison", view);
+        Assert.Contains("switchGranularity", script);
+        Assert.DoesNotContain("startDate.value = formatDate", script);
+
+        // All measurements remain discoverable; compatibility is handled analytically.
+        Assert.DoesNotContain("supportedEnergyUnit", dataService);
+        Assert.Contains("compatibleMetrics", controller);
+        Assert.Contains("Other measurements", script);
+
+        // User choices are persisted instead of being forced on every visit.
+        Assert.Contains("poworks.dashboard.analytics.v3", script);
+        Assert.Contains("localStorage.setItem", script);
+
+        // Export is useful outside PoWorks and spreadsheet cells are protected
+        // against formula injection from configurable labels/names.
+        Assert.Contains("function exportCsv()", script);
+        Assert.Contains("text/csv;charset=utf-8", script);
+        Assert.Contains("function csvCell(value)", script);
+        Assert.Contains("typeof value === 'number' && Number.isFinite(value)", script);
+        Assert.Contains("/^[\\t\\r\\n ]*[=+\\-@]/", script);
+        Assert.Contains("'\\uFEFF'", script);
+        Assert.Contains("lastAnalyticsPayload = null", script);
+        Assert.Contains("Use automatic scope", script);
+
+        // Rankings are navigation, not decorative lists.
+        Assert.Contains("function drillIntoRanking(key)", script);
+        Assert.Contains("data-ranking-key", script);
+        Assert.Contains("tenantToken === 'facility'", script);
+        Assert.Contains("event.key !== 'Enter' && event.key !== ' '", script);
     }
 
     private static DashboardDataService CreateDashboardService() =>

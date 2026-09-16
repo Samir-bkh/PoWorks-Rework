@@ -51,9 +51,31 @@ public class WorkspaceIsolationSourceRegressionTests
     public void DashboardQueries_AreExplicitlyWorkspaceScoped()
     {
         var source = ReadSource("Services", "DashboardDataService.cs");
+        var analytics = ReadSource("Services", "DashboardAnalyticsService.cs");
+        var controller = ReadSource("Controllers", "DashboardApiController.cs");
 
         Assert.Contains("m.\"\"CompanyId\"\" = @CompanyId", source);
+        Assert.Contains("mr.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", source);
+        Assert.Contains("m.\"\"CompanyId\"\" = t.\"\"CompanyId\"\"", source);
+        Assert.Contains("td.\"\"CompanyId\"\" = @CompanyId", source);
         Assert.Contains("WHERE \"\"CompanyId\"\" = @CompanyId AND \"\"TenantID\"\" = @TenantId", source);
+
+        Assert.Contains("mr.\"\"CompanyId\"\" = @CompanyId", analytics);
+        Assert.Contains("t.\"\"CompanyId\"\" = m.\"\"CompanyId\"\"", analytics);
+        Assert.Contains("m.\"\"CompanyId\"\" = @CompanyId", analytics);
+
+        Assert.Contains("t.\"\"CompanyId\"\" = @CompanyId", controller);
+        Assert.Contains("td.\"\"CompanyId\"\" = t.\"\"CompanyId\"\"", controller);
+        Assert.Contains("_companyContext.CurrentCompanyId", controller);
+        Assert.Contains(
+            "IsTenantUser && !CurrentTenantId.HasValue",
+            controller);
+        Assert.True(
+            controller.Split("if (HasInvalidTenantScope)", StringSplitOptions.None).Length - 1 >= 6,
+            "All tenant-sensitive dashboard endpoints must fail closed when TenantId is missing.");
+        Assert.Contains(
+            "GetAvailableDateRangesAsync(\n                    IsTenantUser ? CurrentTenantId : null)",
+            controller);
     }
 
     [Fact]

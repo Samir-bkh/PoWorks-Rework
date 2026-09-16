@@ -24,6 +24,26 @@
         return new Date(value).getTime();
     }
 
+    function shiftIsoDateByYears(dateString, deltaYears) {
+        if (typeof dateString !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateString))
+            return null;
+
+        const parts = dateString.split('-').map(Number);
+        const year = parts[0] + Number(deltaYears || 0);
+        const monthIndex = parts[1] - 1;
+        const day = parts[2];
+
+        if (!Number.isInteger(year) || monthIndex < 0 || monthIndex > 11 || day < 1)
+            return null;
+
+        const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+        const clampedDay = Math.min(day, lastDay);
+        const month = String(monthIndex + 1).padStart(2, '0');
+        const dayText = String(clampedDay).padStart(2, '0');
+
+        return year + '-' + month + '-' + dayText;
+    }
+
     function toTimeSeries(chartData, periodLabel) {
         if (!chartData || !Array.isArray(chartData.labels))
             return { datasets: [] };
@@ -32,7 +52,7 @@
         const effectivePeriod = periodLabel || 'Current period';
 
         const datasets = (chartData.datasets || []).map((dataset, datasetIndex) => {
-            const unit = (dataset.unit || '').trim() || 'kWh';
+            const unit = (dataset.unit || '').trim() || 'unit';
             const meterName = dataset.meterName || dataset.label || 'Meter';
             const tenantName = dataset.tenantName || 'Unassigned';
 
@@ -40,10 +60,15 @@
                 meterId: Number.isFinite(Number(dataset.meterId))
                     ? Number(dataset.meterId)
                     : datasetIndex + 1,
+                tenantId: dataset.tenantId ?? null,
+                seriesKey: dataset.seriesKey || ('meter:' + (dataset.meterId ?? datasetIndex + 1)),
                 label: dataset.label || meterName,
                 meterName,
                 tenantName,
                 unit,
+                measurementMetric: dataset.measurementMetric || 'energy',
+                isAggregate: dataset.isAggregate === true,
+                sourceCount: Number(dataset.sourceCount) || 1,
                 data: (dataset.data || []).map((value, index) => {
                     const numericValue =
                         value === null || value === undefined ? null : Number(value);
@@ -55,6 +80,8 @@
                         meterName,
                         tenantName,
                         unit,
+                        seriesKey: dataset.seriesKey || ('meter:' + (dataset.meterId ?? datasetIndex + 1)),
+                        measurementMetric: dataset.measurementMetric || 'energy',
                         seriesLabel: dataset.label || meterName,
                         periodLabel: effectivePeriod
                     };
@@ -88,6 +115,7 @@
     function getBounds(datasets) {
         let minX = Infinity;
         let maxX = -Infinity;
+        let minY = Infinity;
         let maxY = -Infinity;
         let count = 0;
 
@@ -98,6 +126,7 @@
 
                 minX = Math.min(minX, point.x);
                 maxX = Math.max(maxX, point.x);
+                minY = Math.min(minY, point.y);
                 maxY = Math.max(maxY, point.y);
                 count++;
             });
@@ -105,7 +134,7 @@
 
         return count === 0
             ? null
-            : { minX, maxX, maxY, count };
+            : { minX, maxX, minY, maxY, count };
     }
 
     function validateData(data) {
@@ -117,15 +146,17 @@
 
         const commonUnit = getCommonUnit(datasets);
         if (datasets.length > 0 && !commonUnit)
-            errors.push('Incompatible measurement units cannot share one consumption axis.');
+            errors.push('Incompatible measurement units cannot share one chart axis.');
 
         datasets.forEach(dataset => {
             (dataset.data || []).forEach(point => {
                 if (!point || point.y === null || point.y === undefined) return;
                 if (!Number.isFinite(point.y))
                     errors.push('A chart point contains a non-numeric consumption value.');
-                else if (point.y < 0)
-                    errors.push('Consumption values cannot be negative.');
+                else if (
+                    point.y < 0 &&
+                    ['energy', 'volume'].includes(dataset.measurementMetric))
+                    errors.push('Consumption quantities cannot be negative.');
             });
         });
 
@@ -225,12 +256,8 @@
         const pairs = [];
 
         (currentFormatted?.datasets || []).forEach(current => {
-            if (current.isOthers) {
-                pairs.push(current);
-                return;
-            }
+            const pairKey = current.seriesKey || String(current.meterId);
 
-            const pairKey = String(current.meterId);
             pairs.push({
                 ...current,
                 label: current.label + ' · Current',
@@ -242,7 +269,8 @@
             });
 
             const compare = (compareFormatted.datasets || [])
-                .find(candidate => candidate.meterId === current.meterId);
+                .find(candidate =>
+                    (candidate.seriesKey || String(candidate.meterId)) === pairKey);
 
             if (!compare) return;
 
@@ -250,6 +278,7 @@
                 ...compare,
                 label: current.label + ' · Comparison',
                 pairKey,
+                seriesKey: pairKey,
                 isCompare: true,
                 data: (compare.data || []).map(point => ({
                     ...point,
@@ -264,6 +293,7 @@
 
     return {
         parseBucketTimestamp,
+        shiftIsoDateByYears,
         toTimeSeries,
         sumDataset,
         getCommonUnit,

@@ -49,10 +49,7 @@ namespace PoWorks_Rework.Services
                 {
                     var (startDate, endDate) = filters.GetDateRange();
 
-                    var supportedEnergyUnit =
-                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
-
-                    var query = $@"
+                    var query = @"
                         WITH meter_stats AS (
                             SELECT 
                                 COUNT(*) as total_active,
@@ -60,18 +57,20 @@ namespace PoWorks_Rework.Services
                                 COUNT(CASE WHEN m.""TenantID"" IS NULL THEN 1 END) as without_tenants
                             FROM ""Meters"" m
                             WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            AND {supportedEnergyUnit}
-                            {{0}}
+                            {0}
                         ),
                         reading_stats AS (
                             SELECT COUNT(*) as total_readings
                             FROM ""MeterReadings"" mr
-                            INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                            WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                            AND {supportedEnergyUnit}
+                            INNER JOIN ""Meters"" m
+                              ON mr.""MeterId"" = m.""MeterId""
+                             AND mr.""CompanyId"" = m.""CompanyId""
+                            WHERE m.""Active"" = true
+                            AND m.""CompanyId"" = @CompanyId
+                            AND mr.""CompanyId"" = @CompanyId
                             AND mr.""Timestamp"" >= @StartDate 
                             AND mr.""Timestamp"" <= @EndDate
-                            {{0}}
+                            {0}
                         )
                         SELECT 
                             m.total_active,
@@ -119,7 +118,7 @@ namespace PoWorks_Rework.Services
         /// Retrieves the overall available date range and data statistics from meter readings.
         /// </summary>
         /// <returns>A DateRangeInfo with the earliest/latest reading dates and data counts.</returns>
-        public async Task<DateRangeInfo> GetAvailableDateRangesAsync()
+        public async Task<DateRangeInfo> GetAvailableDateRangesAsync(int? tenantId = null)
         {
             var result = new DateRangeInfo();
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -130,10 +129,11 @@ namespace PoWorks_Rework.Services
 
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
                 {
-                    var supportedEnergyUnit =
-                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
+                    var tenantFilter = tenantId.HasValue
+                        ? @" AND m.""TenantID"" = @TenantId"
+                        : string.Empty;
 
-                    var query = $@"
+                    var query = @"
                         SELECT 
                             MIN(mr.""Timestamp"") as earliest_reading,
                             MAX(mr.""Timestamp"") as latest_reading,
@@ -141,12 +141,19 @@ namespace PoWorks_Rework.Services
                             COUNT(DISTINCT mr.""MeterId"") as meters_with_data,
                             COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data
                         FROM ""MeterReadings"" mr
-                        INNER JOIN ""Meters"" m ON mr.""MeterId"" = m.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                        AND {supportedEnergyUnit}";
+                        INNER JOIN ""Meters"" m
+                          ON mr.""MeterId"" = m.""MeterId""
+                         AND mr.""CompanyId"" = m.""CompanyId""
+                        WHERE m.""Active"" = true
+                          AND m.""CompanyId"" = @CompanyId"
+                        + tenantFilter;
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
+                    if (tenantId.HasValue)
+                    {
+                        cmd.Parameters.AddWithValue("@TenantId", tenantId.Value);
+                    }
                     using var reader = await cmd.ExecuteReaderAsync();
 
                     if (await reader.ReadAsync())
@@ -176,12 +183,12 @@ namespace PoWorks_Rework.Services
         /// Generates suggested date ranges for the dashboard based on available reading data.
         /// </summary>
         /// <returns>A DateRangeSuggestions with a default range and alternative options.</returns>
-        public async Task<DateRangeSuggestions> GetDateRangeSuggestionsAsync()
+        public async Task<DateRangeSuggestions> GetDateRangeSuggestionsAsync(int? tenantId = null)
         {
             var suggestions = new DateRangeSuggestions();
             try
             {
-                var dateInfo = await GetAvailableDateRangesAsync();
+                var dateInfo = await GetAvailableDateRangesAsync(tenantId);
 
                 if (!dateInfo.HasData)
                 {
@@ -193,31 +200,51 @@ namespace PoWorks_Rework.Services
 
                 var latest = dateInfo.LatestReading.Value;
                 var earliest = dateInfo.EarliestReading.Value;
+                var latestDate = latest.Date;
+                var earliestDate = earliest.Date;
 
                 if (latest > DateTime.Now.AddDays(-7))
                 {
-                    suggestions.DefaultStartDate = latest.AddDays(-30);
-                    suggestions.DefaultEndDate = latest;
-                    suggestions.Message = $"Recent data available. Showing last 30 days ending {latest:yyyy-MM-dd}.";
+                    suggestions.DefaultStartDate = latestDate.AddDays(-29);
+                    suggestions.DefaultEndDate = latestDate;
+                    suggestions.Message = $"Recent data available. Showing last 30 calendar days ending {latest:yyyy-MM-dd}.";
                 }
                 else if (latest > DateTime.Now.AddDays(-90))
                 {
-                    suggestions.DefaultStartDate = latest.AddDays(-30);
-                    suggestions.DefaultEndDate = latest;
-                    suggestions.Message = $"Latest data from {latest:yyyy-MM-dd}. Showing 30 days ending at latest data.";
+                    suggestions.DefaultStartDate = latestDate.AddDays(-29);
+                    suggestions.DefaultEndDate = latestDate;
+                    suggestions.Message = $"Latest data from {latest:yyyy-MM-dd}. Showing 30 calendar days ending at latest data.";
                 }
                 else
                 {
-                    suggestions.DefaultStartDate = latest.AddDays(-60);
-                    suggestions.DefaultEndDate = latest.AddDays(1);
-                    suggestions.Message = $"Data available from {earliest:yyyy-MM-dd} to {latest:yyyy-MM-dd}. Showing 60 days around latest data.";
+                    suggestions.DefaultStartDate = latestDate.AddDays(-59);
+                    suggestions.DefaultEndDate = latestDate;
+                    suggestions.Message = $"Data available from {earliest:yyyy-MM-dd} to {latest:yyyy-MM-dd}. Showing the last 60 calendar days of available data.";
                 }
 
                 suggestions.AlternativeRanges = new List<DateRangeOption>
                 {
-                    new DateRangeOption { Name = "Last 7 days of data", StartDate = latest.AddDays(-6), EndDate = latest.AddDays(1), Description = "Recent week" },
-                    new DateRangeOption { Name = "Last month of data", StartDate = latest.AddDays(-30), EndDate = latest.AddDays(1), Description = "Recent month" },
-                    new DateRangeOption { Name = "All available data", StartDate = earliest, EndDate = latest.AddDays(1), Description = $"Full range ({(latest - earliest).Days} days)" }
+                    new DateRangeOption
+                    {
+                        Name = "Last 7 days of data",
+                        StartDate = latestDate.AddDays(-6),
+                        EndDate = latestDate,
+                        Description = "Recent week"
+                    },
+                    new DateRangeOption
+                    {
+                        Name = "Last 30 days of data",
+                        StartDate = latestDate.AddDays(-29),
+                        EndDate = latestDate,
+                        Description = "Recent month"
+                    },
+                    new DateRangeOption
+                    {
+                        Name = "All available data",
+                        StartDate = earliestDate,
+                        EndDate = latestDate,
+                        Description = $"Full range ({(latestDate - earliestDate).Days + 1} calendar days)"
+                    }
                 };
             }
             catch (Exception ex)
@@ -249,10 +276,7 @@ namespace PoWorks_Rework.Services
                 {
                     var (startDate, endDate) = filters.GetDateRange();
 
-                    var supportedEnergyUnit =
-                        ConsumptionFormula.SqlSupportedEnergyUnitPredicate(@"m.""Unit""");
-
-                    var query = $@"
+                    var query = @"
                         SELECT DISTINCT
                             m.""MeterId"", 
                             m.""Name"", 
@@ -267,10 +291,15 @@ namespace PoWorks_Rework.Services
                             MIN(mr.""Timestamp"") as ""FirstReading"",
                             MAX(mr.""Timestamp"") as ""LastReading""
                         FROM ""Meters"" m
-                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
-                        INNER JOIN ""MeterReadings"" mr ON m.""MeterId"" = mr.""MeterId""
-                        WHERE m.""Active"" = true AND m.""CompanyId"" = @CompanyId
-                        AND {supportedEnergyUnit}
+                        LEFT JOIN ""Tenants"" t
+                          ON m.""TenantID"" = t.""TenantID""
+                         AND m.""CompanyId"" = t.""CompanyId""
+                        INNER JOIN ""MeterReadings"" mr
+                          ON m.""MeterId"" = mr.""MeterId""
+                         AND m.""CompanyId"" = mr.""CompanyId""
+                        WHERE m.""Active"" = true
+                        AND m.""CompanyId"" = @CompanyId
+                        AND mr.""CompanyId"" = @CompanyId
                         AND mr.""Timestamp"" >= @StartDate 
                         AND mr.""Timestamp"" <= @EndDate";
 
@@ -311,8 +340,8 @@ namespace PoWorks_Rework.Services
                             MeterId = reader.GetInt32("MeterId"),
                             Name = reader.GetString("Name"),
                             Label = reader.IsDBNull("Label") ? string.Empty : reader.GetString("Label"),
-                            Unit = reader.IsDBNull("Unit") ? "kWh" : reader.GetString("Unit"),
-                            Type = reader.IsDBNull("Type") ? "Energy" : reader.GetString("Type"),
+                            Unit = reader.IsDBNull("Unit") ? string.Empty : reader.GetString("Unit"),
+                            Type = reader.IsDBNull("Type") ? "Unknown" : reader.GetString("Type"),
                             Active = reader.GetBoolean("Active"),
                             TenantId = reader.IsDBNull("TenantID") ? null : reader.GetInt32("TenantID"),
                             TenantName = reader.IsDBNull("TenantName") ? string.Empty : reader.GetString("TenantName"),
@@ -351,7 +380,9 @@ namespace PoWorks_Rework.Services
                                m.""Type"", m.""Active"", m.""LastReading"", m.""TenantID"",
                                COALESCE(t.""DisplayName"", '') as ""TenantName""
                         FROM ""Meters"" m
-                        LEFT JOIN ""Tenants"" t ON m.""TenantID"" = t.""TenantID""
+                        LEFT JOIN ""Tenants"" t
+                          ON m.""TenantID"" = t.""TenantID""
+                         AND m.""CompanyId"" = t.""CompanyId""
                         WHERE m.""CompanyId"" = @CompanyId";
 
                     var whereConditions = new List<string>();
@@ -389,8 +420,8 @@ namespace PoWorks_Rework.Services
                             MeterId = reader.GetInt32("MeterId"),
                             Name = reader.GetString("Name"),
                             Label = reader.IsDBNull("Label") ? string.Empty : reader.GetString("Label"),
-                            Unit = reader.IsDBNull("Unit") ? "kWh" : reader.GetString("Unit"),
-                            Type = reader.IsDBNull("Type") ? "Energy" : reader.GetString("Type"),
+                            Unit = reader.IsDBNull("Unit") ? string.Empty : reader.GetString("Unit"),
+                            Type = reader.IsDBNull("Type") ? "Unknown" : reader.GetString("Type"),
                             Active = reader.GetBoolean("Active"),
                             TenantId = reader.IsDBNull("TenantID") ? null : reader.GetInt32("TenantID"),
                             TenantName = reader.IsDBNull("TenantName") ? string.Empty : reader.GetString("TenantName"),
@@ -577,13 +608,21 @@ namespace PoWorks_Rework.Services
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(currentCompanyId, async (connection, transaction) =>
                 {
                     var query = @"
-                        SELECT t.""TenantID"" as Id, 
-                               td.""CompanyName"" as Name,
-                               td.""Active""
+                        SELECT
+                            t.""TenantID"" AS Id,
+                            COALESCE(
+                                NULLIF(TRIM(td.""CompanyName""), ''),
+                                NULLIF(TRIM(t.""DisplayName""), ''),
+                                'Tenant ' || t.""TenantID""::text
+                            ) AS Name
                         FROM ""Tenants"" t
-                        INNER JOIN ""TenantDetails"" td ON t.""TenantID"" = td.""TenantID""
-                        WHERE td.""Active"" = true AND t.""CompanyId"" = @CompanyId
-                        ORDER BY td.""CompanyName""";
+                        LEFT JOIN ""TenantDetails"" td
+                          ON t.""TenantID"" = td.""TenantID""
+                         AND t.""CompanyId"" = td.""CompanyId""
+                         AND td.""CompanyId"" = @CompanyId
+                        WHERE t.""CompanyId"" = @CompanyId
+                          AND COALESCE(td.""Active"", TRUE) = TRUE
+                        ORDER BY Name";
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
@@ -644,8 +683,8 @@ namespace PoWorks_Rework.Services
                         {
                             id = reader.GetInt32("id"),
                             name = reader.GetString("name"),
-                            unit = reader.IsDBNull("unit") ? "kWh" : reader.GetString("unit"),
-                            type = reader.IsDBNull("type") ? "Energy" : reader.GetString("type"),
+                            unit = reader.IsDBNull("unit") ? string.Empty : reader.GetString("unit"),
+                            type = reader.IsDBNull("type") ? "Unknown" : reader.GetString("type"),
                             active = reader.GetBoolean("active")
                         });
                     }

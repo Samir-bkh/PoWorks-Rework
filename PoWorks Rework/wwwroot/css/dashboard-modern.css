@@ -417,3 +417,207 @@
     .dashboard-segmented label { flex: 1 1 auto; }
     .chart-tools { width: 100%; justify-content: flex-end; }
 }
+
+
+/* Dashboard v3 — dense, operator-oriented controls without decorative chrome. */
+.dashboard-eyebrow {
+    color: #64748b;
+    font-size: .72rem;
+    font-weight: 750;
+    letter-spacing: .12em;
+    margin-bottom: .45rem;
+}
+
+.min-w-0 {
+    min-width: 0;
+}
+
+.dashboard-filter-section {
+    padding: .15rem 0 1.05rem;
+}
+
+.dashboard-filter-section + .dashboard-filter-section {
+    border-top: 1px solid #edf0f4;
+    padding-top: 1.05rem;
+}
+
+.dashboard-filter-section-title {
+    color: #334155;
+    font-size: .8rem;
+    font-weight: 750;
+    margin-bottom: .8rem;
+}
+
+.dashboard-field-help {
+    color: #7c8799;
+    font-size: .72rem;
+    line-height: 1.35;
+    margin-top: .38rem;
+    min-height: .95rem;
+}
+
+#meterFilterContainer {
+    max-height: 390px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+
+.dashboard-meter-toolbar {
+    position: sticky;
+    top: -8px;
+    z-index: 4;
+    margin: -8px -8px 6px;
+    padding: 10px 10px 8px;
+    background: #fff;
+    border-bottom: 1px solid #edf0f4;
+}
+
+.dashboard-meter-item {
+    border-radius: 8px;
+    padding: .45rem .5rem;
+}
+
+.dashboard-meter-item:hover {
+    background: #f8fafc;
+}
+
+.dashboard-meter-item.is-incompatible {
+    opacity: .58;
+}
+
+.dashboard-meter-item.is-incompatible:hover {
+    background: transparent;
+}
+
+.dashboard-meter-meta {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    margin-top: .18rem;
+    color: #7c8799;
+    font-size: .7rem;
+}
+
+.dashboard-unit-tag,
+.dashboard-family-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: .12rem .36rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #475569;
+    line-height: 1.1;
+}
+
+.dashboard-family-tag {
+    background: #fff;
+}
+
+.dashboard-comparison-panel {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid #dbe4f0;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.dashboard-comparison-range {
+    color: #334155;
+    font-size: .8rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-quality-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #64748b;
+    padding: .34rem .62rem;
+    font-size: .76rem;
+    font-weight: 650;
+}
+
+.dashboard-quality-pill.is-good {
+    border-color: #bbf7d0;
+    color: #047857;
+    background: #f0fdf4;
+}
+
+.dashboard-quality-pill.is-warning {
+    border-color: #fde68a;
+    color: #a16207;
+    background: #fffbeb;
+}
+
+.dashboard-kpi-compare {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    margin-top: .42rem;
+    padding: .2rem .42rem;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: .72rem;
+    font-weight: 650;
+}
+
+.dashboard-kpi-compare.is-up {
+    color: #b45309;
+    background: #fffbeb;
+}
+
+.dashboard-kpi-compare.is-down {
+    color: #047857;
+    background: #ecfdf5;
+}
+
+.dashboard-kpi-compare.is-neutral {
+    color: #475569;
+}
+
+.dashboard-ranking-row {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.dashboard-ranking-row:last-child {
+    border-bottom: 0;
+}
+
+.dashboard-ranking-subtext {
+    color: #94a3b8;
+    font-size: .7rem;
+    margin-top: .12rem;
+}
+
+@media (max-width: 767.98px) {
+    .dashboard-comparison-panel {
+        padding: .85rem;
+    }
+
+    #meterFilterContainer {
+        max-height: 320px;
+    }
+}
+
+
+.dashboard-ranking-row.is-actionable {
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color .12s ease, box-shadow .12s ease;
+}
+
+.dashboard-ranking-row.is-actionable:hover {
+    background: #f8fafc;
+}
+
+.dashboard-ranking-row.is-actionable:focus-visible {
+    outline: 2px solid var(--pw-primary);
+    outline-offset: 2px;
+}

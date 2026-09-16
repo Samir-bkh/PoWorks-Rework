@@ -10,7 +10,7 @@ namespace PoWorks_Rework.Services
     {
         public const string SqlDeltaExpression = @"
             CASE
-                WHEN LOWER(REPLACE(COALESCE(""Unit"", ''), ' ', '')) IN ('wh', 'kwh', 'mwh') THEN
+                WHEN LOWER(REPLACE(REPLACE(COALESCE(""Unit"", ''), ' ', ''), CHR(160), '')) IN ('wh', 'kwh', 'mwh') THEN
                     (
                         CASE
                             WHEN ""PreviousValue"" IS NULL THEN 0
@@ -19,20 +19,20 @@ namespace PoWorks_Rework.Services
                             ELSE 0
                         END
                     ) *
-                    CASE LOWER(REPLACE(COALESCE(""Unit"", ''), ' ', ''))
+                    CASE LOWER(REPLACE(REPLACE(COALESCE(""Unit"", ''), ' ', ''), CHR(160), ''))
                         WHEN 'wh' THEN 0.001
                         WHEN 'kwh' THEN 1.0
                         WHEN 'mwh' THEN 1000.0
                         ELSE 0
                     END
-                WHEN LOWER(REPLACE(COALESCE(""Unit"", ''), ' ', '')) IN ('w', 'kw', 'mw') THEN
+                WHEN LOWER(REPLACE(REPLACE(COALESCE(""Unit"", ''), ' ', ''), CHR(160), '')) IN ('w', 'kw', 'mw') THEN
                     CASE
                         WHEN ""PreviousValue"" IS NULL OR ""PreviousTimestamp"" IS NULL THEN 0
                         WHEN ""Timestamp"" <= ""PreviousTimestamp"" THEN 0
                         ELSE
                             ""PreviousValue"" *
                             (EXTRACT(EPOCH FROM (""Timestamp"" - ""PreviousTimestamp"")) / 3600.0) *
-                            CASE LOWER(REPLACE(COALESCE(""Unit"", ''), ' ', ''))
+                            CASE LOWER(REPLACE(REPLACE(COALESCE(""Unit"", ''), ' ', ''), CHR(160), ''))
                                 WHEN 'w' THEN 0.001
                                 WHEN 'kw' THEN 1.0
                                 WHEN 'mw' THEN 1000.0
@@ -47,7 +47,7 @@ namespace PoWorks_Rework.Services
             if (string.IsNullOrWhiteSpace(columnSql))
                 throw new ArgumentException("Column SQL is required.", nameof(columnSql));
 
-            return $@"LOWER(REPLACE(COALESCE({columnSql}, ''), ' ', ''))
+            return $@"LOWER(REPLACE(REPLACE(COALESCE({columnSql}, ''), ' ', ''), CHR(160), ''))
                 IN ('wh', 'kwh', 'mwh', 'w', 'kw', 'mw')";
         }
 
