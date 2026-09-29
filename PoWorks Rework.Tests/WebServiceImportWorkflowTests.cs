@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
-using PoWorks_Rework.Controllers;
 using PoWorks_Rework.Services;
 using Xunit;
 
@@ -96,12 +95,16 @@ public class WebServiceImportWorkflowTests
         }
         """);
 
-        var result = service.ParseBrowseVariablesResponse(document.RootElement.Clone(), includeSystemVariables: false);
+        var result = service.ParseBrowseVariablesResponse(
+            document.RootElement.Clone(),
+            includeSystemVariables: false);
 
         Assert.True(result.Success);
         Assert.Single(result.Variables);
         Assert.Equal("BatimentA.Locataire1.Light1", result.Variables[0].FullPath);
-        Assert.DoesNotContain(result.Variables, v => v.FullPath.StartsWith("System.", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            result.Variables,
+            v => v.FullPath.StartsWith("System.", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -129,24 +132,35 @@ public class WebServiceImportWorkflowTests
         }
         """);
 
-        var result = service.ParseBrowseVariablesResponse(document.RootElement.Clone(), includeSystemVariables: true);
+        var result = service.ParseBrowseVariablesResponse(
+            document.RootElement.Clone(),
+            includeSystemVariables: true);
 
         Assert.True(result.Success);
         Assert.Equal(2, result.TotalCount);
-        Assert.Contains(result.Variables, v => v.FullPath.Equals("system.localhost.User", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            result.Variables,
+            v => v.FullPath.Equals("system.localhost.User", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public void UpsertController_IsCompanyScoped_AndUpdatesOnlyUnitForExistingMeters()
+    public void UpsertController_UsesBulkCompanyScopedPathWithoutPerMeterDatabaseLoop()
     {
-        var source = ReadSource("Controllers", "WebServicesMeterImportV2Controller.cs");
+        var controller = ReadSource("Controllers", "WebServicesMeterImportV2Controller.cs");
+        var bulk = ReadSource("Services", "WebServiceMeterBulkUpsertService.cs");
 
-        Assert.Contains(@"""Name"" = @name AND ""CompanyId"" = @companyId", source);
-        Assert.Contains(@"SET ""Unit"" = @unit", source);
-        Assert.DoesNotContain(@"UPDATE ""Meters""\n                                    SET ""TenantID""", source);
-        Assert.Contains("ShouldUpdateExistingUnit", source);
-        Assert.Contains("filteredSystemCount", source);
-        Assert.Contains("IsSystemVariable", source);
+        Assert.Contains("WebServiceMeterBulkUpsertService.UpsertAsync", controller);
+        Assert.Contains("filteredSystemCount", controller);
+        Assert.Contains("WebServiceImportPolicy.IsSystemVariable", controller);
+        Assert.DoesNotContain("foreach (var variable in candidates)", controller);
+
+        Assert.Contains("BeginBinaryImportAsync", bulk);
+        Assert.Contains("pg_advisory_xact_lock", bulk);
+        Assert.Contains("m.\"CompanyId\" = @companyId", bulk);
+        Assert.Contains("SET \"Unit\" = staged.\"Unit\"", bulk);
+        Assert.Contains("staged.\"Unit\" <> ''", bulk);
+        Assert.Contains("parent.\"CompanyId\" = @companyId", bulk);
+        Assert.DoesNotContain("SET \"TenantID\"", bulk);
     }
 
     [Fact]
