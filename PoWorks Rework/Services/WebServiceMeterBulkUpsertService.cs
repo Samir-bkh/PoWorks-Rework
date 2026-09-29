@@ -59,6 +59,13 @@ public static class WebServiceMeterBulkUpsertService
 
         await using (var createStage = new NpgsqlCommand(
             """
+            -- A caller may legitimately perform more than one bulk import inside the
+            -- same transaction (for example an immediate re-import). ON COMMIT DROP
+            -- alone is therefore not sufficient: remove only the temporary tables
+            -- owned by this service before rebuilding the staging set.
+            DROP TABLE IF EXISTS "TempWebServiceMeterExisting";
+            DROP TABLE IF EXISTS "TempWebServiceMeterUpsert";
+
             CREATE TEMP TABLE "TempWebServiceMeterUpsert" (
                 "Ordinal" INTEGER NOT NULL,
                 "Name" VARCHAR(100) NOT NULL,
