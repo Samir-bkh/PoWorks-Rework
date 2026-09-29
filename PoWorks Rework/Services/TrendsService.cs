@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -16,17 +17,35 @@ namespace PoWorks_Rework.Services
     public class TrendsService
     {
         private const int MaxSplitDepth = 24;
+        private const int DefaultMaxConcurrentTrendRequests = 15;
         private static readonly TimeSpan MinimumSplitWindow = TimeSpan.FromSeconds(2);
 
         private readonly PCVueWebService _pcvueWebService;
         private readonly ILogger<TrendsService> _logger;
+        private readonly int _maxConcurrentTrendRequests;
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _unauthorizedRefreshGates =
+            new(StringComparer.Ordinal);
 
         public TrendsService(
             PCVueWebService pcvueWebService,
             ILogger<TrendsService> logger)
+            : this(pcvueWebService, logger, DefaultMaxConcurrentTrendRequests)
+        {
+        }
+
+        /// <summary>
+        /// Explicit concurrency overload used by benchmarks and tests. Production uses
+        /// the conservative default of 15 concurrent variables until a real PCVue
+        /// benchmark proves another value is safer/faster.
+        /// </summary>
+        public TrendsService(
+            PCVueWebService pcvueWebService,
+            ILogger<TrendsService> logger,
+            int maxConcurrentTrendRequests)
         {
             _pcvueWebService = pcvueWebService;
             _logger = logger;
+            _maxConcurrentTrendRequests = Math.Clamp(maxConcurrentTrendRequests, 1, 64);
         }
 
         public async Task<TrendRequestResult> CreateTrendRequestAsync(
@@ -250,34 +269,45 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// Processes arbitrarily large variable lists with bounded active work. Unlike
+        /// Select(async ...)+Task.WhenAll, Parallel.ForEachAsync does not create one
+        /// suspended Task per variable, which keeps memory stable for large imports.
+        /// Result order remains identical to the input order.
+        /// </summary>
         public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(
             List<string> variableNames,
             DateTime startDate,
             DateTime endDate,
             PCVueWebServiceSettings settings,
-            string? logContext = null)
+            string? logContext = null,
+            CancellationToken cancellationToken = default)
         {
-            var throttler = new SemaphoreSlim(15);
-
-            var tasks = variableNames.Select(async variableName =>
+            if (variableNames == null || variableNames.Count == 0)
             {
-                await throttler.WaitAsync();
-                try
+                return new List<VariableTrendResult>();
+            }
+
+            var results = new VariableTrendResult[variableNames.Count];
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = _maxConcurrentTrendRequests,
+                CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForEachAsync(
+                Enumerable.Range(0, variableNames.Count),
+                options,
+                async (index, _) =>
                 {
-                    return await ProcessSingleVariableAsync(
-                        variableName,
+                    results[index] = await ProcessSingleVariableAsync(
+                        variableNames[index],
                         startDate,
                         endDate,
                         settings,
                         logContext);
-                }
-                finally
-                {
-                    throttler.Release();
-                }
-            });
+                });
 
-            var results = await Task.WhenAll(tasks);
             return results.ToList();
         }
 
@@ -482,7 +512,7 @@ namespace PoWorks_Rework.Services
                     "PCVue returned 401 while attempting to {Operation}; refreshing OAuth session once.",
                     operation);
 
-                token = await _pcvueWebService.GetValidAccessTokenAsync(settings, forceRefresh: true);
+                token = await RefreshAfterUnauthorizedAsync(settings, token);
                 if (string.IsNullOrWhiteSpace(token))
                 {
                     return AuthorizedResponse.Failed("Failed to refresh PCVue access token.");
@@ -505,6 +535,47 @@ namespace PoWorks_Rework.Services
 
             return AuthorizedResponse.Ok(response.Content);
         }
+
+        /// <summary>
+        /// Collapses a wave of simultaneous 401 responses into one OAuth refresh for
+        /// the same PCVue identity. Callers waiting behind the first refresh reuse the
+        /// newly cached token instead of refreshing it again.
+        /// </summary>
+        private async Task<string?> RefreshAfterUnauthorizedAsync(
+            PCVueWebServiceSettings settings,
+            string rejectedToken)
+        {
+            var identity = BuildRefreshIdentity(settings);
+            var gate = _unauthorizedRefreshGates.GetOrAdd(
+                identity,
+                _ => new SemaphoreSlim(1, 1));
+
+            await gate.WaitAsync();
+            try
+            {
+                var currentToken = await _pcvueWebService.GetValidAccessTokenAsync(settings);
+                if (!string.IsNullOrWhiteSpace(currentToken) &&
+                    !string.Equals(currentToken, rejectedToken, StringComparison.Ordinal))
+                {
+                    return currentToken;
+                }
+
+                return await _pcvueWebService.GetValidAccessTokenAsync(
+                    settings,
+                    forceRefresh: true);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        private static string BuildRefreshIdentity(PCVueWebServiceSettings settings)
+            => string.Join(
+                "|",
+                (settings.BaseUrl ?? string.Empty).Trim().TrimEnd('/').ToLowerInvariant(),
+                (settings.ClientId ?? string.Empty).Trim().ToLowerInvariant(),
+                (settings.Username ?? string.Empty).Trim().ToLowerInvariant());
 
         private async Task<HttpPayload> SendAsync(HttpRequestMessage request)
         {
