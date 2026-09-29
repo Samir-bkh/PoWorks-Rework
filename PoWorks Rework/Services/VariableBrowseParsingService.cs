@@ -55,10 +55,7 @@ namespace PoWorks_Rework.Services
                 foreach (var variable in collections.EnumerateArray())
                 {
                     var parsed = ParseVariable(variable);
-                    if (string.IsNullOrWhiteSpace(parsed.FullPath))
-                    {
-                        continue;
-                    }
+                    if (string.IsNullOrWhiteSpace(parsed.FullPath)) continue;
 
                     if (parsed.IsSystemVariable && !includeSystemVariables)
                     {
@@ -71,7 +68,6 @@ namespace PoWorks_Rework.Services
 
                 result.TotalCount = result.Variables.Count;
                 result.Success = true;
-
                 _logger.LogInformation(
                     "Successfully parsed {Count} PCVue variables; filtered {SystemCount} system variable(s).",
                     result.TotalCount,
@@ -98,11 +94,7 @@ namespace PoWorks_Rework.Services
                     var value = branch.ValueKind == JsonValueKind.String
                         ? branch.GetString()
                         : branch.ToString();
-
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        parsed.Branches.Add(value.Trim());
-                    }
+                    if (!string.IsNullOrWhiteSpace(value)) parsed.Branches.Add(value.Trim());
                 }
             }
 
@@ -114,8 +106,6 @@ namespace PoWorks_Rework.Services
             var branchPrefix = string.Join(".", parsed.Branches.Where(b => !string.IsNullOrWhiteSpace(b)));
             if (!string.IsNullOrWhiteSpace(branchPrefix) && !string.IsNullOrWhiteSpace(parsed.VariableName))
             {
-                // Some PCVue responses return only the leaf name while others can already
-                // contain a fully-qualified name. Avoid duplicating the branch path.
                 parsed.FullPath = StartsWithPath(parsed.VariableName, branchPrefix)
                     ? parsed.VariableName.Trim().TrimStart('.')
                     : $"{branchPrefix}.{parsed.VariableName.Trim().TrimStart('.')}";
@@ -125,34 +115,31 @@ namespace PoWorks_Rework.Services
                 parsed.FullPath = parsed.VariableName.Trim().TrimStart('.');
             }
 
-            parsed.IsSystemVariable =
-                parsed.Branches.Any(IsSystemSegment) ||
-                IsSystemVariablePath(parsed.FullPath) ||
-                IsSystemVariablePath(parsed.VariableName);
+            // PcVue documents System as a root branch (for example ["system", "localhost"]).
+            // Only the root is treated as system so an ordinary customer branch named
+            // "System" deeper in the hierarchy is not accidentally hidden.
+            parsed.IsSystemVariable = parsed.Branches.Count > 0
+                ? IsSystemSegment(parsed.Branches[0])
+                : IsSystemVariablePath(parsed.FullPath);
 
             return parsed;
         }
 
         /// <summary>
-        /// Defensive system-variable classifier used by both browse and import.
-        /// PCVue documentation uses the root branch "system"; aliases such as
-        /// "$System" and "_System" are also treated as system roots.
+        /// Returns true only when the root path segment identifies the PcVue System tree.
         /// </summary>
         public static bool IsSystemVariablePath(string? path)
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
-
             var segments = path.Split(
                 new[] { '.', '/', '\\' },
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            return segments.Any(IsSystemSegment);
+            return segments.Length > 0 && IsSystemSegment(segments[0]);
         }
 
         private static bool IsSystemSegment(string? segment)
         {
             if (string.IsNullOrWhiteSpace(segment)) return false;
-
             var normalized = segment.Trim().TrimStart('$', '@', '_');
             return normalized.Equals("system", StringComparison.OrdinalIgnoreCase);
         }
@@ -177,15 +164,11 @@ namespace PoWorks_Rework.Services
             return bool.TryParse(value.ToString(), out var parsed) && parsed;
         }
 
-        private static bool TryGetPropertyInsensitive(
-            JsonElement element,
-            string propertyName,
-            out JsonElement value)
+        private static bool TryGetPropertyInsensitive(JsonElement element, string propertyName, out JsonElement value)
         {
             if (element.ValueKind == JsonValueKind.Object)
             {
                 if (element.TryGetProperty(propertyName, out value)) return true;
-
                 foreach (var property in element.EnumerateObject())
                 {
                     if (property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
@@ -195,15 +178,11 @@ namespace PoWorks_Rework.Services
                     }
                 }
             }
-
             value = default;
             return false;
         }
 
-        public void PrintParsedVariablesToConsole(
-            ParseResult parseResult,
-            string connectionInfo,
-            bool includeSystemVariables = false)
+        public void PrintParsedVariablesToConsole(ParseResult parseResult, string connectionInfo, bool includeSystemVariables = false)
         {
             Console.WriteLine("\n=====================================================");
             Console.WriteLine("PCVue VARIABLES BROWSE - PARSED RESULTS");
@@ -221,10 +200,7 @@ namespace PoWorks_Rework.Services
             else
             {
                 foreach (var variable in parseResult.Variables)
-                {
-                    Console.WriteLine(
-                        $"- {variable.FullPath} | Type={variable.VariableType} | ReadOnly={variable.IsReadOnly}");
-                }
+                    Console.WriteLine($"- {variable.FullPath} | Type={variable.VariableType} | ReadOnly={variable.IsReadOnly}");
             }
 
             Console.WriteLine("=====================================================\n");
