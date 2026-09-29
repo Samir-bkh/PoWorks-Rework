@@ -38,10 +38,12 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate dashboard JavaScript syntax
+      - name: Validate application JavaScript syntax
         run: |
           node --check "PoWorks Rework/wwwroot/js/energy-chart-core.js"
           node --check "PoWorks Rework/wwwroot/js/energy-dashboard.js"
+          node --check "PoWorks Rework/wwwroot/js/import/webservices_import.js"
+          node --check "PoWorks Rework/wwwroot/js/import/webservices_import_v2.js"
 
       - name: Run dashboard JavaScript unit tests
         run: node --test "PoWorks Rework.Tests/js/energy-chart-core.test.js"
