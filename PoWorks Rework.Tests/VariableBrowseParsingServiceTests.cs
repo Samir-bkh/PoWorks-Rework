@@ -76,8 +76,7 @@ public class VariableBrowseParsingServiceTests
     [InlineData("system/hds/status")]
     [InlineData("$System.HDS.Archive")]
     [InlineData("_SYSTEM\\Network\\State")]
-    [InlineData("Plant.System.Status")]
-    public void IsSystemVariablePath_RecognizesSystemSegments(string path)
+    public void IsSystemVariablePath_RecognizesSystemRoot(string path)
     {
         Assert.True(VariableBrowseParsingService.IsSystemVariablePath(path));
     }
@@ -86,7 +85,8 @@ public class VariableBrowseParsingServiceTests
     [InlineData("BatimentA.Locataire1.Light1")]
     [InlineData("Production.Systematic.Counter")]
     [InlineData("BuildingA.HVAC.Temperature")]
-    public void IsSystemVariablePath_DoesNotMatchOrdinaryNames(string path)
+    [InlineData("Plant.System.Status")]
+    public void IsSystemVariablePath_DoesNotMatchOrdinaryCustomerPaths(string path)
     {
         Assert.False(VariableBrowseParsingService.IsSystemVariablePath(path));
     }
