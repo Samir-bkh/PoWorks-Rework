@@ -1,1002 +1,635 @@
 ﻿/**
- * webservice_import.js
- * Handles:
- * - Browsing PCVue web service variables
- * - Displaying variables as meters in the unified table
- * - Importing Web Service variables as meters
- * - Printing selected variables
+ * PCVue Web Services variable import.
+ *
+ * Design goals:
+ * - browsing and import are separate operations;
+ * - existing PoWorks meters are visible and safely updateable;
+ * - engineering units can be read from PCVue or assigned in bulk;
+ * - System variables remain excluded unless explicitly enabled;
+ * - no ambiguous confirm-based update workflow.
  */
 
-// =====================================================
-// INITIALIZATION
-// =====================================================
+const PCVUE_UNIT_PRESETS = [
+    'Wh', 'kWh', 'MWh', 'W', 'kW', 'MW',
+    '°C', '°F', 'bar', 'Pa', 'kPa', 'm³', 'm³/h', 'L', 'L/min', '%'
+];
 
-/**
- * Initialize WebService functionality when DOM is ready
- */
-document.addEventListener('DOMContentLoaded', function () {
-    console.log('WebService import module loading...');
-
-    // Load connections on startup
+document.addEventListener('DOMContentLoaded', () => {
     loadWebServiceConnections();
-
-    // Set up WebService-specific event listeners
     setupWebServiceEventListeners();
-
-    // Set up WebService date range functionality - DELAY to ensure elements exist
-    setTimeout(() => {
-        setupWebServiceDateRange();
-        console.log('WebService date range setup completed');
-    }, 100);
+    setupWebServiceDateRange();
 });
-/**
- * Set up WebService-specific event listeners
- */
 
 function setupWebServiceEventListeners() {
-    // Web Service Connection dropdown change
-    const webServiceConnection = document.getElementById('webServiceConnection');
-    if (webServiceConnection) {
-        webServiceConnection.addEventListener('change', function () {
-            const selectedConnection = this.value;
-            const browseBtn = document.getElementById('browseVariablesBtn');
-            const statusSpan = document.getElementById('webServiceConnectionStatus');
-
-            if (selectedConnection) {
-                browseBtn.disabled = false;
-                statusSpan.innerHTML = '<i class="bi bi-check-circle text-success"></i> Connection selected - ready to browse variables';
-            } else {
-                browseBtn.disabled = true;
-                statusSpan.innerHTML = '<i class="bi bi-info-circle"></i> Select a web service connection';
-            }
-        });
-    }
-
-    // Browse Variables button
-    const browseVariablesBtn = document.getElementById('browseVariablesBtn');
-    if (browseVariablesBtn) {
-        browseVariablesBtn.addEventListener('click', function () {
-            const selectedConnection = document.getElementById('webServiceConnection').value;
-            if (!selectedConnection) {
-                showWebServiceStatus('warning', 'Please select a web service connection first');
-                return;
-            }
-            browseVariables(selectedConnection);
-        });
-    }
-
-    // Max Variables input validation
-    const maxVariables = document.getElementById('maxVariables');
-    if (maxVariables) {
-        maxVariables.addEventListener('input', function () {
-            const value = parseInt(this.value);
-            if (value < 1) {
-                this.value = 1;
-            } else if (value > 1000000) {
-                this.value = 1000000;
-            }
-        });
-    }
-}
-
-/**
- * Loads available Web Service connections into the dropdown.
- */
-function loadWebServiceConnections() {
-
-    fetch('/WebServicesImport/GetWebServiceConnections')
-        .then(response => response.json())
-        .then(data => {
-            const select = document.getElementById('webServiceConnection');
-            if (!select) {
-                return;
-            }
-
-            select.innerHTML = '<option value="">Select a connection...</option>';
-
-            if (data.success && data.connections) {
-                data.connections.forEach(conn => {
-                    const option = document.createElement('option');
-                    option.value = conn.connectionId;
-                    option.textContent = `${conn.connectionName} (${conn.baseUrl})`;
-                    if (conn.isDefault) {
-                        option.textContent += ' - Default';
-                    }
-                    select.appendChild(option);
-                });
-
-                const defaultConnection = data.connections.find(c => c.isDefault);
-                if (defaultConnection) {
-                    select.value = defaultConnection.connectionId;
-                    select.dispatchEvent(new Event('change'));
-                }
-            } else {
-                showWebServiceStatus('danger', 'Failed to load web service connections. Please check your settings.');
-            }
-        })
-        .catch(error => {
-            showWebServiceStatus('danger', 'Error loading web service connections: ' + error.message);
-        });
-}
-
-// =====================================================
-// BROWSING VARIABLES
-// =====================================================
-
-/**
- * Triggers a browse request to the server for Web Service variables.
- */
-function browseVariables(connectionId) {
-    const maxVariables = parseInt(document.getElementById('maxVariables').value) || 100000;
-    const branchFilter = document.getElementById('branchFilter').value.trim();
-    const includeSystemVariables = document.getElementById('includeSystemVariables').checked;
-
-    // GET connection name for storage
     const connectionSelect = document.getElementById('webServiceConnection');
-    const selectedOption = connectionSelect.querySelector(`option[value="${connectionId}"]`);
-    const connectionName = selectedOption ? selectedOption.textContent : connectionId;
+    connectionSelect?.addEventListener('change', () => {
+        const browseButton = document.getElementById('browseVariablesBtn');
+        const status = document.getElementById('webServiceConnectionStatus');
+        const hasConnection = Boolean(connectionSelect.value);
 
-    // STORE connection info for later use in import
-    const connectionInfo = {
-        connectionId: connectionId,
-        connectionName: connectionName
-    };
-    storeWebServiceConnectionInfo(connectionInfo);
-
-    console.log('Stored connection info:', connectionInfo);
-
-    // GET DATE RANGE - ADD THIS
-    const startDateInput = document.getElementById('webServiceStartDate');
-    const endDateInput = document.getElementById('webServiceEndDate');
-    const startDate = startDateInput?.value || null;
-    const endDate = endDateInput?.value || null;
-
-    // DEBUG CONSOLE LOG - ADD THIS
-    console.log('Date Range Debug:', {
-        startDate: startDate,
-        endDate: endDate,
-        startDateInput: !!startDateInput,
-        endDateInput: !!endDateInput
+        if (browseButton) browseButton.disabled = !hasConnection;
+        if (status) {
+            status.innerHTML = hasConnection
+                ? '<i class="bi bi-check-circle text-success"></i> Connection selected - ready to browse variables'
+                : '<i class="bi bi-info-circle"></i> Select a web service connection';
+        }
     });
 
-    const systemMsg = includeSystemVariables
-        ? " (including System variables)"
-        : " (System variables filtered out)";
+    document.getElementById('browseVariablesBtn')?.addEventListener('click', () => {
+        const connectionId = connectionSelect?.value || '';
+        if (!connectionId) {
+            showWebServiceStatus('warning', 'Select a Web Service connection first.');
+            return;
+        }
+        browseVariables(connectionId);
+    });
 
-    showWebServiceStatus('info', `Starting variables browse... (Max: ${maxVariables.toLocaleString()}, Filter: ${branchFilter || 'None'})${systemMsg}`);
+    document.getElementById('maxVariables')?.addEventListener('input', event => {
+        const input = event.target;
+        const value = Number.parseInt(input.value, 10);
+        if (!Number.isFinite(value) || value < 1) input.value = '1';
+        if (value > 1000000) input.value = '1000000';
+    });
 
-    const browseBtn = document.getElementById('browseVariablesBtn');
-    browseBtn.disabled = true;
-    browseBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Browsing...';
+    document.body.addEventListener('click', event => {
+        const button = event.target.closest('[data-ws-action]');
+        if (!button) return;
 
-    const requestData = {
-        connectionId,
-        maxVariables,
-        branchFilter,
-        variableType: 'Any',
-        depth: 0,
-        includeSystemVariables,
-        // ADD DATE RANGE TO REQUEST
-        startDate: startDate,
-        endDate: endDate
-    };
-
-    // DEBUG CONSOLE LOG - ADD THIS
-    console.log(' Request Data:', requestData);
-
-    fetch('/WebServicesImport/BrowseVariablesWebService', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData)
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            // STORE additional connection info from response
-            if (data.connectionInfo) {
-                const enhancedConnectionInfo = {
-                    connectionId: data.connectionInfo.connectionId,
-                    connectionName: data.connectionInfo.connectionName
-                };
-                storeWebServiceConnectionInfo(enhancedConnectionInfo);
-                console.log('Updated connection info from response:', enhancedConnectionInfo);
-            }
-
-            handleWebServiceBrowseResponse(data);
-        })
-        .catch(error => {
-            showWebServiceStatus('danger', 'Error during variables browse: ' + error.message);
-        })
-        .finally(() => {
-            browseBtn.disabled = false;
-            browseBtn.innerHTML = '<i class="bi bi-search"></i> Browse Variables';
-        });
+        switch (button.dataset.wsAction) {
+            case 'fill-blank-units':
+                applyBulkUnit(false);
+                break;
+            case 'apply-unit':
+                applyBulkUnit(true);
+                break;
+            case 'read-units':
+                resolveUnitsFromPcVue(false);
+                break;
+        }
+    });
 }
 
-/**
- * Updates status area with a Bootstrap alert.
- */
-function showWebServiceStatus(type, message) {
-    const statusDiv = document.getElementById('webServiceStatus');
-    if (!statusDiv) return;
+async function loadWebServiceConnections() {
+    try {
+        const response = await fetch('/WebServicesImport/GetWebServiceConnections');
+        const data = await response.json();
+        const select = document.getElementById('webServiceConnection');
+        if (!select) return;
 
-    statusDiv.className = `alert alert-${type}`;
-    statusDiv.innerHTML = message;
-    statusDiv.style.display = 'block';
-
-    if (type === 'success') {
-        setTimeout(() => {
-            statusDiv.style.display = 'none';
-        }, 8000);
-    }
-}
-
-/**
- * Handles the response from the browseVariables API call.
- */
-function handleWebServiceBrowseResponse(data) {
-    const statusDiv = document.getElementById('webServiceStatus');
-    if (!statusDiv) return;
-
-    if (data.success) {
-        if (data.variables?.length > 0) {
-            statusDiv.innerHTML = `
-                <div class="alert alert-success">
-                    <i class="bi bi-check-circle"></i>
-                    Successfully browsed ${data.totalVariables} variables from ${data.connectionInfo?.connectionName || 'Web Service'}.
-                    ${data.variables.length} variables ready for meter import.
-                </div>`;
-            statusDiv.style.display = 'block';
-
-            showWebServiceMeterSelection(
-                data.variables,
-                data.parentOptions || [],
-                data.connectionInfo || {}
-            );
-
-            document.getElementById('meterSelectionSection')?.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-
-        } else {
-            statusDiv.innerHTML = `
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle"></i>
-                    No variables found. Try adjusting your filters or check the connection.
-                </div>`;
-            statusDiv.style.display = 'block';
+        select.innerHTML = '<option value="">Select a connection...</option>';
+        if (!data.success || !Array.isArray(data.connections)) {
+            showWebServiceStatus('danger', 'Unable to load Web Service connections.');
+            return;
         }
 
-    } else {
-        statusDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="bi bi-exclamation-circle"></i>
-                Browse failed: ${data.message || data.error || 'Unknown error'}
-            </div>`;
-        statusDiv.style.display = 'block';
+        data.connections.forEach(connection => {
+            const option = document.createElement('option');
+            option.value = connection.connectionId;
+            option.textContent = `${connection.connectionName || 'PCVue'} (${connection.baseUrl || ''})${connection.isDefault ? ' - Default' : ''}`;
+            option.dataset.connectionName = connection.connectionName || 'PCVue';
+            select.appendChild(option);
+        });
+
+        const defaultConnection = data.connections.find(connection => connection.isDefault);
+        if (defaultConnection) {
+            select.value = defaultConnection.connectionId;
+            select.dispatchEvent(new Event('change'));
+        }
+    } catch (error) {
+        showWebServiceStatus('danger', `Unable to load Web Service connections: ${error.message}`);
     }
 }
 
-// =====================================================
-// METER SELECTION TABLE RENDERING
-// =====================================================
+async function browseVariables(connectionId) {
+    const button = document.getElementById('browseVariablesBtn');
+    const maxVariables = Number.parseInt(document.getElementById('maxVariables')?.value || '100000', 10);
+    const branchFilter = document.getElementById('branchFilter')?.value.trim() || '';
+    const includeSystemVariables = Boolean(document.getElementById('includeSystemVariables')?.checked);
+    const option = document.querySelector(`#webServiceConnection option[value="${cssEscape(connectionId)}"]`);
 
-/**
- * Displays the unified meter selection section
- * with Web Service variables loaded into a table.
- */
+    storeWebServiceConnectionInfo({
+        connectionId,
+        connectionName: option?.dataset.connectionName || option?.textContent || connectionId
+    });
+
+    try {
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Browsing...';
+        }
+
+        showWebServiceStatus(
+            'info',
+            includeSystemVariables
+                ? 'Browsing PCVue variables, including System variables...'
+                : 'Browsing PCVue variables. System variables are excluded.'
+        );
+
+        const response = await fetch('/WebServicesImport/BrowseVariablesWebService', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                connectionId,
+                maxVariables: Number.isFinite(maxVariables) ? maxVariables : 100000,
+                branchFilter,
+                variableType: 'Any',
+                depth: 0,
+                includeSystemVariables
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || data.error || `HTTP ${response.status}`);
+        }
+
+        const variables = Array.isArray(data.variables) ? data.variables : [];
+        const filteredCount = Number(data.filteredSystemVariables || 0);
+        showWebServiceStatus(
+            variables.length ? 'success' : 'warning',
+            `${variables.length} variable(s) available for import` +
+            (!includeSystemVariables && filteredCount > 0
+                ? ` · ${filteredCount} System variable(s) filtered`
+                : '') + '.'
+        );
+
+        storeWebServiceConnectionInfo(data.connectionInfo || getStoredWebServiceConnectionInfo());
+        showWebServiceMeterSelection(variables, data.parentOptions || [], data.connectionInfo || {});
+
+        if (variables.length > 0) {
+            // Browse does not expose the Unit property. Resolve missing units through
+            // one batched BulkRead after the table is visible.
+            await resolveUnitsFromPcVue(true);
+        }
+    } catch (error) {
+        showWebServiceStatus('danger', `PCVue browse failed: ${error.message}`);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = '<i class="bi bi-search"></i> Browse Variables';
+        }
+    }
+}
+
+function showWebServiceStatus(type, message) {
+    const target = document.getElementById('webServiceStatus');
+    if (!target) return;
+    target.className = `alert alert-${type} mt-3`;
+    target.textContent = message;
+    target.style.display = 'block';
+}
+
 window.showWebServiceMeterSelection = function (variables, parentOptions, connectionInfo) {
+    const section = document.getElementById('meterSelectionSection');
+    if (!section) return;
 
     storeWebServiceConnectionInfo(connectionInfo);
-
-    const meterSelectionSection = document.getElementById('meterSelectionSection');
-    if (!meterSelectionSection) {
-        return;
-    }
-
-    meterSelectionSection.classList.remove('d-none');
-
-    const tableHtml = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
-    
-
-    const tableContainer = meterSelectionSection.querySelector('.table-responsive');
-    if (tableContainer) {
-        tableContainer.outerHTML = tableHtml;
-    }
- 
-
-    const sectionHeader = meterSelectionSection.querySelector('.card-header h5');
-    if (sectionHeader) {
-        sectionHeader.innerHTML = '<i class="bi bi-cloud"></i> Web Service Variable to Meter Selection';
-    }
-
     window.currentMeterDataType = 'WebService';
     window.currentWebServiceContext = connectionInfo;
+    window.currentWebServiceVariables = Array.isArray(variables) ? variables : [];
 
-    if (typeof updatePrintButtonForDataType === 'function') {
-        updatePrintButtonForDataType('WebService');
-    }
+    section.classList.remove('d-none');
+    const oldContainer = section.querySelector('.web-service-meter-selection-container, .table-responsive');
+    if (oldContainer) oldContainer.outerHTML = createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo);
 
-    document.getElementById('importReadings')?.closest('.form-check')?.style?.setProperty('display', 'none');
+    const header = section.querySelector('.card-header h5');
+    if (header) header.innerHTML = '<i class="bi bi-cloud"></i> PCVue variables';
 
-    const importBtn = document.getElementById('importSelectedBtn');
-    if (importBtn) {
-        importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Selected Variables + Get Trends';
-        importBtn.title = 'Import variables as meters and automatically retrieve trends data';
-    }
+    const importReadings = document.getElementById('importReadings')?.closest('.form-check');
+    if (importReadings) importReadings.style.display = 'none';
 
-    if (typeof updateMeterCounter === 'function') {
-        updateMeterCounter();
-    }
+    if (typeof updatePrintButtonForDataType === 'function') updatePrintButtonForDataType('WebService');
+    if (typeof updateMeterCounter === 'function') updateMeterCounter();
 };
 
-/**
- * Creates HTML for the meter table from Web Service variables.
- * Fixed to properly display full variable paths and handle malformed paths.
- */
 function createWebServiceMeterSelectionTable(variables, parentOptions, connectionInfo) {
-
-    if (!variables.length) {
-        return '<p class="text-warning">No variables found to display.</p>';
+    const rows = Array.isArray(variables) ? variables : [];
+    if (rows.length === 0) {
+        return '<div class="web-service-meter-selection-container"><div class="alert alert-warning mb-0">No variables found.</div></div>';
     }
 
-    // Log structure for debugging if needed
-    if (variables.length > 0) {
-        console.log('Variables loaded:', variables.length);
-        console.log('Sample variable fullPath:', variables[0].fullPath);
-    }
+    const existingCount = rows.filter(variable => variable.existingMeterId != null).length;
+    const unitOptions = PCVUE_UNIT_PRESETS.map(unit => `<option value="${escapeHtml(unit)}"></option>`).join('');
 
-    let parentOptionsHtml = '<option value="">None</option>';
-    if (parentOptions?.length > 0) {
-        parentOptions.forEach(opt => {
-            if (opt.value !== '') {
-                parentOptionsHtml += `<option value="${opt.value}">${opt.text}</option>`;
-            }
-        });
-    }
+    const tableRows = rows.map((variable, index) => {
+        const fullPath = normalizeVariablePath(variable.fullPath || variable.variableName || '');
+        const existing = variable.existingMeterId != null;
+        const unit = variable.existingUnit || '';
+        const meterType = normalizeMeterType(variable.existingType || 'main');
+        const active = existing ? variable.existingActive !== false : true;
+        const parentId = variable.existingParentId == null ? '' : String(variable.existingParentId);
+        const pcVueType = variable.variableType || 'Unknown';
+        const badge = existing
+            ? '<span class="badge bg-light text-dark border ms-2">Existing</span>'
+            : '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-2">New</span>';
 
-    let tableHtml = `
-        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-            <table class="table table-sm table-striped table-hover">
-                <thead class="sticky-top">
-                    <tr>
-                        ${['Import', 'Type', 'Variable Name', 'Unit', 'Meter Type', 'Parent Meter', 'Active', 'PCVue Type', 'Read Only'].map(h =>
-        `<th style="background-color: #e9ecef; color: black; border-color: #dee2e6;">
-                                <span class="text-dark fw-bold">${h}</span>
-                            </th>`
-    ).join('')}
-                    </tr>
-                </thead>
-                <tbody id="metersTableBody">`;
-
-    tableHtml += `
-        <tr class="table-info">
-            <td colspan="9">
-                <small>
-                    <strong>Web Service Import:</strong> Converting ${variables.length} PCVue variables to meters. 
-                    Connection: ${connectionInfo?.connectionName || 'Unknown'} |
-                    Fill in units and configure meter settings as needed.
-                </small>
-            </td>
-        </tr>`;
-
-    variables.forEach((variable, index) => {
-        let badgeClass = 'bg-secondary';
-        let typeBadge = 'TXT';
-
-        // Try both camelCase and PascalCase for variableType
-        const varType = variable.variableType || variable.VariableType || '';
-
-        switch (varType.toLowerCase()) {
-            case 'numeric':
-            case 'real':
-            case 'double':
-                badgeClass = 'bg-primary';
-                typeBadge = 'NUM';
-                break;
-            case 'boolean':
-            case 'bool':
-                badgeClass = 'bg-warning text-dark';
-                typeBadge = 'BOOL';
-                break;
-            case 'string':
-            case 'text':
-                badgeClass = 'bg-secondary';
-                typeBadge = 'TXT';
-                break;
-            default:
-                if (varType) {
-                    badgeClass = 'bg-info';
-                    typeBadge = varType.substring(0, 4).toUpperCase();
-                }
-        }
-
-        // Get the proper display name, handling malformed fullPath
-        let displayName;
-
-        if (variable.fullPath && variable.fullPath !== variable.variableName) {
-            // Clean up fullPath that starts with dot (e.g., ".Date" -> "Date")
-            displayName = variable.fullPath.startsWith('.') ?
-                variable.fullPath.substring(1) :
-                variable.fullPath;
-        } else {
-            // Fall back to variable name if fullPath is missing or same as variableName
-            displayName = variable.variableName || 'Unknown';
-        }
-
-        // Check if we're getting the full path or just variable name
-        const isFullPath = displayName.includes('.') && displayName !== variable.variableName;
-
-        tableHtml += `
-            <tr class="web-service-variable-row" data-variable-index="${index}">
+        return `
+            <tr class="web-service-variable-row" data-variable-index="${index}" data-variable-name="${escapeAttribute(fullPath)}" data-is-system="${variable.isSystemVariable ? 'true' : 'false'}">
+                <td><input type="checkbox" class="form-check-input meter-checkbox web-service-variable-checkbox" checked data-variable-index="${index}"></td>
+                <td><span class="badge bg-secondary">${escapeHtml(shortType(pcVueType))}</span></td>
+                <td class="text-break"><small class="fw-semibold">${escapeHtml(fullPath)}</small>${badge}</td>
                 <td>
-                    <input type="checkbox" class="form-check-input meter-checkbox web-service-variable-checkbox" checked data-variable-index="${index}">
-                </td>
-                <td>
-                    <span class="badge ${badgeClass}">${typeBadge}</span>
-                </td>
-                <td class="text-break">
-                    <small>${displayName}</small>
-                </td>
-                <td>
-                    <input type="text" class="form-control form-control-sm web-service-unit-input" placeholder="Enter unit (e.g., kWh, °C)" data-variable-index="${index}">
+                    <input type="text" class="form-control form-control-sm web-service-unit-input"
+                           value="${escapeAttribute(unit)}" list="pcvueUnitPresets"
+                           placeholder="Unit" data-variable-index="${index}">
                 </td>
                 <td>
                     <select class="form-select form-select-sm web-service-type-select" data-variable-index="${index}">
-                        <option value="main" selected>Main</option>
-                        <option value="sub">Sub</option>
+                        <option value="main" ${meterType === 'main' ? 'selected' : ''}>Main</option>
+                        <option value="sub" ${meterType === 'sub' ? 'selected' : ''}>Sub</option>
                     </select>
                 </td>
-                <td>
-                    <select class="form-select form-select-sm web-service-parent-select" data-variable-index="${index}">
-                        ${parentOptionsHtml}
-                    </select>
-                </td>
-                <td>
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input web-service-active-checkbox" checked data-variable-index="${index}">
-                    </div>
-                </td>
-                <td>
-                    <small class="text-muted">${varType || 'Unknown'}</small>
-                </td>
-                <td>
-                    <small class="text-muted">${(variable.isReadOnly || variable.IsReadOnly) ? 'Yes' : 'No'}</small>
-                </td>
+                <td>${createParentSelect(index, parentOptions, parentId, variable.existingMeterId)}</td>
+                <td class="text-center"><input type="checkbox" class="form-check-input web-service-active-checkbox" ${active ? 'checked' : ''} data-variable-index="${index}"></td>
+                <td><small class="text-muted">${escapeHtml(pcVueType)}</small></td>
+                <td><small class="text-muted">${variable.isReadOnly ? 'Yes' : 'No'}</small></td>
             </tr>`;
+    }).join('');
+
+    return `
+        <div class="web-service-meter-selection-container">
+            <datalist id="pcvueUnitPresets">${unitOptions}</datalist>
+            <div class="border rounded bg-light p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-lg-4 col-md-6">
+                        <label class="form-label small fw-semibold mb-1">Bulk unit</label>
+                        <div class="input-group input-group-sm">
+                            <input id="webServiceBulkUnit" class="form-control" list="pcvueUnitPresets" placeholder="e.g. kWh, °C, bar">
+                            <button class="btn btn-outline-secondary" type="button" data-ws-action="fill-blank-units" title="Fill only selected variables that have no unit">Fill blanks</button>
+                            <button class="btn btn-outline-primary" type="button" data-ws-action="apply-unit" title="Apply to every selected variable">Apply selected</button>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label small fw-semibold mb-1">Existing meters</label>
+                        <select id="webServiceExistingMode" class="form-select form-select-sm">
+                            <option value="update" selected>Update metadata</option>
+                            <option value="skip">Keep existing unchanged</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <button type="button" class="btn btn-outline-secondary btn-sm w-100" data-ws-action="read-units">
+                            <i class="bi bi-arrow-repeat me-1"></i>Read missing units from PCVue
+                        </button>
+                    </div>
+                    <div class="col-lg-2 col-md-6 text-lg-end">
+                        <small class="text-muted d-block">${rows.length} variables</small>
+                        <small class="text-muted d-block">${existingCount} already in PoWorks</small>
+                    </div>
+                </div>
+                <div class="form-text mt-1">Empty incoming units never erase an existing meter unit. Bulk actions affect selected rows only.</div>
+            </div>
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Import</th><th>Type</th><th>Variable Name</th><th style="min-width:130px">Unit</th>
+                            <th>Meter Type</th><th style="min-width:180px">Parent Meter</th><th>Active</th><th>PCVue Type</th><th>Read Only</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metersTableBody">${tableRows}</tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
+function createParentSelect(index, parentOptions, selectedParentId, meterId) {
+    const options = ['<option value="">None / keep current</option>'];
+    (parentOptions || []).forEach(option => {
+        const value = String(option.value ?? '');
+        if (!value || String(meterId ?? '') === value) return;
+        const selected = selectedParentId === value ? 'selected' : '';
+        options.push(`<option value="${escapeAttribute(value)}" ${selected}>${escapeHtml(option.text || value)}</option>`);
     });
 
-    tableHtml += `
-                </tbody>
-            </table>
-        </div>`;
-
-    return tableHtml;
+    return `<select class="form-select form-select-sm web-service-parent-select" data-variable-index="${index}">${options.join('')}</select>`;
 }
 
-// =====================================================
-// PRINT FUNCTIONALITY
-// =====================================================
-
-/**
- * Prints selected Web Service variables.
- */
-function handleWebServicePrint() {
-    printWebServiceVariables();
-}
-
-/**
- * Sends selected variables to the backend for printing.
- */
-function printWebServiceVariables() {
-    const selectedVariables = collectSelectedWebServiceVariables();
-
-    if (!selectedVariables.length) {
-        alert('Please select at least one variable to print.');
+function applyBulkUnit(overwrite) {
+    const unit = document.getElementById('webServiceBulkUnit')?.value.trim() || '';
+    if (!unit) {
+        showWebServiceStatus('warning', 'Enter a unit before applying it.');
         return;
     }
 
-    const connectionInfo = getStoredWebServiceConnectionInfo();
+    let changed = 0;
+    selectedWebServiceRows().forEach(row => {
+        const input = row.querySelector('.web-service-unit-input');
+        if (!input) return;
+        if (overwrite || !input.value.trim()) {
+            input.value = unit;
+            changed++;
+        }
+    });
 
-    const requestData = {
-        connectionId: connectionInfo.connectionId,
-        connectionName: connectionInfo.connectionName,
-        selectedVariables
-    };
+    showWebServiceStatus('success', `${unit} applied to ${changed} selected variable(s).`);
+}
 
+async function resolveUnitsFromPcVue(silent = false) {
+    const connection = getStoredWebServiceConnectionInfo();
+    const rows = selectedWebServiceRows().filter(row => {
+        const input = row.querySelector('.web-service-unit-input');
+        return input && !input.value.trim();
+    });
+
+    if (!connection.connectionId || rows.length === 0) return;
+
+    const variableNames = rows.map(row => row.dataset.variableName).filter(Boolean);
+    try {
+        if (!silent) showWebServiceStatus('info', `Reading units from PCVue for ${variableNames.length} variable(s)...`);
+
+        const response = await fetch('/WebServicesImport/ResolveVariableUnits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connectionId: connection.connectionId, variableNames })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+
+        const units = data.units || {};
+        let applied = 0;
+        rows.forEach(row => {
+            const unit = lookupCaseInsensitive(units, row.dataset.variableName);
+            const input = row.querySelector('.web-service-unit-input');
+            if (input && typeof unit === 'string' && unit.trim() && !input.value.trim()) {
+                input.value = unit.trim();
+                applied++;
+            }
+        });
+
+        if (!silent) {
+            showWebServiceStatus(
+                applied > 0 ? 'success' : 'info',
+                applied > 0
+                    ? `${applied} unit(s) read from PCVue.`
+                    : 'PCVue did not provide an engineering unit for the selected blank variables.'
+            );
+        }
+    } catch (error) {
+        if (!silent) showWebServiceStatus('warning', `Unable to read PCVue units: ${error.message}`);
+    }
+}
+
+function handleWebServicePrint() {
+    const selectedVariables = collectSelectedWebServiceVariables();
+    if (selectedVariables.length === 0) {
+        alert('Select at least one Web Service variable.');
+        return;
+    }
+
+    const connection = getStoredWebServiceConnectionInfo();
     fetch('/WebServicesImport/PrintWebServiceMeters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData)
-    })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert(`Successfully printed ${data.count} Web Service variables to console.`);
-            } else {
-                alert(`Error printing Web Service variables: ${data.error}`);
-            }
+        body: JSON.stringify({
+            connectionId: connection.connectionId || '',
+            connectionName: connection.connectionName || '',
+            selectedVariables
         })
-        .catch(err => {
-            alert('Network error while printing Web Service variables.');
-        });
+    }).catch(() => {});
 }
 
-// =====================================================
-// IMPORT FUNCTIONALITY
-// =====================================================
-
-/**
- * Initiates import of selected Web Service variables as meters.
- */
-function handleWebServiceImport() {
-    importWebServiceVariables();
-}
-
-/**
- * Imports selected Web Service variables.
- */
-function importWebServiceVariables() {
+async function importWebServiceVariables() {
     const selectedVariables = collectSelectedWebServiceVariables();
-
-    if (!selectedVariables.length) {
-        alert('Please select at least one variable to import.');
+    if (selectedVariables.length === 0) {
+        alert('Select at least one Web Service variable to import.');
         return;
     }
 
-    const variablesWithoutUnits = selectedVariables.filter(v => !v.unit || v.unit.trim() === '');
-    if (variablesWithoutUnits.length > 0) {
-        if (!confirm(`${variablesWithoutUnits.length} variables have no unit defined. Continue anyway?`)) {
-            return;
-        }
-    }
-
-    const skipExisting = confirm('Skip existing meters? (OK = skip, Cancel = update)');
-    const updateExisting = !skipExisting && confirm('Update existing meters with new information?');
-
-    // Get date range for trends
-    const dateRange = getSelectedDateRange();
-    const connectionInfo = getStoredWebServiceConnectionInfo();
-
-    console.log('🔧 Import request data:', {
-        variables: selectedVariables.length,
-        dateRange: dateRange,
-        connectionInfo: connectionInfo
-    });
-
-
-    const requestData = {
-        variables: selectedVariables,
-        skipExisting: skipExisting,
-        updateExisting: updateExisting,
-        importTrendsData: true,
-        trendsStartDate: dateRange.startDate, 
-        trendsEndDate: dateRange.endDate,     
-        connectionId: connectionInfo.connectionId
-    };
-
-    const importBtn = document.getElementById('importSelectedBtn');
-    const originalText = importBtn?.textContent || 'Import Selected';
-
-    if (importBtn) {
-        importBtn.disabled = true;
-        importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing + Getting Trends...';
-    }
-
-    console.log('Sending import request:', requestData);
-
- 
-    fetch('/Import/ImportWebServiceVariablesWithTrends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData)
-    })
-        .then(response => response.json())
-        .then(data => {
-            console.log('Import response:', data);
-
-            if (data.success) {
-                let message = `Web Service import completed successfully!\n`;
-                message += `Imported: ${data.importedCount}\n`;
-                message += `Updated: ${data.updatedCount}\n`;
-                message += `Skipped: ${data.skippedCount}\n`;
-                message += `Errors: ${data.errorCount}`;
-
-                // Add trends results if available
-                if (data.trendsSuccessCount !== undefined || data.trendsFailedCount !== undefined) {
-                    message += `\n\nTrends Processing:\n`;
-                    message += `Success: ${data.trendsSuccessCount || 0}\n`;
-                    message += `Failed: ${data.trendsFailedCount || 0}`;
-                }
-
-                alert(message);
-            } else {
-                let errorMsg = `Web Service import failed: ${data.errorMessage || data.error}\n\n`;
-                if (data.detailedErrors) {
-                    errorMsg += 'Detailed errors:\n';
-                    Object.entries(data.detailedErrors).forEach(([variable, error]) => {
-                        errorMsg += `- ${variable}: ${error}\n`;
-                    });
-                }
-                alert(errorMsg);
-            }
-        })
-        .catch(err => {
-            console.error('Import error:', err);
-            alert('Network error while importing Web Service variables.');
-        })
-        .finally(() => {
-            if (importBtn) {
-                importBtn.disabled = false;
-                importBtn.innerHTML = originalText;
-            }
-        });
-}
-
-
-// =====================================================
-// DATA COLLECTION
-// =====================================================
-
-/**
- * Collects selected Web Service variables from the table.
- */
-function collectSelectedWebServiceVariables() {
-    const selectedVariables = [];
-    const dateRange = getSelectedDateRange();
-
-    document.querySelectorAll('.web-service-variable-checkbox:checked').forEach(checkbox => {
-        const index = checkbox.getAttribute('data-variable-index');
-        const row = checkbox.closest('.web-service-variable-row');
-        if (!row) return;
-
-        const cells = row.cells;
-        const nameCell = cells[2];
-        const small = nameCell?.querySelector('small');
-        const variableName = small?.textContent.trim() || '';
-
-        const unit = document.querySelector(`.web-service-unit-input[data-variable-index="${index}"]`)?.value || '';
-        const type = document.querySelector(`.web-service-type-select[data-variable-index="${index}"]`)?.value || 'main';
-        const parentMeterId = document.querySelector(`.web-service-parent-select[data-variable-index="${index}"]`)?.value || '';
-        const active = document.querySelector(`.web-service-active-checkbox[data-variable-index="${index}"]`)?.checked || false;
-
-        const variableType = cells[7]?.querySelector('small')?.textContent.trim() || '';
-        const isReadOnly = cells[8]?.querySelector('small')?.textContent.trim() === 'Yes';
-
-        const variableData = {
-            variableName,
-            unit,
-            type,
-            parentMeterId,
-            active,
-            variableType,
-            isReadOnly,
-            isSelected: true,
-            // ADD date range to each variable
-            startDate: dateRange.startDate,
-            endDate: dateRange.endDate
-        };
-        selectedVariables.push(variableData);
-    });
-
-    return selectedVariables;
-}
-
-// =====================================================
-// STORAGE UTILITIES
-// =====================================================
-
-/**
- * Stores Web Service connection info globally.
- */
-function storeWebServiceConnectionInfo(connectionInfo) {
-    if (!connectionInfo || !connectionInfo.connectionId) {
-        console.warn('Ignored empty/invalid connectionInfo, keeping previous value:', window.webServiceConnectionInfo);
+    const missingUnitCount = selectedVariables.filter(variable => !variable.unit.trim()).length;
+    if (missingUnitCount > 0 && !confirm(`${missingUnitCount} selected variable(s) still have no unit. Import them without a unit?`)) {
         return;
     }
 
-    window.webServiceConnectionInfo = connectionInfo;
-    console.log('Stored connection info:', connectionInfo);
+    const connection = getStoredWebServiceConnectionInfo();
+    const dateRange = getSelectedDateRange();
+    const existingMode = document.getElementById('webServiceExistingMode')?.value || 'update';
+    const includeSystemVariables = Boolean(document.getElementById('includeSystemVariables')?.checked);
+    const button = document.getElementById('importSelectedBtn');
+    const oldHtml = button?.innerHTML || '';
 
     try {
-        sessionStorage.setItem('webServiceConnectionInfo', JSON.stringify(connectionInfo));
-    } catch (e) {
-        console.warn('Could not store in sessionStorage:', e);
-    }
-}
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Importing...';
+        }
 
-/**
- * Retrieves stored Web Service connection info.
- */
-function getStoredWebServiceConnectionInfo() {
-    let connectionInfo = window.webServiceConnectionInfo;
+        const response = await fetch('/Import/ImportWebServiceVariablesWithTrends', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                variables: selectedVariables,
+                skipExisting: existingMode === 'skip',
+                updateExisting: existingMode !== 'skip',
+                includeSystemVariables,
+                importTrendsData: true,
+                trendsStartDate: dateRange.startDate,
+                trendsEndDate: dateRange.endDate,
+                connectionId: connection.connectionId || ''
+            })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || data.errorMessage || `HTTP ${response.status}`);
+        }
 
-    // If not in memory, try sessionStorage
-    if (!connectionInfo) {
-        try {
-            const stored = sessionStorage.getItem('webServiceConnectionInfo');
-            if (stored) {
-                connectionInfo = JSON.parse(stored);
-                window.webServiceConnectionInfo = connectionInfo; // Restore to memory
+        const parts = [
+            `Imported: ${data.importedCount || 0}`,
+            `Updated: ${data.updatedCount || 0}`,
+            `Skipped: ${data.skippedCount || 0}`,
+            `Errors: ${data.errorCount || 0}`
+        ];
+        if (data.filteredSystemCount) parts.push(`System variables filtered: ${data.filteredSystemCount}`);
+        if (data.trendsStarted) parts.push('Historical trends started in background');
+
+        showWebServiceStatus(data.errorCount ? 'warning' : 'success', parts.join(' · '));
+
+        // Update the visual state immediately. The next browse will re-read the DB.
+        document.querySelectorAll('.web-service-variable-row').forEach(row => {
+            if (!row.querySelector('.web-service-variable-checkbox')?.checked) return;
+            if (!row.querySelector('.badge.bg-light')) {
+                const nameCell = row.cells[2];
+                nameCell?.insertAdjacentHTML('beforeend', '<span class="badge bg-light text-dark border ms-2">Existing</span>');
             }
-        } catch (e) {
-            console.warn('Could not retrieve from sessionStorage:', e);
+        });
+    } catch (error) {
+        showWebServiceStatus('danger', `Web Service import failed: ${error.message}`);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = oldHtml || '<i class="bi bi-cloud-upload"></i> Import Selected Variables';
         }
+        if (typeof updateMeterCounter === 'function') updateMeterCounter();
     }
-
-    // If still not available, try to get from current selection
-    if (!connectionInfo) {
-        const connectionSelect = document.getElementById('webServiceConnection');
-        if (connectionSelect && connectionSelect.value) {
-            const selectedOption = connectionSelect.querySelector(`option[value="${connectionSelect.value}"]`);
-            connectionInfo = {
-                connectionId: connectionSelect.value,
-                connectionName: selectedOption ? selectedOption.textContent : connectionSelect.value
-            };
-            storeWebServiceConnectionInfo(connectionInfo); // Store it
-        }
-    }
-
-    console.log('Retrieved connection info:', connectionInfo);
-    return connectionInfo || {};
 }
 
+function collectSelectedWebServiceVariables() {
+    const includeSystemVariables = Boolean(document.getElementById('includeSystemVariables')?.checked);
+    const result = [];
 
-/**
-* Set up WebService date range functionality
-*/
+    selectedWebServiceRows().forEach(row => {
+        const variableName = row.dataset.variableName || '';
+        if (!variableName) return;
+        if (!includeSystemVariables && isSystemVariablePath(variableName)) return;
+
+        const index = row.dataset.variableIndex;
+        result.push({
+            variableName,
+            unit: row.querySelector('.web-service-unit-input')?.value.trim() || '',
+            type: row.querySelector('.web-service-type-select')?.value || 'main',
+            parentMeterId: row.querySelector('.web-service-parent-select')?.value || '',
+            active: Boolean(row.querySelector('.web-service-active-checkbox')?.checked),
+            variableType: row.cells[7]?.textContent.trim() || '',
+            isReadOnly: row.cells[8]?.textContent.trim().toLowerCase() === 'yes',
+            isSelected: true
+        });
+    });
+
+    return result;
+}
+
+function selectedWebServiceRows() {
+    return Array.from(document.querySelectorAll('.web-service-variable-row')).filter(row =>
+        row.querySelector('.web-service-variable-checkbox')?.checked
+    );
+}
+
+function isSystemVariablePath(path) {
+    if (!path) return false;
+    return path
+        .split(/[./\\]+/)
+        .filter(Boolean)
+        .some(segment => segment.replace(/^[$@_]+/, '').toLowerCase() === 'system');
+}
+
+function storeWebServiceConnectionInfo(connectionInfo) {
+    if (!connectionInfo?.connectionId) return;
+    window.webServiceConnectionInfo = connectionInfo;
+    try {
+        sessionStorage.setItem('webServiceConnectionInfo', JSON.stringify(connectionInfo));
+    } catch (_) { }
+}
+
+function getStoredWebServiceConnectionInfo() {
+    if (window.webServiceConnectionInfo?.connectionId) return window.webServiceConnectionInfo;
+    try {
+        const value = sessionStorage.getItem('webServiceConnectionInfo');
+        if (value) {
+            const parsed = JSON.parse(value);
+            if (parsed?.connectionId) {
+                window.webServiceConnectionInfo = parsed;
+                return parsed;
+            }
+        }
+    } catch (_) { }
+
+    const select = document.getElementById('webServiceConnection');
+    const option = select?.selectedOptions?.[0];
+    return select?.value
+        ? { connectionId: select.value, connectionName: option?.dataset.connectionName || option?.textContent || select.value }
+        : {};
+}
+
 function setupWebServiceDateRange() {
-    console.log('Setting up WebService date range...');
+    const start = document.getElementById('webServiceStartDate');
+    const end = document.getElementById('webServiceEndDate');
+    if (!start || !end) return;
 
-    // Initialize default date range
-    initializeWebServiceDateRange();
+    if (!start.value || !end.value) setWebServiceQuickRange(24, 'hours');
 
-    // Setup quick range buttons
-    setupWebServiceQuickRangeButtons();
-
-    // Setup date validation
-    setupWebServiceDateValidation();
-}
-
-/**
-* Initialize default WebService date range (last 24 hours)
-*/
-function initializeWebServiceDateRange() {
-    const endDateInput = document.getElementById('webServiceEndDate');
-    const startDateInput = document.getElementById('webServiceStartDate');
-
-    if (!endDateInput || !startDateInput) {
-        console.warn('WebService date inputs not found');
-        return;
-    }
-
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    endDateInput.value = formatDateTimeLocal(now);
-    startDateInput.value = formatDateTimeLocal(yesterday);
-
-    console.log('WebService date range initialized');
-}
-
-
-/**
- * Format Date object to HTML datetime-local string
- */
-function formatDateTimeLocal(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function setupWebServiceQuickRangeButtons() {
-    const btn24h = document.getElementById('wsQuickRange24h');
-    const btn7d = document.getElementById('wsQuickRange7d');
-    const btn30d = document.getElementById('wsQuickRange30d');
-
-    console.log('Setting up quick range buttons...', {
-        btn24h: !!btn24h,
-        btn7d: !!btn7d,
-        btn30d: !!btn30d
+    document.getElementById('wsQuickRange24h')?.addEventListener('click', event => {
+        event.preventDefault(); setWebServiceQuickRange(24, 'hours'); highlightQuickRange('wsQuickRange24h');
+    });
+    document.getElementById('wsQuickRange7d')?.addEventListener('click', event => {
+        event.preventDefault(); setWebServiceQuickRange(7, 'days'); highlightQuickRange('wsQuickRange7d');
+    });
+    document.getElementById('wsQuickRange30d')?.addEventListener('click', event => {
+        event.preventDefault(); setWebServiceQuickRange(30, 'days'); highlightQuickRange('wsQuickRange30d');
     });
 
-    if (btn24h) {
-        btn24h.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('24h button clicked');
-            setWebServiceQuickRange(24, 'hours');
-            highlightActiveWebServiceQuickRange('wsQuickRange24h');
-        });
-    } else {
-        console.warn('24h button not found');
-    }
-
-    if (btn7d) {
-        btn7d.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('7d button clicked');
-            setWebServiceQuickRange(7, 'days');
-            highlightActiveWebServiceQuickRange('wsQuickRange7d');
-        });
-    } else {
-        console.warn('7d button not found');
-    }
-
-    if (btn30d) {
-        btn30d.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('30d button clicked');
-            setWebServiceQuickRange(30, 'days');
-            highlightActiveWebServiceQuickRange('wsQuickRange30d');
-        });
-    } else {
-        console.warn('30d button not found');
-    }
+    start.addEventListener('change', validateWebServiceDateRange);
+    end.addEventListener('change', validateWebServiceDateRange);
 }
 
-
-
-
-/**
- * Set WebService start and end dates to a quick range
- */
 function setWebServiceQuickRange(amount, unit) {
-    console.log(`Setting quick range: ${amount} ${unit}`);
+    const endDate = new Date();
+    const startDate = new Date(endDate);
+    if (unit === 'hours') startDate.setHours(startDate.getHours() - amount);
+    else startDate.setDate(startDate.getDate() - amount);
 
-    const now = new Date();
-    const startDate = new Date();
-
-    if (unit === 'hours') {
-        startDate.setHours(startDate.getHours() - amount);
-    } else if (unit === 'days') {
-        startDate.setDate(startDate.getDate() - amount);
-    }
-
-    const endDateInput = document.getElementById('webServiceEndDate');
-    const startDateInput = document.getElementById('webServiceStartDate');
-
-    if (endDateInput && startDateInput) {
-        endDateInput.value = formatDateTimeLocal(now);
-        startDateInput.value = formatDateTimeLocal(startDate);
-
-        console.log('Date range set:', {
-            start: startDateInput.value,
-            end: endDateInput.value
-        });
-
-        validateWebServiceDateRange();
-    } else {
-        console.error('Date inputs not found');
-    }
+    const start = document.getElementById('webServiceStartDate');
+    const end = document.getElementById('webServiceEndDate');
+    if (start) start.value = formatDateTimeLocal(startDate);
+    if (end) end.value = formatDateTimeLocal(endDate);
 }
 
-/**
- * Highlight the active quick-range button
- */
-function highlightActiveWebServiceQuickRange(activeId) {
+function highlightQuickRange(activeId) {
     ['wsQuickRange24h', 'wsQuickRange7d', 'wsQuickRange30d'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) {
-            btn.classList.toggle('btn-secondary', id === activeId);
-            btn.classList.toggle('btn-outline-secondary', id !== activeId);
-        }
+        const button = document.getElementById(id);
+        if (!button) return;
+        button.classList.toggle('btn-secondary', id === activeId);
+        button.classList.toggle('btn-outline-secondary', id !== activeId);
     });
 }
 
-/**
- * Setup date validation for WebService inputs
- */
-function setupWebServiceDateValidation() {
-    const startDateInput = document.getElementById('webServiceStartDate');
-    const endDateInput = document.getElementById('webServiceEndDate');
-
-    if (startDateInput) startDateInput.addEventListener('change', validateWebServiceDateRange);
-    if (endDateInput) endDateInput.addEventListener('change', validateWebServiceDateRange);
-}
-
-/**
- * Validate WebService date range selection
- */
 function validateWebServiceDateRange() {
-    const startDateInput = document.getElementById('webServiceStartDate');
-    const endDateInput = document.getElementById('webServiceEndDate');
-
-    if (!startDateInput || !endDateInput) return true;
-
-    const startDate = new Date(startDateInput.value);
-    const endDate = new Date(endDateInput.value);
-
-    startDateInput.classList.remove('is-invalid');
-    endDateInput.classList.remove('is-invalid');
-
-    if (startDate >= endDate) {
-        endDateInput.classList.add('is-invalid');
-        console.warn('Invalid WebService date range');
-        return false;
-    }
-
-    const oneYear = 365 * 24 * 60 * 60 * 1000;
-    if (endDate - startDate > oneYear) {
-        startDateInput.classList.add('is-invalid');
-        endDateInput.classList.add('is-invalid');
-        return false;
-    }
-    return true;
+    const range = getSelectedDateRange();
+    if (!range.startDate || !range.endDate) return true;
+    const valid = new Date(range.startDate) < new Date(range.endDate);
+    if (!valid) showWebServiceStatus('warning', 'Trends start date must be before the end date.');
+    return valid;
 }
 
-function validateImportRequest() {
-    const selectedVariables = collectSelectedWebServiceVariables();
-    const dateRange = getSelectedDateRange();
-    const connectionInfo = getStoredWebServiceConnectionInfo();
-
-    console.log('Validating import request...');
-
-    if (!selectedVariables.length) {
-        console.warn('No variables selected');
-        return false;
-    }
-
-    if (!connectionInfo.connectionId) {
-        console.warn('No connection ID available');
-        // This is okay for meter-only import, just warn
-    }
-
-    if (!dateRange.startDate || !dateRange.endDate) {
-        console.warn('Date range not set - trends will be skipped');
-        // This is okay, just importing meters without trends
-    }
-
-    console.log('Import request validation passed');
-    return true;
-}
-
-/**
- * Get selected date range for WebServices (reusable function)
- */
 function getSelectedDateRange() {
-    const startDateInput = document.getElementById('webServiceStartDate');
-    const endDateInput = document.getElementById('webServiceEndDate');
-
-    const dateRange = {
-        startDate: startDateInput?.value || null,
-        endDate: endDateInput?.value || null
+    const start = document.getElementById('webServiceStartDate')?.value || null;
+    const end = document.getElementById('webServiceEndDate')?.value || null;
+    return {
+        startDate: start ? new Date(start).toISOString() : null,
+        endDate: end ? new Date(end).toISOString() : null
     };
-
-    // Validate date range
-    if (dateRange.startDate && dateRange.endDate) {
-        const start = new Date(dateRange.startDate);
-        const end = new Date(dateRange.endDate);
-
-        if (start >= end) {
-            console.warn('Invalid date range: start date must be before end date');
-        } else {
-            const duration = (end - start) / (1000 * 60 * 60 * 24);
-            console.log(`Date range: ${duration.toFixed(1)} days`);
-        }
-    }
-
-    console.log(' Getting date range:', dateRange);
-    return dateRange;
 }
 
+function formatDateTimeLocal(date) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
-function buildWebServicePrintRequest(selectedVariables) {
-    const connectionInfo = getStoredWebServiceConnectionInfo();
-    const dateRange = getSelectedDateRange();
+function normalizeVariablePath(value) {
+    return String(value || '').trim().replace(/^\.+/, '');
+}
 
-    return {
-        connectionId: connectionInfo.connectionId || '',
-        connectionName: connectionInfo.connectionName || '',
-        selectedVariables: selectedVariables,
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate
-    };
+function normalizeMeterType(value) {
+    return String(value || '').toLowerCase() === 'sub' ? 'sub' : 'main';
+}
+
+function shortType(value) {
+    const normalized = String(value || '').toLowerCase();
+    if (['numeric', 'real', 'double', 'register'].includes(normalized)) return 'NUM';
+    if (['boolean', 'bool'].includes(normalized)) return 'BOOL';
+    if (['string', 'text'].includes(normalized)) return 'TXT';
+    return String(value || 'VAR').slice(0, 4).toUpperCase();
+}
+
+function lookupCaseInsensitive(object, key) {
+    if (!object || !key) return undefined;
+    if (Object.prototype.hasOwnProperty.call(object, key)) return object[key];
+    const found = Object.keys(object).find(candidate => candidate.toLowerCase() === key.toLowerCase());
+    return found ? object[found] : undefined;
+}
+
+function cssEscape(value) {
+    if (window.CSS?.escape) return window.CSS.escape(String(value));
+    return String(value).replace(/["\\]/g, '\\$&');
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function escapeAttribute(value) {
+    return escapeHtml(value).replaceAll('`', '&#096;');
 }
