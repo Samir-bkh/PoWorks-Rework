@@ -276,6 +276,9 @@
     -->
     @await RenderSectionAsync("Scripts", required: false)
 
+    @* Safe progressive enhancement for the PCVue Web Services import page. *@
+    <script src="~/js/import/webservices_import_v2.js" asp-append-version="true"></script>
+
 
 </body>
 
