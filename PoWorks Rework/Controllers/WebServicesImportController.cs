@@ -3,311 +3,421 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using NpgsqlTypes;
 using PoWorks_Rework.Models;
-using PoWorks_Rework.Repositories;
 using PoWorks_Rework.Services;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 namespace PoWorks_Rework.Controllers
 {
     /// <summary>
-    /// Controller for importing meters and trends data from PCVue web services.
-    /// Handles variable browsing, meter import, and background trends data retrieval.
+    /// PCVue Web Services import pipeline: browse, inspect, enrich and upsert meters,
+    /// then optionally import historical trends in the background.
     /// </summary>
     [Authorize(Policy = "ImportExportAccess")]
     public class WebServicesImportController : Controller
     {
-        #region Dependencies
-
         private readonly ILogger<WebServicesImportController> _logger;
         private readonly DatabaseService _databaseService;
         private readonly VariableBrowseParsingService _variableBrowseParsingService;
-        private readonly TrendsService _trendsService;
-        private readonly MeterRepository _meterRepository;
         private readonly PCVueWebService _pcvueWebService;
         private readonly ICompanyContext _companyContext;
         private readonly EncryptionService _encryptionService;
-
-        // Factory for creating background services without them being destroyed
         private readonly IServiceScopeFactory _scopeFactory;
 
-        /// <summary>
-        /// Initializes the web services import controller with its dependencies.
-        /// </summary>
         public WebServicesImportController(
             ILogger<WebServicesImportController> logger,
             DatabaseService databaseService,
             VariableBrowseParsingService variableBrowseParsingService,
-            TrendsService trendsService,
-            MeterRepository meterRepository,
             PCVueWebService pcvueWebService,
             ICompanyContext companyContext,
             EncryptionService encryptionService,
-            IServiceScopeFactory scopeFactory) // Injection here
+            IServiceScopeFactory scopeFactory)
         {
             _logger = logger;
             _databaseService = databaseService;
             _variableBrowseParsingService = variableBrowseParsingService;
-            _trendsService = trendsService;
-            _meterRepository = meterRepository;
             _pcvueWebService = pcvueWebService;
             _companyContext = companyContext;
             _encryptionService = encryptionService;
             _scopeFactory = scopeFactory;
         }
 
-        #endregion
-
-        #region WebServices Functions
-
-        /// <summary>
-        /// Prints the selected web service meters.
-        /// </summary>
-        /// <param name="request">The request containing the selected variables.</param>
-        /// <returns>JSON with the count of selected variables.</returns>
         [HttpPost]
         public IActionResult PrintWebServiceMeters([FromBody] PrintWebServiceMetersRequest request)
+            => Json(new { success = true, count = request?.SelectedVariables?.Count ?? 0 });
+
+        /// <summary>
+        /// Browses PCVue variables. System variables are filtered server-side when the
+        /// option is disabled, then current PoWorks meter metadata is merged into the
+        /// response so re-imports are visible and safe.
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
         {
             try
             {
-                return Json(new { success = true, count = request?.SelectedVariables?.Count ?? 0 });
+                if (!_databaseService.IsInitialized)
+                    return Json(new { success = false, message = "Database connection not initialized" });
+
+                var connection = await GetWebServiceConnectionById(request.ConnectionId);
+                if (connection == null)
+                    return Json(new { success = false, message = "Web Service connection not found" });
+
+                var maxVariables = Math.Clamp(request.MaxVariables, 1, 1_000_000);
+                var endpoint = BuildVariablesBrowseUrl(connection.BaseUrl, request.BranchFilter, request.Depth, request.VariableType, maxVariables);
+
+                var token = await _pcvueWebService.GetValidAccessTokenAsync(connection);
+                if (string.IsNullOrWhiteSpace(token))
+                    return Json(new { success = false, message = "Failed to authenticate with PCVue" });
+
+                using var firstResponse = await SendBrowseRequestAsync(endpoint, token);
+                HttpResponseMessage response = firstResponse;
+                string responseContent;
+
+                if (firstResponse.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    token = await _pcvueWebService.GetValidAccessTokenAsync(connection, forceRefresh: true);
+                    if (string.IsNullOrWhiteSpace(token))
+                        return Json(new { success = false, message = "PCVue session expired and could not be refreshed" });
+
+                    using var retryResponse = await SendBrowseRequestAsync(endpoint, token);
+                    responseContent = await retryResponse.Content.ReadAsStringAsync();
+                    if (!retryResponse.IsSuccessStatusCode)
+                        return Json(new { success = false, message = BuildApiError("Variables browse", retryResponse, responseContent) });
+                }
+                else
+                {
+                    responseContent = await firstResponse.Content.ReadAsStringAsync();
+                    if (!firstResponse.IsSuccessStatusCode)
+                        return Json(new { success = false, message = BuildApiError("Variables browse", firstResponse, responseContent) });
+                }
+
+                var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                var parsed = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData, request.IncludeSystemVariables);
+                if (!parsed.Success)
+                    return Json(new { success = false, message = parsed.ErrorMessage });
+
+                var companyId = _companyContext.CurrentCompanyId;
+                var snapshot = await LoadMeterSnapshotAsync(companyId);
+
+                var variables = parsed.Variables.Select(variable =>
+                {
+                    snapshot.ByName.TryGetValue(variable.FullPath, out var existing);
+                    return new
+                    {
+                        variable.FullPath,
+                        variable.Branches,
+                        variable.VariableName,
+                        variable.VariableType,
+                        variable.IsReadOnly,
+                        variable.IsLeaf,
+                        variable.IsSystemVariable,
+                        existingMeterId = existing?.MeterId,
+                        existingUnit = existing?.Unit ?? string.Empty,
+                        existingType = existing?.Type ?? string.Empty,
+                        existingActive = existing?.Active,
+                        existingParentId = existing?.ParentId
+                    };
+                }).ToList();
+
+                return Json(new
+                {
+                    success = true,
+                    message = $"Variables browse completed. Found {variables.Count} variable(s).",
+                    variables,
+                    totalVariables = variables.Count,
+                    filteredSystemVariables = parsed.FilteredSystemVariables,
+                    parentOptions = snapshot.ParentOptions,
+                    connectionInfo = new
+                    {
+                        connectionId = connection.ConnectionId,
+                        connectionName = connection.ConnectionName
+                    }
+                });
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "PCVue variables browse failed.");
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
         /// <summary>
-        /// Imports web service variables as meters and optionally starts a background trends data import.
+        /// Fetches engineering units for selected variables using PCVue BulkRead.
+        /// Browse itself does not return Unit, so this is intentionally an explicit
+        /// enrichment step and is batched to avoid oversized requests.
         /// </summary>
-        /// <param name="request">The import request containing variables, connection, and trends options.</param>
-        /// <returns>JSON with import counts and a message about background processing.</returns>
-        [HttpPost("/Import/ImportWebServiceVariablesWithTrends")]
-        public async Task<IActionResult> ImportWebServiceMeters([FromBody] ImportWebServiceVariablesWithTrendsRequest request)
+        [HttpPost]
+        public async Task<IActionResult> ResolveVariableUnits([FromBody] ResolveVariableUnitsRequest request)
         {
             try
             {
-                if (request?.Variables == null || request.Variables.Count == 0)
+                var names = request.VariableNames
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => name.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(5000)
+                    .ToList();
+
+                if (names.Count == 0)
+                    return Json(new { success = true, units = new Dictionary<string, string>() });
+
+                var settings = await GetWebServiceConnectionById(request.ConnectionId);
+                if (settings == null)
+                    return Json(new { success = false, error = "Web Service connection not found" });
+
+                var units = await ResolvePcVueUnitsAsync(settings, names);
+                return Json(new
+                {
+                    success = true,
+                    units,
+                    resolvedCount = units.Count(pair => !string.IsNullOrWhiteSpace(pair.Value)),
+                    requestedCount = names.Count
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to resolve PCVue units.");
+                return Json(new { success = false, error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Imports or re-imports selected variables. Existing meters can now actually
+        /// be updated: unit/type/active metadata are changed while tenant assignment,
+        /// custom label, readings and other business data remain untouched.
+        /// </summary>
+        [HttpPost("/Import/ImportWebServiceVariablesWithTrends")]
+        public async Task<IActionResult> ImportWebServiceMeters([FromBody] WebServiceVariableImportRequest request)
+        {
+            try
+            {
+                if (request.Variables == null || request.Variables.Count == 0)
                     return Json(new { success = false, error = "No variables provided for import" });
 
                 if (!_databaseService.IsInitialized)
                     return Json(new { success = false, error = "Database connection not initialized" });
 
-                int companyId = _companyContext.CurrentCompanyId;
+                var variables = request.Variables
+                    .Where(variable => !string.IsNullOrWhiteSpace(variable.VariableName))
+                    .GroupBy(variable => variable.VariableName.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.Last())
+                    .ToList();
 
-                PCVueWebServiceSettings trendsSettings = null;
-                bool processTrends = request.ImportTrendsData &&
-                                     !string.IsNullOrEmpty(request.ConnectionId) &&
-                                     request.TrendsStartDate.HasValue &&
-                                     request.TrendsEndDate.HasValue;
-
-                if (processTrends)
+                var filteredSystemCount = 0;
+                if (!request.IncludeSystemVariables)
                 {
-                    trendsSettings = await GetWebServiceConnectionById(request.ConnectionId);
-                    if (trendsSettings == null) processTrends = false;
-                }
-
-                int importedCount = 0, updatedCount = 0, skippedCount = 0, errorCount = 0;
-                var meterIdsMap = new Dictionary<string, int>();
-
-                // 1. IMPORT METER NAMES (Fast, blocks the UI for max 1 second)
-                using (var connection = new NpgsqlConnection(_databaseService.GetConnectionString()))
-                {
-                    await connection.OpenAsync();
-                    using var transaction = await connection.BeginTransactionAsync();
-                    try
+                    var safeVariables = new List<WebServiceVariableWithTrends>();
+                    foreach (var variable in variables)
                     {
-                        foreach (var variable in request.Variables)
+                        if (VariableBrowseParsingService.IsSystemVariablePath(variable.VariableName))
                         {
-                            try
-                            {
-                                var checkCommand = new NpgsqlCommand(@"SELECT ""MeterId"" FROM ""Meters"" WHERE ""Name"" = @meterName AND ""CompanyId"" = @companyId", connection, transaction);
-                                checkCommand.Parameters.AddWithValue("@meterName", variable.VariableName);
-                                checkCommand.Parameters.AddWithValue("@companyId", companyId);
-                                var existingMeterId = await checkCommand.ExecuteScalarAsync();
-
-                                if (existingMeterId != null)
-                                {
-                                    meterIdsMap[variable.VariableName] = Convert.ToInt32(existingMeterId);
-                                    if (request.SkipExisting) skippedCount++;
-                                    else if (request.UpdateExisting) updatedCount++;
-                                    else skippedCount++;
-                                }
-                                else
-                                {
-                                    var insertCommand = new NpgsqlCommand(@"
-                                INSERT INTO ""Meters"" (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
-                                VALUES (@name, @label, @unit, @parentId, @lastReading, @type, @active, @tenantId, @companyId)
-                                RETURNING ""MeterId""", connection, transaction);
-
-                                    insertCommand.Parameters.AddWithValue("@name", variable.VariableName);
-                                    insertCommand.Parameters.AddWithValue("@label", variable.VariableName);
-                                    insertCommand.Parameters.AddWithValue("@unit", variable.Unit ?? "");
-                                    insertCommand.Parameters.AddWithValue("@parentId", DBNull.Value);
-                                    insertCommand.Parameters.AddWithValue("@lastReading", 0);
-                                    insertCommand.Parameters.AddWithValue("@type", string.IsNullOrEmpty(variable.Type) ? "main" : variable.Type.ToLower());
-                                    insertCommand.Parameters.AddWithValue("@active", variable.Active);
-                                    insertCommand.Parameters.AddWithValue("@tenantId", DBNull.Value);
-                                    insertCommand.Parameters.AddWithValue("@companyId", companyId);
-
-                                    var newMeterId = await insertCommand.ExecuteScalarAsync();
-                                    meterIdsMap[variable.VariableName] = Convert.ToInt32(newMeterId);
-                                    importedCount++;
-                                }
-                            }
-                            catch (Exception)
-                            {
-                                errorCount++;
-                            }
+                            filteredSystemCount++;
+                            continue;
                         }
-                        await transaction.CommitAsync();
+                        safeVariables.Add(variable);
                     }
-                    catch (Exception) { await transaction.RollbackAsync(); throw; }
+                    variables = safeVariables;
                 }
 
-                // 2. LAUNCH THE HISTORY IMPORT IN BACKGROUND (Fire-and-Forget)
-                if (processTrends && meterIdsMap.Any())
+                if (variables.Count == 0)
                 {
-                    // Copy the variables for the background thread
-                    var bgVariableNamesList = meterIdsMap.Keys.ToList();
-                    var bgStartDate = request.TrendsStartDate.Value;
-                    var bgEndDate = request.TrendsEndDate.Value;
-                    var bgSettings = trendsSettings;
-                    var bgMeterIdsMap = new Dictionary<string, int>(meterIdsMap);
-                    var bgCompanyId = companyId;
-
-                    // Launch the background task that runs independently
-                    _ = Task.Run(async () =>
+                    return Json(new
                     {
-                        // Create a protected "Scope" that will not be destroyed by the web page
-                        using var scope = _scopeFactory.CreateScope();
-                        var bgTrendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
-                        var bgDbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-                        var bgLogger = scope.ServiceProvider.GetRequiredService<ILogger<WebServicesImportController>>();
-
-                        await ImportLock.Gate.WaitAsync(); // Protects the database
-                        try
-                        {
-                            bgLogger.LogInformation("Background Trends Import Started for {Count} variables...", bgVariableNamesList.Count);
-
-                            // The call that takes 5 minutes happens here, silently!
-                            var trendsResults = await bgTrendsService.ProcessVariablesTrendsAsync(bgVariableNamesList, bgStartDate, bgEndDate, bgSettings);
-
-                            using var conn = new NpgsqlConnection(bgDbService.GetConnectionString());
-                            await conn.OpenAsync();
-                            using var tx = await conn.BeginTransactionAsync();
-
-                            try
-                            {
-                                using (var tempTableCmd = new NpgsqlCommand(@"
-                                    CREATE TEMP TABLE ""TempMeterReadingsManual"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
-                                    ALTER TABLE ""TempMeterReadingsManual"" DROP COLUMN ""ReadingId"";
-                                ", conn, tx))
-                                {
-                                    await tempTableCmd.ExecuteNonQueryAsync();
-                                }
-
-                                using (var writer = await conn.BeginBinaryImportAsync(@"COPY ""TempMeterReadingsManual"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") FROM STDIN (FORMAT BINARY)"))
-                                {
-                                    foreach (var res in trendsResults)
-                                    {
-                                        if (!res.Success || res.TrendData == null || !res.TrendData.Any()) continue;
-                                        int currentMeterId = bgMeterIdsMap[res.VariableName];
-
-                                        foreach (var point in res.TrendData)
-                                        {
-                                            if (!point.TimestampParsed.HasValue) continue;
-                                            await writer.StartRowAsync();
-                                            await writer.WriteAsync(currentMeterId, NpgsqlDbType.Integer);
-                                            await writer.WriteAsync(point.TimestampParsed.Value, NpgsqlDbType.Timestamp);
-                                            await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric);
-                                            await writer.WriteAsync(point.IsGoodQuality ? 192 : 0, NpgsqlDbType.Integer);
-                                            await writer.WriteAsync(bgCompanyId, NpgsqlDbType.Integer);
-                                        }
-                                    }
-                                    await writer.CompleteAsync();
-                                }
-
-                                using (var insertCmd = new NpgsqlCommand(@"
-                                    INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
-                                    SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId""
-                                    FROM ""TempMeterReadingsManual""
-                                    ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", conn, tx))
-                                {
-                                    insertCmd.CommandTimeout = 300;
-                                    await insertCmd.ExecuteNonQueryAsync();
-                                }
-
-                                await tx.CommitAsync();
-                                bgLogger.LogInformation("SUCCESS: Background Trends bulk insert completed!");
-                            }
-                            catch (Exception ex)
-                            {
-                                await tx.RollbackAsync();
-                                bgLogger.LogError(ex, "ERROR during background bulk insert");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            bgLogger.LogError(ex, "Fatal error in background task");
-                        }
-                        finally
-                        {
-                            ImportLock.Gate.Release();
-                        }
+                        success = true,
+                        importedCount = 0,
+                        updatedCount = 0,
+                        skippedCount = 0,
+                        errorCount = 0,
+                        filteredSystemCount,
+                        message = "No importable variables remained after filtering system variables."
                     });
                 }
 
-                // 3. INSTANT RESPONSE TO THE WEB INTERFACE
+                var companyId = _companyContext.CurrentCompanyId;
+                var meterIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var errors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var importedCount = 0;
+                var updatedCount = 0;
+                var skippedCount = 0;
+
+                await using (var connection = _databaseService.CreateNewConnection())
+                {
+                    await connection.OpenAsync();
+                    await using var transaction = await connection.BeginTransactionAsync();
+
+                    try
+                    {
+                        foreach (var variable in variables)
+                        {
+                            var variableName = variable.VariableName.Trim();
+                            try
+                            {
+                                var existing = await FindExistingMeterAsync(connection, transaction, companyId, variableName);
+                                if (existing != null)
+                                {
+                                    meterIds[variableName] = existing.MeterId;
+
+                                    if (request.SkipExisting || !request.UpdateExisting)
+                                    {
+                                        skippedCount++;
+                                        continue;
+                                    }
+
+                                    var resolvedUnit = WebServiceMeterImportRules.ResolveUnit(existing.Unit, variable.Unit);
+                                    var resolvedType = WebServiceMeterImportRules.ResolveMeterType(existing.Type, variable.Type);
+                                    var requestedParentId = WebServiceMeterImportRules.ParseParentId(variable.ParentMeterId);
+                                    var resolvedParentId = await ResolveParentIdAsync(
+                                        connection,
+                                        transaction,
+                                        companyId,
+                                        existing.MeterId,
+                                        requestedParentId,
+                                        existing.ParentId);
+
+                                    await using var update = new NpgsqlCommand(@"
+                                        UPDATE ""Meters""
+                                        SET ""Unit"" = @unit,
+                                            ""Type"" = @type,
+                                            ""Active"" = @active,
+                                            ""ParentId"" = @parentId
+                                        WHERE ""MeterId"" = @meterId
+                                          AND ""CompanyId"" = @companyId", connection, transaction);
+                                    update.Parameters.AddWithValue("unit", resolvedUnit);
+                                    update.Parameters.AddWithValue("type", resolvedType);
+                                    update.Parameters.AddWithValue("active", variable.Active);
+                                    AddNullableInt(update, "parentId", resolvedParentId);
+                                    update.Parameters.AddWithValue("meterId", existing.MeterId);
+                                    update.Parameters.AddWithValue("companyId", companyId);
+                                    await update.ExecuteNonQueryAsync();
+                                    updatedCount++;
+                                }
+                                else
+                                {
+                                    var parentId = await ResolveParentIdAsync(
+                                        connection,
+                                        transaction,
+                                        companyId,
+                                        meterId: null,
+                                        WebServiceMeterImportRules.ParseParentId(variable.ParentMeterId),
+                                        existingParentId: null);
+
+                                    await using var insert = new NpgsqlCommand(@"
+                                        INSERT INTO ""Meters"
+                                            (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
+                                        VALUES
+                                            (@name, @label, @unit, @parentId, 0, @type, @active, NULL, @companyId)
+                                        RETURNING ""MeterId""", connection, transaction);
+                                    insert.Parameters.AddWithValue("name", variableName);
+                                    insert.Parameters.AddWithValue("label", variableName);
+                                    insert.Parameters.AddWithValue("unit", WebServiceMeterImportRules.ResolveUnit(null, variable.Unit));
+                                    AddNullableInt(insert, "parentId", parentId);
+                                    insert.Parameters.AddWithValue("type", WebServiceMeterImportRules.ResolveMeterType(null, variable.Type));
+                                    insert.Parameters.AddWithValue("active", variable.Active);
+                                    insert.Parameters.AddWithValue("companyId", companyId);
+
+                                    var newMeterId = Convert.ToInt32(await insert.ExecuteScalarAsync());
+                                    meterIds[variableName] = newMeterId;
+                                    importedCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                errors[variableName] = ex.Message;
+                                _logger.LogWarning(ex, "Unable to import PCVue variable {VariableName}.", variableName);
+                            }
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+
+                var processTrends = request.ImportTrendsData &&
+                                    meterIds.Count > 0 &&
+                                    !string.IsNullOrWhiteSpace(request.ConnectionId) &&
+                                    request.TrendsStartDate.HasValue &&
+                                    request.TrendsEndDate.HasValue &&
+                                    request.TrendsStartDate.Value < request.TrendsEndDate.Value;
+
+                PCVueWebServiceSettings? trendsSettings = null;
+                if (processTrends)
+                {
+                    trendsSettings = await GetWebServiceConnectionById(request.ConnectionId);
+                    processTrends = trendsSettings != null;
+                }
+
+                if (processTrends && trendsSettings != null)
+                {
+                    StartBackgroundTrendsImport(
+                        meterIds,
+                        request.TrendsStartDate!.Value,
+                        request.TrendsEndDate!.Value,
+                        trendsSettings,
+                        companyId);
+                }
+
                 return Json(new
                 {
                     success = true,
                     importedCount,
                     updatedCount,
                     skippedCount,
-                    errorCount,
-                    message = processTrends ? "The meters have been imported. The history (Trends) is being downloaded in the background!" : "Import completed without history."
+                    errorCount = errors.Count,
+                    filteredSystemCount,
+                    detailedErrors = errors,
+                    trendsStarted = processTrends,
+                    message = processTrends
+                        ? "Meter metadata was saved. Historical trends are importing in the background."
+                        : "Meter metadata import completed."
                 });
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "PCVue meter import failed.");
                 return Json(new { success = false, error = ex.Message });
             }
         }
 
-        /// <summary>
-        /// Returns the list of web service connections for the current company.
-        /// </summary>
-        /// <returns>JSON with the available web service connections.</returns>
         [HttpGet]
         public async Task<IActionResult> GetWebServiceConnections()
         {
             try
             {
-                int companyId = _companyContext.CurrentCompanyId;
+                var companyId = _companyContext.CurrentCompanyId;
                 var connections = await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
-                    var list = new List<dynamic>();
-                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault""
-                                   FROM ""WebServiceConnections""
-                                   WHERE ""CompanyId"" = @companyId";
-                    using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    var list = new List<object>();
+                    const string sql = @"
+                        SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ProjectName"", ""IsDefault""
+                        FROM ""WebServiceConnections""
+                        WHERE ""CompanyId"" = @companyId
+                        ORDER BY ""Id""";
+
+                    await using var cmd = new NpgsqlCommand(sql, conn, tr);
                     cmd.Parameters.AddWithValue("companyId", companyId);
-                    using var reader = await cmd.ExecuteReaderAsync();
+                    await using var reader = await cmd.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
                         list.Add(new
                         {
-                            connectionId = reader.GetString(0),
-                            connectionName = reader.GetString(1),
-                            baseUrl = reader.GetString(2),
+                            connectionId = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                            connectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                            baseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
                             projectName = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                            isDefault = reader.GetBoolean(4)
+                            isDefault = !reader.IsDBNull(4) && reader.GetBoolean(4)
                         });
                     }
                     return list;
                 });
-                return Json(new { success = true, connections = connections });
+
+                return Json(new { success = true, connections });
             }
             catch (Exception ex)
             {
@@ -315,109 +425,386 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
-        /// <summary>
-        /// Browses the variables available on a PCVue web service connection.
-        /// </summary>
-        /// <param name="request">The browse request containing connection ID and filter options.</param>
-        /// <returns>JSON with the browsed variables and total count.</returns>
-        [HttpPost]
-        public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
+        private async Task<HttpResponseMessage> SendBrowseRequestAsync(string endpoint, string token)
         {
-            try
-            {
-                var connection = await GetWebServiceConnectionById(request.ConnectionId);
-                if (connection == null) return Json(new { success = false, message = "Web Service connection not found" });
-
-                var token = await _pcvueWebService.GetValidAccessTokenAsync(connection);
-                if (string.IsNullOrEmpty(token)) return Json(new { success = false, message = "Failed to authenticate" });
-
-                var variablesEndpoint = $"{connection.BaseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
-                var queryParams = new List<string> { "Depth=0", "Type=Any", $"Size={request.MaxVariables}" };
-                if (!string.IsNullOrEmpty(request.BranchFilter)) queryParams.Add($"Id={Uri.EscapeDataString(request.BranchFilter)}");
-
-                var fullUrl = $"{variablesEndpoint}?{string.Join("&", queryParams)}";
-                var httpRequest = new HttpRequestMessage(HttpMethod.Get, fullUrl);
-                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-
-                var response = await _pcvueWebService.HttpClient.SendAsync(httpRequest);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                    var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData, request.IncludeSystemVariables);
-
-                    return Json(new
-                    {
-                        success = true,
-                        message = $"Variables browse completed! Found {parseResult.TotalCount} variables.",
-                        variables = parseResult.Variables,
-                        totalVariables = parseResult.TotalCount
-                    });
-                }
-                return Json(new { success = false, message = $"API call failed: {response.StatusCode}" });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, error = ex.Message });
-            }
+            var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            return await _pcvueWebService.HttpClient.SendAsync(request);
         }
 
-        #endregion
+        private static string BuildVariablesBrowseUrl(
+            string baseUrl,
+            string? branchFilter,
+            int depth,
+            string? variableType,
+            int size)
+        {
+            var endpoint = $"{baseUrl.TrimEnd('/')}/RealtimeData/v2/Variables";
+            if (!string.IsNullOrWhiteSpace(branchFilter))
+            {
+                var segments = branchFilter
+                    .Split(new[] { '.', '/', '\\' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(Uri.EscapeDataString);
+                endpoint += "/" + string.Join("/", segments);
+            }
 
-        #region Helper Methods
-        /// <summary>
-        /// Retrieves a web service connection by its ID from the database.
-        /// </summary>
-        /// <param name="connectionId">The connection ID to look up.</param>
-        /// <returns>The matching settings, or null if not found.</returns>
+            var query = new List<string>
+            {
+                $"Depth={Math.Max(0, depth)}",
+                $"Type={Uri.EscapeDataString(string.IsNullOrWhiteSpace(variableType) ? "Any" : variableType)}",
+                $"Size={size}"
+            };
+            return endpoint + "?" + string.Join("&", query);
+        }
+
+        private async Task<MeterSnapshot> LoadMeterSnapshotAsync(int companyId)
+        {
+            var byName = new Dictionary<string, ExistingMeterInfo>(StringComparer.OrdinalIgnoreCase);
+            var parentOptions = new List<object>();
+
+            await using var connection = _databaseService.CreateNewConnection();
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(@"
+                SELECT ""MeterId", ""Name", COALESCE(""Unit", ''), COALESCE(""Type", 'main'), ""Active", ""ParentId"
+                FROM ""Meters"
+                WHERE ""CompanyId"" = @companyId
+                ORDER BY ""Name""", connection);
+            command.Parameters.AddWithValue("companyId", companyId);
+
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var item = new ExistingMeterInfo(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetBoolean(4),
+                    reader.IsDBNull(5) ? null : reader.GetInt32(5));
+
+                byName[item.Name] = item;
+                parentOptions.Add(new
+                {
+                    value = item.MeterId.ToString(),
+                    text = string.IsNullOrWhiteSpace(item.Unit)
+                        ? item.Name
+                        : $"{item.Name} ({item.Unit})"
+                });
+            }
+
+            return new MeterSnapshot(byName, parentOptions);
+        }
+
+        private async Task<ExistingMeterInfo?> FindExistingMeterAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction transaction,
+            int companyId,
+            string name)
+        {
+            await using var command = new NpgsqlCommand(@"
+                SELECT ""MeterId", ""Name", COALESCE(""Unit", ''), COALESCE(""Type", 'main'), ""Active", ""ParentId"
+                FROM ""Meters"
+                WHERE ""Name"" = @name
+                  AND ""CompanyId"" = @companyId
+                LIMIT 1", connection, transaction);
+            command.Parameters.AddWithValue("name", name);
+            command.Parameters.AddWithValue("companyId", companyId);
+
+            await using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            return new ExistingMeterInfo(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetBoolean(4),
+                reader.IsDBNull(5) ? null : reader.GetInt32(5));
+        }
+
+        private static async Task<int?> ResolveParentIdAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction transaction,
+            int companyId,
+            int? meterId,
+            int? requestedParentId,
+            int? existingParentId)
+        {
+            if (!requestedParentId.HasValue) return existingParentId;
+            if (meterId.HasValue && requestedParentId.Value == meterId.Value) return existingParentId;
+
+            await using var command = new NpgsqlCommand(@"
+                SELECT 1
+                FROM ""Meters"
+                WHERE ""MeterId"" = @parentId
+                  AND ""CompanyId"" = @companyId
+                LIMIT 1", connection, transaction);
+            command.Parameters.AddWithValue("parentId", requestedParentId.Value);
+            command.Parameters.AddWithValue("companyId", companyId);
+            return await command.ExecuteScalarAsync() != null ? requestedParentId : existingParentId;
+        }
+
+        private static void AddNullableInt(NpgsqlCommand command, string name, int? value)
+        {
+            var parameter = command.Parameters.Add(name, NpgsqlDbType.Integer);
+            parameter.Value = value.HasValue ? value.Value : DBNull.Value;
+        }
+
+        private async Task<Dictionary<string, string>> ResolvePcVueUnitsAsync(
+            PCVueWebServiceSettings settings,
+            List<string> names)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
+            if (string.IsNullOrWhiteSpace(token))
+                throw new InvalidOperationException("Unable to authenticate with PCVue.");
+
+            foreach (var batch in names.Chunk(200))
+            {
+                var response = await SendBulkReadAsync(settings.BaseUrl, token, batch);
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    response.Dispose();
+                    token = await _pcvueWebService.GetValidAccessTokenAsync(settings, forceRefresh: true);
+                    if (string.IsNullOrWhiteSpace(token))
+                        throw new InvalidOperationException("PCVue session expired while reading variable units.");
+                    response = await SendBulkReadAsync(settings.BaseUrl, token, batch);
+                }
+
+                using (response)
+                {
+                    var raw = await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning("PCVue BulkRead unit lookup failed: {Status} {Body}", response.StatusCode, Truncate(raw, 400));
+                        continue;
+                    }
+
+                    using var document = JsonDocument.Parse(raw);
+                    foreach (var property in document.RootElement.EnumerateObject())
+                    {
+                        var variableName = property.Name;
+                        var unit = string.Empty;
+                        if (TryGetPropertyInsensitive(property.Value, "properties", out var properties) &&
+                            properties.ValueKind == JsonValueKind.Array)
+                        {
+                            var values = properties.EnumerateArray().ToArray();
+                            if (values.Length > 0 && values[0].ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(values[0].GetString()))
+                                variableName = values[0].GetString()!;
+                            if (values.Length > 1 && values[1].ValueKind == JsonValueKind.String)
+                                unit = values[1].GetString()?.Trim() ?? string.Empty;
+                        }
+                        result[variableName] = unit;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private async Task<HttpResponseMessage> SendBulkReadAsync(string baseUrl, string token, IEnumerable<string> variables)
+        {
+            var endpoint = $"{baseUrl.TrimEnd('/')}/RealTimeData/v2/BulkRead";
+            var payload = JsonSerializer.Serialize(new
+            {
+                Variables = variables.ToArray(),
+                Properties = new[] { "VariableName", "Unit" }
+            });
+
+            var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+            return await _pcvueWebService.HttpClient.SendAsync(request);
+        }
+
+        private void StartBackgroundTrendsImport(
+            IReadOnlyDictionary<string, int> meterIds,
+            DateTime startDate,
+            DateTime endDate,
+            PCVueWebServiceSettings settings,
+            int companyId)
+        {
+            var variableNames = meterIds.Keys.ToList();
+            var meterMap = new Dictionary<string, int>(meterIds, StringComparer.OrdinalIgnoreCase);
+
+            _ = Task.Run(async () =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
+                var databaseService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<WebServicesImportController>>();
+
+                await ImportLock.Gate.WaitAsync();
+                try
+                {
+                    logger.LogInformation("Background Trends Import Started for {Count} variables...", variableNames.Count);
+                    var trends = await trendsService.ProcessVariablesTrendsAsync(variableNames, startDate, endDate, settings);
+
+                    await using var connection = new NpgsqlConnection(databaseService.GetConnectionString());
+                    await connection.OpenAsync();
+                    await using var transaction = await connection.BeginTransactionAsync();
+
+                    try
+                    {
+                        await using (var createTemp = new NpgsqlCommand(@"
+                            CREATE TEMP TABLE ""TempMeterReadingsManual"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
+                            ALTER TABLE ""TempMeterReadingsManual"" DROP COLUMN ""ReadingId"";", connection, transaction))
+                        {
+                            await createTemp.ExecuteNonQueryAsync();
+                        }
+
+                        await using (var writer = await connection.BeginBinaryImportAsync(@"
+                            COPY ""TempMeterReadingsManual"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                            FROM STDIN (FORMAT BINARY)"))
+                        {
+                            foreach (var result in trends)
+                            {
+                                if (!result.Success || result.TrendData == null || !meterMap.TryGetValue(result.VariableName, out var meterId))
+                                    continue;
+
+                                foreach (var point in result.TrendData)
+                                {
+                                    if (!point.TimestampParsed.HasValue) continue;
+                                    await writer.StartRowAsync();
+                                    await writer.WriteAsync(meterId, NpgsqlDbType.Integer);
+                                    await writer.WriteAsync(point.TimestampParsed.Value, NpgsqlDbType.Timestamp);
+                                    await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric);
+                                    await writer.WriteAsync(point.IsGoodQuality ? 192 : 0, NpgsqlDbType.Integer);
+                                    await writer.WriteAsync(companyId, NpgsqlDbType.Integer);
+                                }
+                            }
+                            await writer.CompleteAsync();
+                        }
+
+                        await using var insert = new NpgsqlCommand(@"
+                            INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                            SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId""
+                            FROM ""TempMeterReadingsManual""
+                            ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, transaction);
+                        insert.CommandTimeout = 300;
+                        await insert.ExecuteNonQueryAsync();
+                        await transaction.CommitAsync();
+
+                        logger.LogInformation("SUCCESS: Background Trends bulk insert completed!");
+                    }
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        logger.LogError(ex, "ERROR during background Trends bulk insert");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Fatal error in background Trends import");
+                }
+                finally
+                {
+                    ImportLock.Gate.Release();
+                }
+            });
+        }
+
         private async Task<PCVueWebServiceSettings?> GetWebServiceConnectionById(string connectionId)
         {
             try
             {
-                int companyId = _companyContext.CurrentCompanyId;
+                var companyId = _companyContext.CurrentCompanyId;
                 return await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (conn, tr) =>
                 {
-                    string sql = @"SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
-                                          ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
-                                          ""ProjectName"", ""IsDefault""
-                                   FROM ""WebServiceConnections""
-                                   WHERE ""ConnectionId"" = @connId
-                                     AND ""CompanyId"" = @companyId
-                                   LIMIT 1";
+                    const string sql = @"
+                        SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
+                               ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
+                               ""ProjectName"", ""IsDefault""
+                        FROM ""WebServiceConnections"
+                        WHERE ""ConnectionId"" = @connId
+                          AND ""CompanyId"" = @companyId
+                        LIMIT 1";
 
-                    using var cmd = new NpgsqlCommand(sql, conn, tr);
-                    cmd.Parameters.AddWithValue("connId", connectionId);
-                    cmd.Parameters.AddWithValue("companyId", companyId);
-                    using var reader = await cmd.ExecuteReaderAsync();
+                    await using var command = new NpgsqlCommand(sql, conn, tr);
+                    command.Parameters.AddWithValue("connId", connectionId);
+                    command.Parameters.AddWithValue("companyId", companyId);
+                    await using var reader = await command.ExecuteReaderAsync();
+                    if (!await reader.ReadAsync()) return null;
 
-                    if (await reader.ReadAsync())
+                    return new PCVueWebServiceSettings
                     {
-                        return new PCVueWebServiceSettings
-                        {
-                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                            ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                            BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                            ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                            ClientSecret = reader.IsDBNull(4) ? "" : _encryptionService.Decrypt(reader.GetString(4)),
-                            ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
-                            Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
-                            Password = reader.IsDBNull(7) ? "" : _encryptionService.Decrypt(reader.GetString(7)),
-                            AuthType = (AuthenticationType)reader.GetInt32(8),
-                            TimeoutSeconds = reader.GetInt32(9),
-                            ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
-                            IsDefault = reader.GetBoolean(11)
-                        };
-                    }
-                    return null;
+                        ConnectionId = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                        ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                        ClientSecret = reader.IsDBNull(4) ? "" : _encryptionService.Decrypt(reader.GetString(4)),
+                        ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                        Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                        Password = reader.IsDBNull(7) ? "" : _encryptionService.Decrypt(reader.GetString(7)),
+                        AuthType = reader.IsDBNull(8) ? AuthenticationType.OAuth : (AuthenticationType)Convert.ToInt32(reader.GetValue(8)),
+                        TimeoutSeconds = reader.IsDBNull(9) ? 30 : Convert.ToInt32(reader.GetValue(9)),
+                        ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
+                        IsDefault = !reader.IsDBNull(11) && reader.GetBoolean(11)
+                    };
                 });
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning(ex, "Unable to load Web Service connection {ConnectionId}.", connectionId);
                 return null;
             }
         }
-        #endregion
+
+        private static bool TryGetPropertyInsensitive(JsonElement element, string name, out JsonElement value)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                if (element.TryGetProperty(name, out value)) return true;
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        value = property.Value;
+                        return true;
+                    }
+                }
+            }
+            value = default;
+            return false;
+        }
+
+        private static string BuildApiError(string operation, HttpResponseMessage response, string content)
+            => $"{operation} failed: HTTP {(int)response.StatusCode} ({response.StatusCode})" +
+               (string.IsNullOrWhiteSpace(content) ? string.Empty : $" - {Truncate(content, 400)}");
+
+        private static string Truncate(string value, int maxLength)
+            => value.Length <= maxLength ? value : value[..maxLength] + "…";
+
+        private sealed record ExistingMeterInfo(
+            int MeterId,
+            string Name,
+            string Unit,
+            string Type,
+            bool Active,
+            int? ParentId);
+
+        private sealed record MeterSnapshot(
+            Dictionary<string, ExistingMeterInfo> ByName,
+            List<object> ParentOptions);
+    }
+
+    public sealed class WebServiceVariableImportRequest
+    {
+        public List<WebServiceVariableWithTrends> Variables { get; set; } = new();
+        public bool SkipExisting { get; set; }
+        public bool UpdateExisting { get; set; } = true;
+        public bool IncludeSystemVariables { get; set; }
+        public bool ImportTrendsData { get; set; } = true;
+        public DateTime? TrendsStartDate { get; set; }
+        public DateTime? TrendsEndDate { get; set; }
+        public string ConnectionId { get; set; } = "";
+    }
+
+    public sealed class ResolveVariableUnitsRequest
+    {
+        public string ConnectionId { get; set; } = "";
+        public List<string> VariableNames { get; set; } = new();
     }
 }
