@@ -115,13 +115,12 @@ public class WebServicesMeterImportV2Controller : Controller
                             meterIds[variableName] = existingId.Value;
                             var normalizedUnit = WebServiceImportPolicy.NormalizeUnit(variable.Unit);
 
-                            // A blank import unit must never erase a valid unit already configured in PoWorks.
-                            // When the operator explicitly provides an imported unit, however, re-importing
-                            // the variable is expected to update it.
+                            // Never erase a valid PoWorks unit with an empty value from PCVue.
+                            // An explicitly supplied non-empty unit is considered an operator update.
                             if (WebServiceImportPolicy.ShouldUpdateExistingUnit(existingUnit, normalizedUnit))
                             {
                                 await using var update = new NpgsqlCommand(@"
-                                    UPDATE ""Meters""
+                                    UPDATE ""Meters"
                                     SET ""Unit"" = @unit
                                     WHERE ""MeterId"" = @meterId AND ""CompanyId"" = @companyId", connection, transaction);
                                 update.Parameters.AddWithValue("unit", normalizedUnit);
@@ -245,7 +244,7 @@ public class WebServicesMeterImportV2Controller : Controller
         return await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
         {
             await using var command = new NpgsqlCommand(@"
-                SELECT ""ConnectionId", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
+                SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
                        ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
                        ""ProjectName"", ""IsDefault""
                 FROM ""WebServiceConnections""
@@ -285,7 +284,10 @@ public class WebServicesMeterImportV2Controller : Controller
         int companyId)
     {
         var variableNames = meterIds.Keys.ToList();
-        var meterMap = new Dictionary<string, int>(meterIds, StringComparer.OrdinalIgnoreCase);
+        var meterMap = meterIds.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase);
 
         _ = Task.Run(async () =>
         {
