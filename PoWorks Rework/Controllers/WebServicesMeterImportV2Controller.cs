@@ -91,11 +91,15 @@ public class WebServicesMeterImportV2Controller : Controller
                     var variableName = variable.VariableName.Trim();
                     try
                     {
-                        await using var find = new NpgsqlCommand(@"
-                            SELECT ""MeterId"", COALESCE(""Unit"", '')
-                            FROM ""Meters""
-                            WHERE ""Name"" = @name AND ""CompanyId"" = @companyId
-                            LIMIT 1", connection, transaction);
+                        await using var find = new NpgsqlCommand(
+                            """
+                            SELECT "MeterId", COALESCE("Unit", '')
+                            FROM "Meters"
+                            WHERE "Name" = @name AND "CompanyId" = @companyId
+                            LIMIT 1
+                            """,
+                            connection,
+                            transaction);
                         find.Parameters.AddWithValue("name", variableName);
                         find.Parameters.AddWithValue("companyId", companyId);
 
@@ -119,10 +123,14 @@ public class WebServicesMeterImportV2Controller : Controller
                             // An explicitly supplied non-empty unit is considered an operator update.
                             if (WebServiceImportPolicy.ShouldUpdateExistingUnit(existingUnit, normalizedUnit))
                             {
-                                await using var update = new NpgsqlCommand(@"
-                                    UPDATE ""Meters"
-                                    SET ""Unit"" = @unit
-                                    WHERE ""MeterId"" = @meterId AND ""CompanyId"" = @companyId", connection, transaction);
+                                await using var update = new NpgsqlCommand(
+                                    """
+                                    UPDATE "Meters"
+                                    SET "Unit" = @unit
+                                    WHERE "MeterId" = @meterId AND "CompanyId" = @companyId
+                                    """,
+                                    connection,
+                                    transaction);
                                 update.Parameters.AddWithValue("unit", normalizedUnit);
                                 update.Parameters.AddWithValue("meterId", existingId.Value);
                                 update.Parameters.AddWithValue("companyId", companyId);
@@ -143,12 +151,16 @@ public class WebServicesMeterImportV2Controller : Controller
                             companyId,
                             variable.ParentMeterId);
 
-                        await using var insert = new NpgsqlCommand(@"
-                            INSERT INTO ""Meters"
-                                (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
+                        await using var insert = new NpgsqlCommand(
+                            """
+                            INSERT INTO "Meters"
+                                ("Name", "Label", "Unit", "ParentId", "LastReading", "Type", "Active", "TenantID", "CompanyId")
                             VALUES
                                 (@name, @label, @unit, @parentId, 0, @type, @active, NULL, @companyId)
-                            RETURNING ""MeterId""", connection, transaction);
+                            RETURNING "MeterId"
+                            """,
+                            connection,
+                            transaction);
                         insert.Parameters.AddWithValue("name", variableName);
                         insert.Parameters.AddWithValue("label", variableName);
                         insert.Parameters.AddWithValue("unit", WebServiceImportPolicy.NormalizeUnit(variable.Unit));
@@ -228,11 +240,15 @@ public class WebServicesMeterImportV2Controller : Controller
         if (!int.TryParse(parentMeterId, out var parsedParentId) || parsedParentId <= 0)
             return null;
 
-        await using var command = new NpgsqlCommand(@"
-            SELECT ""MeterId""
-            FROM ""Meters"
-            WHERE ""MeterId"" = @meterId AND ""CompanyId"" = @companyId
-            LIMIT 1", connection, transaction);
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT "MeterId"
+            FROM "Meters"
+            WHERE "MeterId" = @meterId AND "CompanyId" = @companyId
+            LIMIT 1
+            """,
+            connection,
+            transaction);
         command.Parameters.AddWithValue("meterId", parsedParentId);
         command.Parameters.AddWithValue("companyId", companyId);
         var result = await command.ExecuteScalarAsync();
@@ -243,15 +259,19 @@ public class WebServicesMeterImportV2Controller : Controller
     {
         return await _databaseService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
         {
-            await using var command = new NpgsqlCommand(@"
-                SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
-                       ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
-                       ""ProjectName"", ""IsDefault""
-                FROM ""WebServiceConnections""
-                WHERE ""ConnectionId"" = @connectionId
-                  AND ""CompanyId"" = @companyId
-                  AND ""IsActive"" = TRUE
-                LIMIT 1", connection, transaction);
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT "ConnectionId", "ConnectionName", "BaseUrl", "ClientId", "ClientSecret",
+                       "ApiKey", "Username", "Password", "AuthType", "TimeoutSeconds",
+                       "ProjectName", "IsDefault"
+                FROM "WebServiceConnections"
+                WHERE "ConnectionId" = @connectionId
+                  AND "CompanyId" = @companyId
+                  AND "IsActive" = TRUE
+                LIMIT 1
+                """,
+                connection,
+                transaction);
             command.Parameters.AddWithValue("connectionId", connectionId);
             command.Parameters.AddWithValue("companyId", companyId);
 
@@ -313,20 +333,24 @@ public class WebServicesMeterImportV2Controller : Controller
 
                 try
                 {
-                    await using (var temp = new NpgsqlCommand(@"
-                        CREATE TEMP TABLE ""TempMeterReadingsManualV2""
-                        (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
-                        ALTER TABLE ""TempMeterReadingsManualV2"" DROP COLUMN ""ReadingId"";",
+                    await using (var temp = new NpgsqlCommand(
+                        """
+                        CREATE TEMP TABLE "TempMeterReadingsManualV2"
+                        (LIKE "MeterReadings" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
+                        ALTER TABLE "TempMeterReadingsManualV2" DROP COLUMN "ReadingId";
+                        """,
                         connection,
                         transaction))
                     {
                         await temp.ExecuteNonQueryAsync();
                     }
 
-                    await using (var writer = await connection.BeginBinaryImportAsync(@"
-                        COPY ""TempMeterReadingsManualV2"
-                            (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
-                        FROM STDIN (FORMAT BINARY)"))
+                    await using (var writer = await connection.BeginBinaryImportAsync(
+                        """
+                        COPY "TempMeterReadingsManualV2"
+                            ("MeterId", "Timestamp", "Value", "Quality", "CompanyId")
+                        FROM STDIN (FORMAT BINARY)
+                        """))
                     {
                         foreach (var result in results)
                         {
@@ -349,12 +373,14 @@ public class WebServicesMeterImportV2Controller : Controller
                         await writer.CompleteAsync();
                     }
 
-                    await using var insert = new NpgsqlCommand(@"
-                        INSERT INTO ""MeterReadings""
-                            (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
-                        SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId""
-                        FROM ""TempMeterReadingsManualV2"
-                        ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING",
+                    await using var insert = new NpgsqlCommand(
+                        """
+                        INSERT INTO "MeterReadings"
+                            ("MeterId", "Timestamp", "Value", "Quality", "CompanyId")
+                        SELECT "MeterId", "Timestamp", "Value", "Quality", "CompanyId"
+                        FROM "TempMeterReadingsManualV2"
+                        ON CONFLICT ("MeterId", "Timestamp") DO NOTHING
+                        """,
                         connection,
                         transaction);
                     insert.CommandTimeout = 300;
