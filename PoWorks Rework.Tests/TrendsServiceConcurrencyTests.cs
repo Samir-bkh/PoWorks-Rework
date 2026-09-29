@@ -79,15 +79,16 @@ public class TrendsServiceConcurrencyTests
     [Fact]
     public async Task InternalServerError_PreservesPcVueResponseDetailForDiagnostics()
     {
-        var handler = new RecordingHandler(async (request, _) =>
+        var handler = new RecordingHandler(async (request, cancellationToken) =>
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             if (path.Equals("/OAuth/token", StringComparison.OrdinalIgnoreCase))
             {
-                _ = await ReadBody(request);
+                await ReadBody(request);
                 return TokenResponse("access-1", "refresh-1");
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             return new HttpResponseMessage(HttpStatusCode.InternalServerError)
             {
                 Content = new StringContent("{\"error\":\"E_UnknownVariable\",\"description\":\"Archive unavailable\"}", Encoding.UTF8, "application/json")
