@@ -48,11 +48,6 @@ namespace PoWorks_Rework.Controllers
         public IActionResult PrintWebServiceMeters([FromBody] PrintWebServiceMetersRequest request)
             => Json(new { success = true, count = request?.SelectedVariables?.Count ?? 0 });
 
-        /// <summary>
-        /// Browses PCVue variables. System variables are filtered server-side when the
-        /// option is disabled, then current PoWorks meter metadata is merged into the
-        /// response so re-imports are visible and safe.
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> BrowseVariablesWebService([FromBody] BrowseVariablesRequest request)
         {
@@ -66,36 +61,43 @@ namespace PoWorks_Rework.Controllers
                     return Json(new { success = false, message = "Web Service connection not found" });
 
                 var maxVariables = Math.Clamp(request.MaxVariables, 1, 1_000_000);
-                var endpoint = BuildVariablesBrowseUrl(connection.BaseUrl, request.BranchFilter, request.Depth, request.VariableType, maxVariables);
+                var endpoint = BuildVariablesBrowseUrl(
+                    connection.BaseUrl,
+                    request.BranchFilter,
+                    request.Depth,
+                    request.VariableType,
+                    maxVariables);
 
                 var token = await _pcvueWebService.GetValidAccessTokenAsync(connection);
                 if (string.IsNullOrWhiteSpace(token))
                     return Json(new { success = false, message = "Failed to authenticate with PCVue" });
 
-                using var firstResponse = await SendBrowseRequestAsync(endpoint, token);
-                HttpResponseMessage response = firstResponse;
                 string responseContent;
-
-                if (firstResponse.StatusCode == HttpStatusCode.Unauthorized)
+                using (var firstResponse = await SendBrowseRequestAsync(endpoint, token))
                 {
-                    token = await _pcvueWebService.GetValidAccessTokenAsync(connection, forceRefresh: true);
-                    if (string.IsNullOrWhiteSpace(token))
-                        return Json(new { success = false, message = "PCVue session expired and could not be refreshed" });
+                    if (firstResponse.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        token = await _pcvueWebService.GetValidAccessTokenAsync(connection, forceRefresh: true);
+                        if (string.IsNullOrWhiteSpace(token))
+                            return Json(new { success = false, message = "PCVue session expired and could not be refreshed" });
 
-                    using var retryResponse = await SendBrowseRequestAsync(endpoint, token);
-                    responseContent = await retryResponse.Content.ReadAsStringAsync();
-                    if (!retryResponse.IsSuccessStatusCode)
-                        return Json(new { success = false, message = BuildApiError("Variables browse", retryResponse, responseContent) });
-                }
-                else
-                {
-                    responseContent = await firstResponse.Content.ReadAsStringAsync();
-                    if (!firstResponse.IsSuccessStatusCode)
-                        return Json(new { success = false, message = BuildApiError("Variables browse", firstResponse, responseContent) });
+                        using var retryResponse = await SendBrowseRequestAsync(endpoint, token);
+                        responseContent = await retryResponse.Content.ReadAsStringAsync();
+                        if (!retryResponse.IsSuccessStatusCode)
+                            return Json(new { success = false, message = BuildApiError("Variables browse", retryResponse, responseContent) });
+                    }
+                    else
+                    {
+                        responseContent = await firstResponse.Content.ReadAsStringAsync();
+                        if (!firstResponse.IsSuccessStatusCode)
+                            return Json(new { success = false, message = BuildApiError("Variables browse", firstResponse, responseContent) });
+                    }
                 }
 
                 var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                var parsed = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData, request.IncludeSystemVariables);
+                var parsed = _variableBrowseParsingService.ParseBrowseVariablesResponse(
+                    jsonData,
+                    request.IncludeSystemVariables);
                 if (!parsed.Success)
                     return Json(new { success = false, message = parsed.ErrorMessage });
 
@@ -145,9 +147,8 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// Fetches engineering units for selected variables using PCVue BulkRead.
-        /// Browse itself does not return Unit, so this is intentionally an explicit
-        /// enrichment step and is batched to avoid oversized requests.
+        /// Browse does not expose the engineering Unit property. This endpoint enriches
+        /// selected variables with PCVue BulkRead in bounded batches.
         /// </summary>
         [HttpPost]
         public async Task<IActionResult> ResolveVariableUnits([FromBody] ResolveVariableUnitsRequest request)
@@ -185,9 +186,8 @@ namespace PoWorks_Rework.Controllers
         }
 
         /// <summary>
-        /// Imports or re-imports selected variables. Existing meters can now actually
-        /// be updated: unit/type/active metadata are changed while tenant assignment,
-        /// custom label, readings and other business data remain untouched.
+        /// Imports new variables and truly updates existing meter metadata when requested.
+        /// Existing labels, tenants, readings and last readings are deliberately preserved.
         /// </summary>
         [HttpPost("/Import/ImportWebServiceVariablesWithTrends")]
         public async Task<IActionResult> ImportWebServiceMeters([FromBody] WebServiceVariableImportRequest request)
@@ -209,7 +209,7 @@ namespace PoWorks_Rework.Controllers
                 var filteredSystemCount = 0;
                 if (!request.IncludeSystemVariables)
                 {
-                    var safeVariables = new List<WebServiceVariableWithTrends>();
+                    var filtered = new List<WebServiceVariableWithTrends>();
                     foreach (var variable in variables)
                     {
                         if (VariableBrowseParsingService.IsSystemVariablePath(variable.VariableName))
@@ -217,9 +217,9 @@ namespace PoWorks_Rework.Controllers
                             filteredSystemCount++;
                             continue;
                         }
-                        safeVariables.Add(variable);
+                        filtered.Add(variable);
                     }
-                    variables = safeVariables;
+                    variables = filtered;
                 }
 
                 if (variables.Count == 0)
@@ -255,7 +255,12 @@ namespace PoWorks_Rework.Controllers
                             var variableName = variable.VariableName.Trim();
                             try
                             {
-                                var existing = await FindExistingMeterAsync(connection, transaction, companyId, variableName);
+                                var existing = await FindExistingMeterAsync(
+                                    connection,
+                                    transaction,
+                                    companyId,
+                                    variableName);
+
                                 if (existing != null)
                                 {
                                     meterIds[variableName] = existing.MeterId;
@@ -300,12 +305,12 @@ namespace PoWorks_Rework.Controllers
                                         connection,
                                         transaction,
                                         companyId,
-                                        meterId: null,
+                                        null,
                                         WebServiceMeterImportRules.ParseParentId(variable.ParentMeterId),
-                                        existingParentId: null);
+                                        null);
 
                                     await using var insert = new NpgsqlCommand(@"
-                                        INSERT INTO ""Meters"
+                                        INSERT INTO ""Meters""
                                             (""Name"", ""Label"", ""Unit"", ""ParentId"", ""LastReading"", ""Type"", ""Active"", ""TenantID"", ""CompanyId"")
                                         VALUES
                                             (@name, @label, @unit, @parentId, 0, @type, @active, NULL, @companyId)
@@ -466,8 +471,8 @@ namespace PoWorks_Rework.Controllers
             await using var connection = _databaseService.CreateNewConnection();
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand(@"
-                SELECT ""MeterId", ""Name", COALESCE(""Unit", ''), COALESCE(""Type", 'main'), ""Active", ""ParentId"
-                FROM ""Meters"
+                SELECT ""MeterId"", ""Name"", COALESCE(""Unit"", ''), COALESCE(""Type"", 'main'), ""Active"", ""ParentId""
+                FROM ""Meters""
                 WHERE ""CompanyId"" = @companyId
                 ORDER BY ""Name""", connection);
             command.Parameters.AddWithValue("companyId", companyId);
@@ -496,15 +501,15 @@ namespace PoWorks_Rework.Controllers
             return new MeterSnapshot(byName, parentOptions);
         }
 
-        private async Task<ExistingMeterInfo?> FindExistingMeterAsync(
+        private static async Task<ExistingMeterInfo?> FindExistingMeterAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             int companyId,
             string name)
         {
             await using var command = new NpgsqlCommand(@"
-                SELECT ""MeterId", ""Name", COALESCE(""Unit", ''), COALESCE(""Type", 'main'), ""Active", ""ParentId"
-                FROM ""Meters"
+                SELECT ""MeterId"", ""Name"", COALESCE(""Unit"", ''), COALESCE(""Type"", 'main'), ""Active"", ""ParentId""
+                FROM ""Meters""
                 WHERE ""Name"" = @name
                   AND ""CompanyId"" = @companyId
                 LIMIT 1", connection, transaction);
@@ -536,7 +541,7 @@ namespace PoWorks_Rework.Controllers
 
             await using var command = new NpgsqlCommand(@"
                 SELECT 1
-                FROM ""Meters"
+                FROM ""Meters""
                 WHERE ""MeterId"" = @parentId
                   AND ""CompanyId"" = @companyId
                 LIMIT 1", connection, transaction);
@@ -577,11 +582,16 @@ namespace PoWorks_Rework.Controllers
                     var raw = await response.Content.ReadAsStringAsync();
                     if (!response.IsSuccessStatusCode)
                     {
-                        _logger.LogWarning("PCVue BulkRead unit lookup failed: {Status} {Body}", response.StatusCode, Truncate(raw, 400));
+                        _logger.LogWarning(
+                            "PCVue BulkRead unit lookup failed: {Status} {Body}",
+                            response.StatusCode,
+                            Truncate(raw, 400));
                         continue;
                     }
 
                     using var document = JsonDocument.Parse(raw);
+                    if (document.RootElement.ValueKind != JsonValueKind.Object) continue;
+
                     foreach (var property in document.RootElement.EnumerateObject())
                     {
                         var variableName = property.Name;
@@ -590,10 +600,16 @@ namespace PoWorks_Rework.Controllers
                             properties.ValueKind == JsonValueKind.Array)
                         {
                             var values = properties.EnumerateArray().ToArray();
-                            if (values.Length > 0 && values[0].ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(values[0].GetString()))
+                            if (values.Length > 0 &&
+                                values[0].ValueKind == JsonValueKind.String &&
+                                !string.IsNullOrWhiteSpace(values[0].GetString()))
+                            {
                                 variableName = values[0].GetString()!;
+                            }
                             if (values.Length > 1 && values[1].ValueKind == JsonValueKind.String)
+                            {
                                 unit = values[1].GetString()?.Trim() ?? string.Empty;
+                            }
                         }
                         result[variableName] = unit;
                     }
@@ -603,7 +619,10 @@ namespace PoWorks_Rework.Controllers
             return result;
         }
 
-        private async Task<HttpResponseMessage> SendBulkReadAsync(string baseUrl, string token, IEnumerable<string> variables)
+        private async Task<HttpResponseMessage> SendBulkReadAsync(
+            string baseUrl,
+            string token,
+            IEnumerable<string> variables)
         {
             var endpoint = $"{baseUrl.TrimEnd('/')}/RealTimeData/v2/BulkRead";
             var payload = JsonSerializer.Serialize(new
@@ -627,7 +646,10 @@ namespace PoWorks_Rework.Controllers
             int companyId)
         {
             var variableNames = meterIds.Keys.ToList();
-            var meterMap = new Dictionary<string, int>(meterIds, StringComparer.OrdinalIgnoreCase);
+            var meterMap = meterIds.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
 
             _ = Task.Run(async () =>
             {
@@ -639,8 +661,14 @@ namespace PoWorks_Rework.Controllers
                 await ImportLock.Gate.WaitAsync();
                 try
                 {
-                    logger.LogInformation("Background Trends Import Started for {Count} variables...", variableNames.Count);
-                    var trends = await trendsService.ProcessVariablesTrendsAsync(variableNames, startDate, endDate, settings);
+                    logger.LogInformation(
+                        "Background Trends Import Started for {Count} variables...",
+                        variableNames.Count);
+                    var trends = await trendsService.ProcessVariablesTrendsAsync(
+                        variableNames,
+                        startDate,
+                        endDate,
+                        settings);
 
                     await using var connection = new NpgsqlConnection(databaseService.GetConnectionString());
                     await connection.OpenAsync();
@@ -661,8 +689,12 @@ namespace PoWorks_Rework.Controllers
                         {
                             foreach (var result in trends)
                             {
-                                if (!result.Success || result.TrendData == null || !meterMap.TryGetValue(result.VariableName, out var meterId))
+                                if (!result.Success ||
+                                    result.TrendData == null ||
+                                    !meterMap.TryGetValue(result.VariableName, out var meterId))
+                                {
                                     continue;
+                                }
 
                                 foreach (var point in result.TrendData)
                                 {
@@ -717,15 +749,15 @@ namespace PoWorks_Rework.Controllers
                         SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
                                ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
                                ""ProjectName"", ""IsDefault""
-                        FROM ""WebServiceConnections"
+                        FROM ""WebServiceConnections""
                         WHERE ""ConnectionId"" = @connId
                           AND ""CompanyId"" = @companyId
                         LIMIT 1";
 
-                    await using var command = new NpgsqlCommand(sql, conn, tr);
-                    command.Parameters.AddWithValue("connId", connectionId);
-                    command.Parameters.AddWithValue("companyId", companyId);
-                    await using var reader = await command.ExecuteReaderAsync();
+                    await using var cmd = new NpgsqlCommand(sql, conn, tr);
+                    cmd.Parameters.AddWithValue("connId", connectionId);
+                    cmd.Parameters.AddWithValue("companyId", companyId);
+                    await using var reader = await cmd.ExecuteReaderAsync();
                     if (!await reader.ReadAsync()) return null;
 
                     return new PCVueWebServiceSettings
@@ -738,7 +770,9 @@ namespace PoWorks_Rework.Controllers
                         ApiKey = reader.IsDBNull(5) ? "" : reader.GetString(5),
                         Username = reader.IsDBNull(6) ? "" : reader.GetString(6),
                         Password = reader.IsDBNull(7) ? "" : _encryptionService.Decrypt(reader.GetString(7)),
-                        AuthType = reader.IsDBNull(8) ? AuthenticationType.OAuth : (AuthenticationType)Convert.ToInt32(reader.GetValue(8)),
+                        AuthType = reader.IsDBNull(8)
+                            ? AuthenticationType.OAuth
+                            : (AuthenticationType)Convert.ToInt32(reader.GetValue(8)),
                         TimeoutSeconds = reader.IsDBNull(9) ? 30 : Convert.ToInt32(reader.GetValue(9)),
                         ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
                         IsDefault = !reader.IsDBNull(11) && reader.GetBoolean(11)
@@ -770,7 +804,10 @@ namespace PoWorks_Rework.Controllers
             return false;
         }
 
-        private static string BuildApiError(string operation, HttpResponseMessage response, string content)
+        private static string BuildApiError(
+            string operation,
+            HttpResponseMessage response,
+            string content)
             => $"{operation} failed: HTTP {(int)response.StatusCode} ({response.StatusCode})" +
                (string.IsNullOrWhiteSpace(content) ? string.Empty : $" - {Truncate(content, 400)}");
 
