@@ -1,199 +1,339 @@
-﻿using System.Text.Json;
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
-using System.Threading;
+using System.Text.Json;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
 {
     /// <summary>
-    /// Service for retrieving and processing historical trends data from PCVue web service.
-    /// Manages trend requests, data retrieval, and handles OAuth token management with retry logic.
+    /// Retrieves PCVue historical trends and performs single-flight OAuth recovery.
+    /// A server-side session may expire before the OAuth access token lifetime; when
+    /// concurrent requests receive 401, exactly one request refreshes the session.
     /// </summary>
     public class TrendsService
     {
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> SessionRecoveryGates =
+            new(StringComparer.OrdinalIgnoreCase);
+
         private readonly PCVueWebService _pcvueWebService;
         private readonly ILogger<TrendsService> _logger;
 
-        /// <summary>
-        /// Initializes the trends service with web service and logging dependencies.
-        /// </summary>
         public TrendsService(PCVueWebService pcvueWebService, ILogger<TrendsService> logger)
         {
             _pcvueWebService = pcvueWebService;
             _logger = logger;
         }
 
-        /// <summary>
-        /// Creates a trends data request for a specific variable in PCVue.
-        /// Returns a request ID used to retrieve the actual data.
-        /// Handles authentication and retries if token expires.
-        /// </summary>
-        public async Task<TrendRequestResult> CreateTrendRequestAsync(string variableName, PCVueWebServiceSettings settings)
+        public async Task<TrendRequestResult> CreateTrendRequestAsync(
+            string variableName,
+            PCVueWebServiceSettings settings)
         {
+            if (string.IsNullOrWhiteSpace(variableName))
+            {
+                return new TrendRequestResult
+                {
+                    Success = false,
+                    VariableName = variableName,
+                    ErrorMessage = "Variable name is required."
+                };
+            }
+
             try
             {
-                _logger.LogDebug("Creating trend request for variable: {VariableName}", variableName);
-
                 var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
-                if (string.IsNullOrEmpty(token))
+                if (string.IsNullOrWhiteSpace(token))
                 {
-                    return new TrendRequestResult { Success = false, ErrorMessage = "Failed to obtain valid access token", VariableName = variableName };
+                    return FailureRequest(variableName, "Failed to obtain a valid PCVue access token.");
                 }
 
                 var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends";
-                var payload = new { VariableName = variableName, elementMaxNumber = 100000, properties = new[] { "VariableName", "Description", "StandardLabel" } };
-                var jsonContent = JsonSerializer.Serialize(payload);
-
-                var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-                var response = await _pcvueWebService.HttpClient.SendAsync(request);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                var payload = JsonSerializer.Serialize(new
                 {
-                    _logger.LogWarning("Received 401 Unauthorized. Retrying with FORCE REFRESH...");
+                    VariableName = variableName,
+                    elementMaxNumber = 100000,
+                    properties = new[] { "VariableName", "Description", "StandardLabel" }
+                });
 
-                    token = await _pcvueWebService.GetValidAccessTokenAsync(settings, true);
+                var result = await SendTrendCreateAsync(endpoint, payload, token);
+                if (result.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    var recoveredToken = await RecoverSessionAfterUnauthorizedAsync(settings, token);
+                    if (string.IsNullOrWhiteSpace(recoveredToken))
+                    {
+                        return FailureRequest(variableName, "PCVue session expired and could not be refreshed.");
+                    }
 
-                    if (string.IsNullOrEmpty(token))
-                        return new TrendRequestResult { Success = false, ErrorMessage = "Failed to refresh token", VariableName = variableName };
-
-                    var retryRequest = new HttpRequestMessage(HttpMethod.Post, endpoint);
-                    retryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                    retryRequest.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-                    response = await _pcvueWebService.HttpClient.SendAsync(retryRequest);
-                    responseContent = await response.Content.ReadAsStringAsync();
+                    result = await SendTrendCreateAsync(endpoint, payload, recoveredToken);
                 }
 
-                if (response.IsSuccessStatusCode)
+                if (IsSuccess(result.StatusCode))
                 {
-                    var requestId = responseContent.Trim().Trim('"');
-                    return new TrendRequestResult { Success = true, RequestId = requestId, VariableName = variableName };
+                    var requestId = result.Content.Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(requestId))
+                    {
+                        return FailureRequest(variableName, "PCVue returned an empty trend request id.");
+                    }
+
+                    return new TrendRequestResult
+                    {
+                        Success = true,
+                        RequestId = requestId,
+                        VariableName = variableName
+                    };
                 }
 
-                return new TrendRequestResult { Success = false, ErrorMessage = $"API Error: {response.StatusCode}", VariableName = variableName };
+                return FailureRequest(variableName, FormatApiError(result.StatusCode, result.Content));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception variable: {VariableName}", variableName);
-                return new TrendRequestResult { Success = false, ErrorMessage = ex.Message, VariableName = variableName };
+                _logger.LogError(ex, "Trend request failed for {VariableName}.", variableName);
+                return FailureRequest(variableName, ex.Message);
             }
         }
 
-        /// <summary>
-        /// Retrieves trend data for a previously created trend request.
-        /// Handles authentication retries if the token expires.
-        /// </summary>
-        /// <param name="requestId">The request ID returned from CreateTrendRequestAsync.</param>
-        /// <param name="startDate">The start of the data range.</param>
-        /// <param name="endDate">The end of the data range.</param>
-        /// <param name="settings">The web service connection settings to use.</param>
-        /// <returns>A TrendDataResult with the retrieved data points.</returns>
-        public async Task<TrendDataResult> GetTrendDataAsync(string requestId, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings)
+        public async Task<TrendDataResult> GetTrendDataAsync(
+            string requestId,
+            DateTime startDate,
+            DateTime endDate,
+            PCVueWebServiceSettings settings)
         {
-            if (string.IsNullOrEmpty(requestId))
-                return new TrendDataResult { Success = false, ErrorMessage = "RequestId is null" };
+            if (string.IsNullOrWhiteSpace(requestId))
+            {
+                return new TrendDataResult { Success = false, ErrorMessage = "RequestId is required." };
+            }
 
             try
             {
                 var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
-                var endpoint = $"{settings.BaseUrl.TrimEnd('/')}/HistoricalData/v2/Trends/{requestId.Trim('"')}?Start={Uri.EscapeDataString(startDate.ToString("yyyy-MM-dd HH:mm:ss"))}&End={Uri.EscapeDataString(endDate.ToString("yyyy-MM-dd HH:mm:ss"))}";
-
-                var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
-                var response = await _pcvueWebService.HttpClient.SendAsync(request);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                if (string.IsNullOrWhiteSpace(token))
                 {
-                    _logger.LogWarning("Received 401 Unauthorized. Retrying with FORCE REFRESH...");
-
-                    token = await _pcvueWebService.GetValidAccessTokenAsync(settings, true);
-
-                    if (string.IsNullOrEmpty(token))
-                        return new TrendDataResult { Success = false, ErrorMessage = "Failed to refresh token", RequestId = requestId };
-
-                    var retryRequest = new HttpRequestMessage(HttpMethod.Get, endpoint);
-                    retryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
-                    response = await _pcvueWebService.HttpClient.SendAsync(retryRequest);
-                    responseContent = await response.Content.ReadAsStringAsync();
+                    return FailureData(requestId, "Failed to obtain a valid PCVue access token.");
                 }
 
-                if (response.IsSuccessStatusCode)
+                var endpoint = BuildTrendDataUrl(settings.BaseUrl, requestId, startDate, endDate);
+                var result = await SendTrendReadAsync(endpoint, token);
+
+                if (result.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    var trendData = JsonSerializer.Deserialize<TrendApiResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    return new TrendDataResult { Success = true, RequestId = requestId, Values = trendData?.Values ?? new List<TrendDataPoint>() };
+                    var recoveredToken = await RecoverSessionAfterUnauthorizedAsync(settings, token);
+                    if (string.IsNullOrWhiteSpace(recoveredToken))
+                    {
+                        return FailureData(requestId, "PCVue session expired and could not be refreshed.");
+                    }
+
+                    result = await SendTrendReadAsync(endpoint, recoveredToken);
                 }
 
-                return new TrendDataResult { Success = false, ErrorMessage = $"API Error: {response.StatusCode}", RequestId = requestId };
+                if (!IsSuccess(result.StatusCode))
+                {
+                    return FailureData(requestId, FormatApiError(result.StatusCode, result.Content));
+                }
+
+                var trendData = JsonSerializer.Deserialize<TrendApiResponse>(
+                    result.Content,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                return new TrendDataResult
+                {
+                    Success = true,
+                    RequestId = requestId,
+                    Values = trendData?.Values ?? new List<TrendDataPoint>(),
+                    MaxNumberExceeded = trendData?.MaxNumberExceeded ?? false
+                };
             }
             catch (Exception ex)
             {
-                return new TrendDataResult { Success = false, ErrorMessage = ex.Message, RequestId = requestId };
+                _logger.LogError(ex, "Trend data read failed for request {RequestId}.", requestId);
+                return FailureData(requestId, ex.Message);
             }
         }
 
-        /// <summary>
-        /// Processes trends data for multiple variables concurrently with a throttling limit.
-        /// </summary>
-        /// <param name="variableNames">The list of variable names to process.</param>
-        /// <param name="startDate">The start of the data range.</param>
-        /// <param name="endDate">The end of the data range.</param>
-        /// <param name="settings">The web service connection settings to use.</param>
-        /// <returns>A list of per-variable trend results.</returns>
-        public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(List<string> variableNames, DateTime startDate, DateTime endDate, PCVueWebServiceSettings settings, string? logContext = null)
+        public async Task<List<VariableTrendResult>> ProcessVariablesTrendsAsync(
+            List<string> variableNames,
+            DateTime startDate,
+            DateTime endDate,
+            PCVueWebServiceSettings settings,
+            string? logContext = null)
         {
-            var throttler = new SemaphoreSlim(15);
-
-            var tasks = variableNames.Select(async variableName =>
+            if (variableNames == null || variableNames.Count == 0)
             {
-                await throttler.WaitAsync();
-                try
+                return new List<VariableTrendResult>();
+            }
+
+            using var throttler = new SemaphoreSlim(15);
+            var tasks = variableNames
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(async variableName =>
                 {
-                    var requestResult = await CreateTrendRequestAsync(variableName, settings);
-                    var contextPrefix = string.IsNullOrWhiteSpace(logContext) ? "" : $"[{logContext}]";
-                    Console.WriteLine($"[TRENDS]{contextPrefix} {variableName} -> request {(requestResult.Success ? "OK" : "FAIL: " + requestResult.ErrorMessage)}");
-                    if (requestResult.Success)
+                    await throttler.WaitAsync();
+                    try
                     {
-                        var dataResult = await GetTrendDataAsync(requestResult.RequestId!, startDate, endDate, settings);
+                        var request = await CreateTrendRequestAsync(variableName, settings);
+                        var contextPrefix = string.IsNullOrWhiteSpace(logContext) ? "" : $"[{logContext}]";
+                        Console.WriteLine(
+                            $"[TRENDS]{contextPrefix} {variableName} -> request " +
+                            (request.Success ? "OK" : "FAIL: " + request.ErrorMessage));
+
+                        if (!request.Success || string.IsNullOrWhiteSpace(request.RequestId))
+                        {
+                            return new VariableTrendResult
+                            {
+                                VariableName = variableName,
+                                Success = false,
+                                ErrorMessage = request.ErrorMessage
+                            };
+                        }
+
+                        var data = await GetTrendDataAsync(
+                            request.RequestId,
+                            startDate,
+                            endDate,
+                            settings);
+
                         return new VariableTrendResult
                         {
                             VariableName = variableName,
-                            Success = dataResult.Success,
-                            TrendData = dataResult.Values
+                            RequestId = request.RequestId,
+                            Success = data.Success,
+                            TrendData = data.Values,
+                            MaxNumberExceeded = data.MaxNumberExceeded,
+                            ErrorMessage = data.ErrorMessage
                         };
                     }
-
-                    return new VariableTrendResult
+                    catch (Exception ex)
                     {
-                        VariableName = variableName,
-                        Success = false,
-                        ErrorMessage = requestResult.ErrorMessage
-                    };
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Unexpected error processing variable: {VariableName}", variableName);
-                    return new VariableTrendResult
+                        _logger.LogError(ex, "Unexpected trend error for {VariableName}.", variableName);
+                        return new VariableTrendResult
+                        {
+                            VariableName = variableName,
+                            Success = false,
+                            ErrorMessage = ex.Message
+                        };
+                    }
+                    finally
                     {
-                        VariableName = variableName,
-                        Success = false,
-                        ErrorMessage = ex.Message
-                    };
-                }
-                finally
-                {
-                    throttler.Release();
-                }
-            });
+                        throttler.Release();
+                    }
+                });
 
-            var results = await Task.WhenAll(tasks);
-            return results.ToList();
+            return (await Task.WhenAll(tasks)).ToList();
         }
+
+        /// <summary>
+        /// Coordinates 401 recovery for a PCVue OAuth identity. Followers entering the
+        /// gate after the first refresh observe the new token and reuse it without
+        /// issuing another refresh-token request.
+        /// </summary>
+        private async Task<string?> RecoverSessionAfterUnauthorizedAsync(
+            PCVueWebServiceSettings settings,
+            string rejectedToken)
+        {
+            var key = BuildRecoveryKey(settings);
+            var gate = SessionRecoveryGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync();
+            try
+            {
+                var currentToken = await _pcvueWebService.GetValidAccessTokenAsync(settings);
+                if (!string.IsNullOrWhiteSpace(currentToken) &&
+                    !string.Equals(currentToken, rejectedToken, StringComparison.Ordinal))
+                {
+                    return currentToken;
+                }
+
+                _logger.LogWarning(
+                    "PCVue HistoricalData session expired for {Connection}; refreshing the shared OAuth session once.",
+                    string.IsNullOrWhiteSpace(settings.ConnectionName)
+                        ? settings.ConnectionId
+                        : settings.ConnectionName);
+
+                return await _pcvueWebService.GetValidAccessTokenAsync(settings, forceRefresh: true);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        private async Task<HttpResult> SendTrendCreateAsync(
+            string endpoint,
+            string payload,
+            string token)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await _pcvueWebService.HttpClient.SendAsync(request);
+            return new HttpResult(response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        private async Task<HttpResult> SendTrendReadAsync(string endpoint, string token)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await _pcvueWebService.HttpClient.SendAsync(request);
+            return new HttpResult(response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        private static string BuildTrendDataUrl(
+            string baseUrl,
+            string requestId,
+            DateTime startDate,
+            DateTime endDate)
+        {
+            var startUtc = NormalizeUtc(startDate);
+            var endUtc = NormalizeUtc(endDate);
+            return $"{baseUrl.TrimEnd('/')}/HistoricalData/v2/Trends/{Uri.EscapeDataString(requestId.Trim('"'))}" +
+                   $"?Start={Uri.EscapeDataString(startUtc.ToString("yyyy-MM-dd HH:mm:ss"))}" +
+                   $"&End={Uri.EscapeDataString(endUtc.ToString("yyyy-MM-dd HH:mm:ss"))}";
+        }
+
+        private static DateTime NormalizeUtc(DateTime value)
+            => value.Kind switch
+            {
+                DateTimeKind.Utc => value,
+                DateTimeKind.Local => value.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            };
+
+        private static string BuildRecoveryKey(PCVueWebServiceSettings settings)
+            => string.Join("|",
+                settings.BaseUrl.Trim().TrimEnd('/').ToUpperInvariant(),
+                settings.ClientId.Trim(),
+                settings.Username.Trim().ToUpperInvariant());
+
+        private static bool IsSuccess(HttpStatusCode statusCode)
+            => (int)statusCode is >= 200 and <= 299;
+
+        private static string FormatApiError(HttpStatusCode statusCode, string? content)
+        {
+            var detail = string.IsNullOrWhiteSpace(content)
+                ? string.Empty
+                : " - " + Truncate(content.Trim(), 500);
+            return $"API Error: {statusCode}{detail}";
+        }
+
+        private static string Truncate(string value, int maxLength)
+            => value.Length <= maxLength ? value : value[..maxLength] + "…";
+
+        private static TrendRequestResult FailureRequest(string variableName, string message)
+            => new()
+            {
+                Success = false,
+                VariableName = variableName,
+                ErrorMessage = message
+            };
+
+        private static TrendDataResult FailureData(string requestId, string message)
+            => new()
+            {
+                Success = false,
+                RequestId = requestId,
+                ErrorMessage = message
+            };
+
+        private sealed record HttpResult(HttpStatusCode StatusCode, string Content);
     }
 }
