@@ -156,6 +156,8 @@ public class WebServiceImportWorkflowTests
 
         Assert.Contains("BeginBinaryImportAsync", bulk);
         Assert.Contains("pg_advisory_xact_lock", bulk);
+        Assert.Contains("DROP TABLE IF EXISTS \"TempWebServiceMeterExisting\"", bulk);
+        Assert.Contains("DROP TABLE IF EXISTS \"TempWebServiceMeterUpsert\"", bulk);
         Assert.Contains("m.\"CompanyId\" = @companyId", bulk);
         Assert.Contains("SET \"Unit\" = staged.\"Unit\"", bulk);
         Assert.Contains("staged.\"Unit\" <> ''", bulk);
