@@ -10,13 +10,13 @@ using PoWorks_Rework.Models;
 namespace PoWorks_Rework.Services
 {
     /// <summary>
-    /// Central PCVue Web Services client.
+    /// Central client for PCVue REST Web Services.
     ///
-    /// OAuth sessions are cached per configured PCVue connection. A password grant
-    /// opens a session only when no reusable session exists; normal renewal uses the
-    /// refresh token supplied by PCVue. Authentication failures are briefly cached to
-    /// prevent concurrent callers from creating an authentication storm against a
-    /// license-limited Web Services Toolkit server.
+    /// One OAuth session is reused for one server/client/user identity, even when the
+    /// same connection is reached from the settings page, the manual import path and
+    /// the background worker with different local connection IDs. This matters because
+    /// PCVue licenses Web Services sessions and opening unnecessary password-grant
+    /// sessions can exhaust the available connection count.
     /// </summary>
     public class PCVueWebService
     {
@@ -27,6 +27,7 @@ namespace PoWorks_Rework.Services
         private readonly ILogger<PCVueWebService> _logger;
         private readonly TimeProvider _timeProvider;
         private readonly ConcurrentDictionary<string, PCVueSessionState> _sessions = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, string> _connectionAliases = new(StringComparer.Ordinal);
 
         public HttpClient HttpClient => _httpClient;
 
@@ -40,11 +41,6 @@ namespace PoWorks_Rework.Services
             _timeProvider = timeProvider ?? TimeProvider.System;
         }
 
-        /// <summary>
-        /// Returns a reusable access token for the selected PCVue connection.
-        /// On forceRefresh, the existing refresh token is tried first; it is never
-        /// discarded before the refresh attempt.
-        /// </summary>
         public async Task<string?> GetValidAccessTokenAsync(
             PCVueWebServiceSettings settings,
             bool forceRefresh = false)
@@ -53,17 +49,9 @@ namespace PoWorks_Rework.Services
             return response.Success ? response.AccessToken : null;
         }
 
-        /// <summary>
-        /// Legacy/public token API used by the settings page. It is session-aware and
-        /// therefore no longer opens a fresh PCVue session on every invocation.
-        /// </summary>
         public Task<OAuthTokenResponse> GetAccessTokenAsync(PCVueWebServiceSettings settings)
             => AcquireTokenAsync(settings, forceRefresh: false);
 
-        /// <summary>
-        /// Explicitly renews the access token using the refresh token when available.
-        /// A password grant is only used when the previous session is no longer valid.
-        /// </summary>
         public Task<OAuthTokenResponse> RefreshAccessTokenAsync(PCVueWebServiceSettings settings)
             => AcquireTokenAsync(settings, forceRefresh: true);
 
@@ -77,9 +65,11 @@ namespace PoWorks_Rework.Services
                 return Failed(validation.ErrorMessage);
             }
 
-            var key = BuildSessionKey(settings);
+            var sessionKey = BuildSessionKey(settings);
+            await RebindConnectionAliasAsync(settings, sessionKey);
+
             var fingerprint = BuildConfigurationFingerprint(settings);
-            var state = _sessions.GetOrAdd(key, _ => new PCVueSessionState());
+            var state = _sessions.GetOrAdd(sessionKey, _ => new PCVueSessionState());
             var now = _timeProvider.GetUtcNow();
 
             if (!forceRefresh &&
@@ -96,8 +86,6 @@ namespace PoWorks_Rework.Services
 
                 if (state.ConfigurationFingerprint != fingerprint)
                 {
-                    // Same logical connection ID but changed server/credentials.
-                    // Release the previous server-side session before replacing it.
                     await TryLogoutStateAsync(state, CancellationToken.None);
                     state.ResetForConfiguration(fingerprint, NormalizeBaseUrl(settings.BaseUrl));
                 }
@@ -110,7 +98,8 @@ namespace PoWorks_Rework.Services
                 if (now < state.RetryAfterUtc)
                 {
                     return Failed(state.LastError ??
-                        "PCVue authentication is temporarily paused after a recent failure.");
+                        "PCVue authentication is temporarily paused after a recent failure.",
+                        state.LastFailureWasTooManyUsers);
                 }
 
                 if (!string.IsNullOrWhiteSpace(state.RefreshToken))
@@ -123,7 +112,11 @@ namespace PoWorks_Rework.Services
 
                     if (refreshAttempt.IsTooManyUsers)
                     {
-                        ApplyAuthenticationBackoff(state, refreshAttempt.Response.ErrorMessage, TooManyUsersBackoff);
+                        ApplyAuthenticationBackoff(
+                            state,
+                            refreshAttempt.Response.ErrorMessage,
+                            TooManyUsersBackoff,
+                            tooManyUsers: true);
                         return refreshAttempt.Response;
                     }
 
@@ -132,12 +125,13 @@ namespace PoWorks_Rework.Services
                         ApplyAuthenticationBackoff(
                             state,
                             refreshAttempt.Response.ErrorMessage,
-                            TransientAuthenticationBackoff);
+                            TransientAuthenticationBackoff,
+                            tooManyUsers: false);
                         return refreshAttempt.Response;
                     }
 
-                    // The previous PCVue session is invalid/expired. At this point it is
-                    // safe to open one replacement session with the password grant.
+                    // Refresh told us that the server-side session is no longer valid.
+                    // Only now is a replacement password-grant session justified.
                     state.ClearTokens();
                 }
 
@@ -149,7 +143,8 @@ namespace PoWorks_Rework.Services
                         passwordAttempt.ErrorMessage,
                         passwordAttempt.IsTooManyUsers
                             ? TooManyUsersBackoff
-                            : TransientAuthenticationBackoff);
+                            : TransientAuthenticationBackoff,
+                        passwordAttempt.IsTooManyUsers);
                 }
 
                 return passwordAttempt;
@@ -160,18 +155,45 @@ namespace PoWorks_Rework.Services
             }
         }
 
+        /// <summary>
+        /// When a saved connection changes endpoint or user, release the session that
+        /// was previously associated with that local connection ID before binding the
+        /// ID to the new OAuth identity.
+        /// </summary>
+        private async Task RebindConnectionAliasAsync(
+            PCVueWebServiceSettings settings,
+            string sessionKey)
+        {
+            // SettingsController's temporary token-test object historically did not
+            // copy ConnectionName, so don't create aliases for those ephemeral objects.
+            // They still reuse the same identity-based sessionKey.
+            if (string.IsNullOrWhiteSpace(settings.ConnectionId) ||
+                string.IsNullOrWhiteSpace(settings.ConnectionName))
+            {
+                return;
+            }
+
+            var alias = "id:" + settings.ConnectionId.Trim();
+            if (_connectionAliases.TryGetValue(alias, out var previousKey) &&
+                !string.Equals(previousKey, sessionKey, StringComparison.Ordinal))
+            {
+                await LogoutBySessionKeyAsync(previousKey);
+            }
+
+            _connectionAliases[alias] = sessionKey;
+        }
+
         private async Task<OAuthTokenResponse> RequestPasswordTokenAsync(
             PCVueWebServiceSettings settings,
             PCVueSessionState state)
         {
-            var tokenEndpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
-
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
             _logger.LogInformation(
-                "PCVue OAuth password grant for connection {ConnectionId} at {Endpoint}",
+                "Opening PCVue OAuth session for {Connection} at {Endpoint}",
                 SafeConnectionLabel(settings),
-                tokenEndpoint);
+                endpoint);
 
-            var formParams = new Dictionary<string, string>
+            var form = new Dictionary<string, string>
             {
                 ["username"] = settings.Username,
                 ["password"] = settings.Password,
@@ -181,16 +203,16 @@ namespace PoWorks_Rework.Services
                 ["scope"] = "RealtimeData RealtimeAlarm HistoricalData GraphicalData"
             };
 
-            var attempt = await SendTokenRequestAsync(tokenEndpoint, formParams);
-            if (!attempt.Response.Success)
+            var attempt = await SendTokenRequestAsync(endpoint, form);
+            if (!attempt.Success)
             {
-                LogAuthenticationFailure(settings, attempt.Response, attempt.StatusCode);
+                LogAuthenticationFailure(settings, attempt, isRefresh: false);
                 return attempt.Response;
             }
 
-            ApplySuccessfulToken(state, attempt.Response, preserveRefreshToken: false);
+            ApplySuccessfulToken(state, attempt.Response, preserveExistingRefreshToken: false);
             _logger.LogInformation(
-                "PCVue OAuth session opened for connection {ConnectionId}; token lifetime {ExpiresIn}s.",
+                "PCVue OAuth session ready for {Connection}; access token lifetime {ExpiresIn}s.",
                 SafeConnectionLabel(settings),
                 attempt.Response.ExpiresIn);
             return attempt.Response;
@@ -200,47 +222,43 @@ namespace PoWorks_Rework.Services
             PCVueWebServiceSettings settings,
             PCVueSessionState state)
         {
-            var tokenEndpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
-            var existingRefreshToken = state.RefreshToken;
-
-            var formParams = new Dictionary<string, string>
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
+            var form = new Dictionary<string, string>
             {
                 ["grant_type"] = "refresh_token",
-                ["refresh_token"] = existingRefreshToken!,
+                ["refresh_token"] = state.RefreshToken!,
                 ["client_id"] = settings.ClientId,
                 ["client_secret"] = settings.ClientSecret
             };
 
             _logger.LogDebug(
-                "Refreshing PCVue OAuth session for connection {ConnectionId}.",
+                "Refreshing PCVue OAuth session for {Connection}.",
                 SafeConnectionLabel(settings));
 
-            var attempt = await SendTokenRequestAsync(tokenEndpoint, formParams);
-            if (attempt.Response.Success)
+            var attempt = await SendTokenRequestAsync(endpoint, form);
+            if (attempt.Success)
             {
-                // Some OAuth implementations rotate refresh tokens while others do not.
-                // Keep the previous refresh token if PcVue omits it in the response.
-                ApplySuccessfulToken(state, attempt.Response, preserveRefreshToken: true);
+                ApplySuccessfulToken(state, attempt.Response, preserveExistingRefreshToken: true);
                 return attempt with { Response = CachedResponse(state) };
             }
 
-            LogAuthenticationFailure(settings, attempt.Response, attempt.StatusCode, isRefresh: true);
+            LogAuthenticationFailure(settings, attempt, isRefresh: true);
             return attempt;
         }
 
         private async Task<TokenAttempt> SendTokenRequestAsync(
-            string tokenEndpoint,
-            Dictionary<string, string> formParams)
+            string endpoint,
+            Dictionary<string, string> form)
         {
             try
             {
-                using var formContent = new FormUrlEncodedContent(formParams);
-                using var response = await _httpClient.PostAsync(tokenEndpoint, formContent);
-                var responseContent = await response.Content.ReadAsStringAsync();
+                using var content = new FormUrlEncodedContent(form);
+                using var response = await _httpClient.PostAsync(endpoint, content);
+                var raw = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
-                    if (string.IsNullOrWhiteSpace(responseContent))
+                    if (string.IsNullOrWhiteSpace(raw))
                     {
                         return TokenAttempt.Failure(
                             response.StatusCode,
@@ -250,14 +268,14 @@ namespace PoWorks_Rework.Services
                     try
                     {
                         var token = JsonSerializer.Deserialize<OAuthTokenResponse>(
-                            responseContent,
+                            raw,
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                         if (token == null || string.IsNullOrWhiteSpace(token.AccessToken))
                         {
                             return TokenAttempt.Failure(
                                 response.StatusCode,
-                                "PCVue OAuth response does not contain an access_token.");
+                                "PCVue OAuth response does not contain access_token.");
                         }
 
                         token.Success = true;
@@ -265,47 +283,47 @@ namespace PoWorks_Rework.Services
                     }
                     catch (JsonException ex)
                     {
-                        _logger.LogWarning(ex, "Unable to parse the PCVue OAuth response.");
+                        _logger.LogWarning(ex, "Unable to parse PCVue OAuth response.");
                         return TokenAttempt.Failure(
                             response.StatusCode,
-                            "Unable to parse the PCVue OAuth response.");
+                            "Unable to parse PCVue OAuth response.");
                     }
                 }
 
-                var oauthError = ParseOAuthError(responseContent);
-                var errorCode = oauthError?.ErrorDescription;
-                var isTooManyUsers = string.Equals(
-                    errorCode,
+                var oauthError = ParseOAuthError(raw);
+                var serverCode = oauthError?.ErrorDescription;
+                var tooManyUsers = string.Equals(
+                    serverCode,
                     "E_TooManyUsers",
                     StringComparison.OrdinalIgnoreCase);
 
-                var canFallback =
-                    !isTooManyUsers &&
+                var mayOpenReplacementSession =
+                    !tooManyUsers &&
                     (response.StatusCode == HttpStatusCode.Unauthorized ||
-                     string.Equals(oauthError?.Error, "invalid_grant", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(errorCode, "E_InvalidSessionId", StringComparison.OrdinalIgnoreCase));
+                     string.Equals(serverCode, "E_InvalidSessionId", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(oauthError?.Error, "invalid_grant", StringComparison.OrdinalIgnoreCase));
 
-                var userMessage = isTooManyUsers
+                var message = tooManyUsers
                     ? "PCVue Web Services connection limit reached (E_TooManyUsers). " +
-                      "PoWorks paused authentication retries for 60 seconds to avoid opening more sessions."
-                    : BuildOAuthErrorMessage(response.StatusCode, oauthError, responseContent);
+                      "PoWorks paused new authentication attempts for 60 seconds."
+                    : BuildOAuthErrorMessage(response.StatusCode, oauthError);
 
                 return TokenAttempt.Failure(
                     response.StatusCode,
-                    userMessage,
-                    isTooManyUsers,
-                    canFallback);
+                    message,
+                    tooManyUsers,
+                    mayOpenReplacementSession);
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning(ex, "Network error while contacting PCVue OAuth endpoint {Endpoint}.", tokenEndpoint);
+                _logger.LogWarning(ex, "Network error while contacting PCVue OAuth endpoint {Endpoint}.", endpoint);
                 return TokenAttempt.Failure(
                     null,
                     $"Network error while contacting PCVue OAuth: {ex.Message}");
             }
             catch (TaskCanceledException ex)
             {
-                _logger.LogWarning(ex, "Timeout while contacting PCVue OAuth endpoint {Endpoint}.", tokenEndpoint);
+                _logger.LogWarning(ex, "Timeout while contacting PCVue OAuth endpoint {Endpoint}.", endpoint);
                 return TokenAttempt.Failure(null, "Timeout while contacting PCVue OAuth.");
             }
         }
@@ -313,37 +331,41 @@ namespace PoWorks_Rework.Services
         private void ApplySuccessfulToken(
             PCVueSessionState state,
             OAuthTokenResponse response,
-            bool preserveRefreshToken)
+            bool preserveExistingRefreshToken)
         {
-            var now = _timeProvider.GetUtcNow();
             var expiresIn = response.ExpiresIn > 0 ? response.ExpiresIn : 1200;
-
-            // PCVue tells the client the real token lifetime with expires_in. Keep a
-            // small safety margin rather than forcing a 4-minute lifetime.
             var safetyMarginSeconds = Math.Clamp(expiresIn / 10, 5, 30);
             var usableLifetimeSeconds = Math.Max(1, expiresIn - safetyMarginSeconds);
 
             state.AccessToken = response.AccessToken;
-            if (!preserveRefreshToken || !string.IsNullOrWhiteSpace(response.RefreshToken))
+
+            if (!preserveExistingRefreshToken || !string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                state.RefreshToken = string.IsNullOrWhiteSpace(response.RefreshToken)
-                    ? state.RefreshToken
-                    : response.RefreshToken;
+                if (!string.IsNullOrWhiteSpace(response.RefreshToken))
+                {
+                    state.RefreshToken = response.RefreshToken;
+                }
             }
 
-            state.TokenType = string.IsNullOrWhiteSpace(response.TokenType) ? "Bearer" : response.TokenType;
+            state.TokenType = string.IsNullOrWhiteSpace(response.TokenType)
+                ? "Bearer"
+                : response.TokenType;
             state.OriginalExpiresIn = expiresIn;
-            state.AccessTokenExpiresAtUtc = now.AddSeconds(usableLifetimeSeconds);
+            state.AccessTokenExpiresAtUtc = _timeProvider.GetUtcNow().AddSeconds(usableLifetimeSeconds);
             state.RetryAfterUtc = DateTimeOffset.MinValue;
             state.LastError = null;
+            state.LastFailureWasTooManyUsers = false;
 
             response.ExpiresIn = expiresIn;
             response.RefreshToken = state.RefreshToken;
             response.Success = true;
         }
 
-        private static bool IsAccessTokenUsable(PCVueSessionState state, DateTimeOffset now)
-            => !string.IsNullOrWhiteSpace(state.AccessToken) && now < state.AccessTokenExpiresAtUtc;
+        private static bool IsAccessTokenUsable(
+            PCVueSessionState state,
+            DateTimeOffset now)
+            => !string.IsNullOrWhiteSpace(state.AccessToken) &&
+               now < state.AccessTokenExpiresAtUtc;
 
         private static OAuthTokenResponse CachedResponse(PCVueSessionState state)
             => new()
@@ -357,58 +379,59 @@ namespace PoWorks_Rework.Services
 
         private void ApplyAuthenticationBackoff(
             PCVueSessionState state,
-            string? error,
-            TimeSpan delay)
+            string? message,
+            TimeSpan delay,
+            bool tooManyUsers)
         {
-            state.LastError = error;
+            state.LastError = message;
+            state.LastFailureWasTooManyUsers = tooManyUsers;
             state.RetryAfterUtc = _timeProvider.GetUtcNow().Add(delay);
         }
 
         private void LogAuthenticationFailure(
             PCVueWebServiceSettings settings,
-            OAuthTokenResponse response,
-            HttpStatusCode? statusCode,
-            bool isRefresh = false)
+            TokenAttempt attempt,
+            bool isRefresh)
         {
-            if (response.IsTooManyUsers)
+            if (attempt.IsTooManyUsers)
             {
                 _logger.LogWarning(
-                    "PCVue rejected {GrantType} authentication for connection {ConnectionId}: E_TooManyUsers. " +
-                    "Further authentication attempts are temporarily throttled.",
+                    "PCVue rejected {Grant} authentication for {Connection}: E_TooManyUsers. " +
+                    "Authentication storm protection is active.",
                     isRefresh ? "refresh-token" : "password",
                     SafeConnectionLabel(settings));
                 return;
             }
 
             _logger.LogWarning(
-                "PCVue rejected {GrantType} authentication for connection {ConnectionId}. HTTP {StatusCode}: {Error}",
+                "PCVue rejected {Grant} authentication for {Connection}. HTTP {Status}: {Error}",
                 isRefresh ? "refresh-token" : "password",
                 SafeConnectionLabel(settings),
-                statusCode,
-                response.ErrorMessage);
+                attempt.StatusCode,
+                attempt.Response.ErrorMessage);
         }
 
         /// <summary>
-        /// Tests authentication plus HistoricalData service availability without opening
-        /// another session when a reusable session already exists.
+        /// Tests both the OAuth session and the HistoricalData service. Repeated tests
+        /// reuse the existing OAuth session instead of consuming another PCVue slot.
         /// </summary>
         public async Task<WebServiceTestResult> TestConnectionAsync(PCVueWebServiceSettings settings)
         {
-            var tokenResponse = await AcquireTokenAsync(settings, forceRefresh: false);
-            if (!tokenResponse.Success)
+            var token = await AcquireTokenAsync(settings, forceRefresh: false);
+            if (!token.Success)
             {
                 return new WebServiceTestResult
                 {
                     Success = false,
-                    ErrorMessage = tokenResponse.ErrorMessage,
-                    TokenInfo = tokenResponse.IsTooManyUsers ? "E_TooManyUsers" : null
+                    ErrorMessage = token.ErrorMessage,
+                    TokenInfo = token.IsTooManyUsers ? "E_TooManyUsers" : null
                 };
             }
 
             var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/HistoricalData/v2/Status";
-            var status = await SendBearerStatusRequestAsync(endpoint, tokenResponse.AccessToken);
+            var statusCode = await GetBearerStatusCodeAsync(endpoint, token.AccessToken);
 
-            if (status.StatusCode == HttpStatusCode.Unauthorized)
+            if (statusCode == HttpStatusCode.Unauthorized)
             {
                 var refreshed = await AcquireTokenAsync(settings, forceRefresh: true);
                 if (!refreshed.Success)
@@ -420,15 +443,15 @@ namespace PoWorks_Rework.Services
                     };
                 }
 
-                status = await SendBearerStatusRequestAsync(endpoint, refreshed.AccessToken);
+                statusCode = await GetBearerStatusCodeAsync(endpoint, refreshed.AccessToken);
             }
 
-            if (!status.IsSuccessStatusCode)
+            if ((int)statusCode < 200 || (int)statusCode > 299)
             {
                 return new WebServiceTestResult
                 {
                     Success = false,
-                    ErrorMessage = $"PCVue HistoricalData status failed: HTTP {(int)status.StatusCode} ({status.StatusCode})."
+                    ErrorMessage = $"PCVue HistoricalData status failed: HTTP {(int)statusCode} ({statusCode})."
                 };
             }
 
@@ -436,59 +459,44 @@ namespace PoWorks_Rework.Services
             {
                 Success = true,
                 Message = "PCVue OAuth session and HistoricalData service are available.",
-                TokenInfo = $"expires_in={tokenResponse.ExpiresIn}"
+                TokenInfo = $"expires_in={token.ExpiresIn}"
             };
         }
 
-        private async Task<HttpResponseMessage> SendBearerStatusRequestAsync(string endpoint, string token)
+        private async Task<HttpStatusCode> GetBearerStatusCodeAsync(string endpoint, string token)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            return await _httpClient.SendAsync(request);
+            using var response = await _httpClient.SendAsync(request);
+            return response.StatusCode;
         }
 
-        /// <summary>
-        /// Ends the cached PCVue server-side session for a configured connection.
-        /// </summary>
         public async Task<bool> LogoutAsync(PCVueWebServiceSettings settings)
-        {
-            var key = BuildSessionKey(settings);
-            if (!_sessions.TryGetValue(key, out var state))
-            {
-                return true;
-            }
+            => await LogoutBySessionKeyAsync(BuildSessionKey(settings));
 
-            await state.Gate.WaitAsync();
-            try
-            {
-                var success = await TryLogoutStateAsync(state, CancellationToken.None);
-                state.ClearTokens();
-                _sessions.TryRemove(key, out _);
-                return success;
-            }
-            finally
-            {
-                state.Gate.Release();
-            }
-        }
-
-        /// <summary>
-        /// Ends a cached session by connection ID, used when deleting a configured
-        /// Web Service connection.
-        /// </summary>
         public async Task<bool> LogoutConnectionAsync(string connectionId)
         {
             if (string.IsNullOrWhiteSpace(connectionId)) return true;
 
-            var key = "id:" + connectionId.Trim();
-            if (!_sessions.TryGetValue(key, out var state)) return true;
+            var alias = "id:" + connectionId.Trim();
+            if (!_connectionAliases.TryRemove(alias, out var sessionKey))
+            {
+                return true;
+            }
+
+            return await LogoutBySessionKeyAsync(sessionKey);
+        }
+
+        private async Task<bool> LogoutBySessionKeyAsync(string sessionKey)
+        {
+            if (!_sessions.TryGetValue(sessionKey, out var state)) return true;
 
             await state.Gate.WaitAsync();
             try
             {
                 var success = await TryLogoutStateAsync(state, CancellationToken.None);
                 state.ClearTokens();
-                _sessions.TryRemove(key, out _);
+                _sessions.TryRemove(sessionKey, out _);
                 return success;
             }
             finally
@@ -501,20 +509,22 @@ namespace PoWorks_Rework.Services
             PCVueSessionState state,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(state.AccessToken) || string.IsNullOrWhiteSpace(state.BaseUrl))
+            if (string.IsNullOrWhiteSpace(state.AccessToken) ||
+                string.IsNullOrWhiteSpace(state.BaseUrl))
             {
                 return true;
             }
 
-            var endpoint = $"{state.BaseUrl.TrimEnd('/')}/OAuth/Account/logout";
+            var endpoint = $"{state.BaseUrl}/OAuth/Account/logout";
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", state.AccessToken);
                 using var response = await _httpClient.SendAsync(request, cancellationToken);
 
-                // 401 means the server already considers the session invalid/closed.
-                return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Unauthorized;
+                // If the session is already invalid, the intended end state is reached.
+                return response.IsSuccessStatusCode ||
+                       response.StatusCode == HttpStatusCode.Unauthorized;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -539,7 +549,7 @@ namespace PoWorks_Rework.Services
             string[]? properties = null)
         {
             var token = await GetValidAccessTokenAsync(settings);
-            if (string.IsNullOrEmpty(token))
+            if (string.IsNullOrWhiteSpace(token))
             {
                 throw new InvalidOperationException("Failed to get a valid PCVue access token.");
             }
@@ -547,23 +557,25 @@ namespace PoWorks_Rework.Services
             var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealTimeData/v2/BulkRead";
             properties ??= new[] { "VariableName", "Description", "Unit" };
 
-            var requestPayload = new { Variables = variables, Properties = properties };
-            var jsonContent = JsonSerializer.Serialize(requestPayload);
+            var payload = JsonSerializer.Serialize(new
+            {
+                Variables = variables,
+                Properties = properties
+            });
 
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
             using var response = await _httpClient.SendAsync(request);
-            var responseContent = await response.Content.ReadAsStringAsync();
-
-            if (response.IsSuccessStatusCode) return responseContent;
+            var raw = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode) return raw;
 
             _logger.LogError(
-                "PCVue BulkRead failed. HTTP {StatusCode}: {Response}",
+                "PCVue BulkRead failed. HTTP {Status}: {Response}",
                 response.StatusCode,
-                responseContent);
+                raw);
             throw new InvalidOperationException(
                 $"PCVue BulkRead failed: HTTP {(int)response.StatusCode} ({response.StatusCode}).");
         }
@@ -572,7 +584,8 @@ namespace PoWorks_Rework.Services
         {
             if (settings == null) return new ValidationResult(false, "PCVue settings are required.");
             if (string.IsNullOrWhiteSpace(settings.BaseUrl)) return new ValidationResult(false, "Base URL is required.");
-            if (!Uri.TryCreate(settings.BaseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+            if (!Uri.TryCreate(settings.BaseUrl, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttps)
             {
                 return new ValidationResult(false, "PCVue Base URL must be an absolute HTTPS URL.");
             }
@@ -583,17 +596,16 @@ namespace PoWorks_Rework.Services
             return new ValidationResult(true, "Settings are valid");
         }
 
-        private static string NormalizeBaseUrl(string baseUrl) => baseUrl.Trim().TrimEnd('/');
-
         private static string BuildSessionKey(PCVueWebServiceSettings settings)
         {
-            if (!string.IsNullOrWhiteSpace(settings.ConnectionId))
-            {
-                return "id:" + settings.ConnectionId.Trim();
-            }
-
-            var identity = $"{NormalizeBaseUrl(settings.BaseUrl).ToUpperInvariant()}|{settings.ClientId}|{settings.Username}";
-            return "cfg:" + Hash(identity);
+            // A PCVue OAuth session is a server/client/user concept, not a local DB-row
+            // concept. Reusing this identity prevents the settings UI and AutoImportWorker
+            // from opening duplicate sessions for the same PCVue user.
+            var identity = string.Join("|",
+                NormalizeBaseUrl(settings.BaseUrl).ToUpperInvariant(),
+                settings.ClientId.Trim(),
+                settings.Username.Trim().ToUpperInvariant());
+            return "oauth:" + Hash(identity);
         }
 
         private static string BuildConfigurationFingerprint(PCVueWebServiceSettings settings)
@@ -607,23 +619,26 @@ namespace PoWorks_Rework.Services
             return Hash(value);
         }
 
+        private static string NormalizeBaseUrl(string baseUrl)
+            => baseUrl.Trim().TrimEnd('/');
+
         private static string Hash(string value)
             => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
         private static string SafeConnectionLabel(PCVueWebServiceSettings settings)
-            => !string.IsNullOrWhiteSpace(settings.ConnectionId)
-                ? settings.ConnectionId
-                : (!string.IsNullOrWhiteSpace(settings.ConnectionName)
-                    ? settings.ConnectionName
+            => !string.IsNullOrWhiteSpace(settings.ConnectionName)
+                ? settings.ConnectionName
+                : (!string.IsNullOrWhiteSpace(settings.ConnectionId)
+                    ? settings.ConnectionId
                     : settings.BaseUrl);
 
-        private static OAuthErrorResponse? ParseOAuthError(string responseContent)
+        private static OAuthErrorResponse? ParseOAuthError(string raw)
         {
-            if (string.IsNullOrWhiteSpace(responseContent)) return null;
+            if (string.IsNullOrWhiteSpace(raw)) return null;
             try
             {
                 return JsonSerializer.Deserialize<OAuthErrorResponse>(
-                    responseContent,
+                    raw,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (JsonException)
@@ -634,8 +649,7 @@ namespace PoWorks_Rework.Services
 
         private static string BuildOAuthErrorMessage(
             HttpStatusCode statusCode,
-            OAuthErrorResponse? error,
-            string rawContent)
+            OAuthErrorResponse? error)
         {
             if (!string.IsNullOrWhiteSpace(error?.ErrorDescription))
             {
@@ -645,12 +659,12 @@ namespace PoWorks_Rework.Services
             {
                 return $"PCVue OAuth failed: {error.Error}";
             }
-            return string.IsNullOrWhiteSpace(rawContent)
-                ? $"PCVue OAuth failed: HTTP {(int)statusCode} ({statusCode})."
-                : $"PCVue OAuth failed: HTTP {(int)statusCode} ({statusCode}).";
+            return $"PCVue OAuth failed: HTTP {(int)statusCode} ({statusCode}).";
         }
 
-        private static OAuthTokenResponse Failed(string message, bool tooManyUsers = false)
+        private static OAuthTokenResponse Failed(
+            string message,
+            bool tooManyUsers = false)
             => new()
             {
                 Success = false,
@@ -670,6 +684,7 @@ namespace PoWorks_Rework.Services
             public DateTimeOffset AccessTokenExpiresAtUtc { get; set; } = DateTimeOffset.MinValue;
             public DateTimeOffset RetryAfterUtc { get; set; } = DateTimeOffset.MinValue;
             public string? LastError { get; set; }
+            public bool LastFailureWasTooManyUsers { get; set; }
 
             public void ResetForConfiguration(string fingerprint, string baseUrl)
             {
@@ -687,6 +702,7 @@ namespace PoWorks_Rework.Services
                 AccessTokenExpiresAtUtc = DateTimeOffset.MinValue;
                 RetryAfterUtc = DateTimeOffset.MinValue;
                 LastError = null;
+                LastFailureWasTooManyUsers = false;
             }
         }
 
@@ -698,19 +714,21 @@ namespace PoWorks_Rework.Services
         {
             public bool Success => Response.Success;
 
-            public static TokenAttempt Successful(HttpStatusCode statusCode, OAuthTokenResponse response)
+            public static TokenAttempt Successful(
+                HttpStatusCode statusCode,
+                OAuthTokenResponse response)
                 => new(response, statusCode, false, false);
 
             public static TokenAttempt Failure(
                 HttpStatusCode? statusCode,
-                string error,
+                string message,
                 bool tooManyUsers = false,
                 bool canFallbackToPasswordGrant = false)
                 => new(
                     new OAuthTokenResponse
                     {
                         Success = false,
-                        ErrorMessage = error,
+                        ErrorMessage = message,
                         IsTooManyUsers = tooManyUsers
                     },
                     statusCode,
@@ -725,7 +743,7 @@ namespace PoWorks_Rework.Services
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
         public bool IsTooManyUsers { get; set; }
-        [JsonPropertyName("access_token")] public string AccessToken { get; set; } = "";
+        [JsonPropertyName("access_token")] public string AccessToken { get; set; } = string.Empty;
         [JsonPropertyName("token_type")] public string TokenType { get; set; } = "Bearer";
         [JsonPropertyName("expires_in")] public int ExpiresIn { get; set; }
         [JsonPropertyName("refresh_token")] public string? RefreshToken { get; set; }
@@ -734,8 +752,8 @@ namespace PoWorks_Rework.Services
 
     public class OAuthErrorResponse
     {
-        [JsonPropertyName("error")] public string Error { get; set; } = "";
-        [JsonPropertyName("error_description")] public string ErrorDescription { get; set; } = "";
+        [JsonPropertyName("error")] public string Error { get; set; } = string.Empty;
+        [JsonPropertyName("error_description")] public string ErrorDescription { get; set; } = string.Empty;
         [JsonPropertyName("error_uri")] public string? ErrorUri { get; set; }
     }
 
@@ -751,6 +769,7 @@ namespace PoWorks_Rework.Services
     {
         public bool IsValid { get; }
         public string ErrorMessage { get; }
+
         public ValidationResult(bool isValid, string errorMessage)
         {
             IsValid = isValid;
