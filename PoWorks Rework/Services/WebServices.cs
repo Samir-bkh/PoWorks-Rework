@@ -1,284 +1,739 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
 {
     /// <summary>
-    /// Service for communicating with PCVue web service API.
-    /// Handles OAuth token management, trends data requests, and variable browsing.
-    /// Implements automatic token refresh with caching and retry logic.
+    /// Central client for PCVue REST Web Services.
+    ///
+    /// One OAuth session is reused for one server/client/user identity, even when the
+    /// same connection is reached from the settings page, the manual import path and
+    /// the background worker with different local connection IDs. This matters because
+    /// PCVue licenses Web Services sessions and opening unnecessary password-grant
+    /// sessions can exhaust the available connection count.
     /// </summary>
     public class PCVueWebService
     {
+        private static readonly TimeSpan TooManyUsersBackoff = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan TransientAuthenticationBackoff = TimeSpan.FromSeconds(5);
+
         private readonly HttpClient _httpClient;
         private readonly ILogger<PCVueWebService> _logger;
-        private readonly SemaphoreSlim _tokenLock = new SemaphoreSlim(1, 1);
+        private readonly TimeProvider _timeProvider;
+        private readonly ConcurrentDictionary<string, PCVueSessionState> _sessions = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, string> _connectionAliases = new(StringComparer.Ordinal);
 
         public HttpClient HttpClient => _httpClient;
 
-        private string? _accessToken;
-        private string? _refreshToken;
-        private DateTime _tokenExpiry;
-        private DateTime _lastTokenRefreshTime = DateTime.MinValue;
-
-        public PCVueWebService(HttpClient httpClient, ILogger<PCVueWebService> logger)
+        public PCVueWebService(
+            HttpClient httpClient,
+            ILogger<PCVueWebService> logger,
+            TimeProvider? timeProvider = null)
         {
-            _logger = logger;
-
-            var handler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-            };
-
-            _httpClient = new HttpClient(handler)
-            {
-                Timeout = httpClient.Timeout
-            };
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _timeProvider = timeProvider ?? TimeProvider.System;
         }
 
-        public async Task<string?> GetValidAccessTokenAsync(PCVueWebServiceSettings settings, bool forceRefresh = false)
+        public async Task<string?> GetValidAccessTokenAsync(
+            PCVueWebServiceSettings settings,
+            bool forceRefresh = false)
         {
-            if (!forceRefresh && !string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
+            var response = await AcquireTokenAsync(settings, forceRefresh);
+            return response.Success ? response.AccessToken : null;
+        }
+
+        public Task<OAuthTokenResponse> GetAccessTokenAsync(PCVueWebServiceSettings settings)
+            => AcquireTokenAsync(settings, forceRefresh: false);
+
+        public Task<OAuthTokenResponse> RefreshAccessTokenAsync(PCVueWebServiceSettings settings)
+            => AcquireTokenAsync(settings, forceRefresh: true);
+
+        private async Task<OAuthTokenResponse> AcquireTokenAsync(
+            PCVueWebServiceSettings settings,
+            bool forceRefresh)
+        {
+            var validation = ValidateSettings(settings);
+            if (!validation.IsValid)
             {
-                return _accessToken;
+                return Failed(validation.ErrorMessage);
             }
 
-            await _tokenLock.WaitAsync();
+            var sessionKey = BuildSessionKey(settings);
+            await RebindConnectionAliasAsync(settings, sessionKey);
+
+            var fingerprint = BuildConfigurationFingerprint(settings);
+            var state = _sessions.GetOrAdd(sessionKey, _ => new PCVueSessionState());
+            var now = _timeProvider.GetUtcNow();
+
+            if (!forceRefresh &&
+                state.ConfigurationFingerprint == fingerprint &&
+                IsAccessTokenUsable(state, now))
+            {
+                return CachedResponse(state);
+            }
+
+            await state.Gate.WaitAsync();
             try
             {
-                if (forceRefresh)
+                now = _timeProvider.GetUtcNow();
+
+                if (state.ConfigurationFingerprint != fingerprint)
                 {
-                    if ((DateTime.UtcNow - _lastTokenRefreshTime).TotalSeconds < 5)
-                    {
-                        return _accessToken;
-                    }
-                    ClearTokens();
-                }
-                else if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
-                {
-                    return _accessToken;
+                    await TryLogoutStateAsync(state, CancellationToken.None);
+                    state.ResetForConfiguration(fingerprint, NormalizeBaseUrl(settings.BaseUrl));
                 }
 
-                if (!string.IsNullOrEmpty(_refreshToken))
+                if (!forceRefresh && IsAccessTokenUsable(state, now))
                 {
-                    var refreshedToken = await RefreshTokenAsync(settings);
-                    if (!string.IsNullOrEmpty(refreshedToken))
-                    {
-                        return refreshedToken;
-                    }
+                    return CachedResponse(state);
                 }
 
-                var tokenResponse = await RequestNewTokenAsync(settings);
-                return tokenResponse.Success ? tokenResponse.AccessToken : null;
+                if (now < state.RetryAfterUtc)
+                {
+                    return Failed(state.LastError ??
+                        "PCVue authentication is temporarily paused after a recent failure.",
+                        state.LastFailureWasTooManyUsers);
+                }
+
+                if (!string.IsNullOrWhiteSpace(state.RefreshToken))
+                {
+                    var refreshAttempt = await RequestRefreshTokenAsync(settings, state);
+                    if (refreshAttempt.Success)
+                    {
+                        return refreshAttempt.Response;
+                    }
+
+                    if (refreshAttempt.IsTooManyUsers)
+                    {
+                        ApplyAuthenticationBackoff(
+                            state,
+                            refreshAttempt.Response.ErrorMessage,
+                            TooManyUsersBackoff,
+                            tooManyUsers: true);
+                        return refreshAttempt.Response;
+                    }
+
+                    if (!refreshAttempt.CanFallbackToPasswordGrant)
+                    {
+                        ApplyAuthenticationBackoff(
+                            state,
+                            refreshAttempt.Response.ErrorMessage,
+                            TransientAuthenticationBackoff,
+                            tooManyUsers: false);
+                        return refreshAttempt.Response;
+                    }
+
+                    // Refresh told us that the server-side session is no longer valid.
+                    // Only now is a replacement password-grant session justified.
+                    state.ClearTokens();
+                }
+
+                var passwordAttempt = await RequestPasswordTokenAsync(settings, state);
+                if (!passwordAttempt.Success)
+                {
+                    ApplyAuthenticationBackoff(
+                        state,
+                        passwordAttempt.ErrorMessage,
+                        passwordAttempt.IsTooManyUsers
+                            ? TooManyUsersBackoff
+                            : TransientAuthenticationBackoff,
+                        passwordAttempt.IsTooManyUsers);
+                }
+
+                return passwordAttempt;
             }
             finally
             {
-                _tokenLock.Release();
+                state.Gate.Release();
             }
         }
 
-        public async Task<OAuthTokenResponse> GetAccessTokenAsync(PCVueWebServiceSettings settings)
+        /// <summary>
+        /// When a saved connection changes endpoint or user, release the session that
+        /// was previously associated with that local connection ID before binding the
+        /// ID to the new OAuth identity.
+        /// </summary>
+        private async Task RebindConnectionAliasAsync(
+            PCVueWebServiceSettings settings,
+            string sessionKey)
         {
-            return await RequestNewTokenAsync(settings);
+            // SettingsController's temporary token-test object historically did not
+            // copy ConnectionName, so don't create aliases for those ephemeral objects.
+            // They still reuse the same identity-based sessionKey.
+            if (string.IsNullOrWhiteSpace(settings.ConnectionId) ||
+                string.IsNullOrWhiteSpace(settings.ConnectionName))
+            {
+                return;
+            }
+
+            var alias = "id:" + settings.ConnectionId.Trim();
+            if (_connectionAliases.TryGetValue(alias, out var previousKey) &&
+                !string.Equals(previousKey, sessionKey, StringComparison.Ordinal))
+            {
+                await LogoutBySessionKeyAsync(previousKey);
+            }
+
+            _connectionAliases[alias] = sessionKey;
         }
 
-        private async Task<OAuthTokenResponse> RequestNewTokenAsync(PCVueWebServiceSettings settings)
+        private async Task<OAuthTokenResponse> RequestPasswordTokenAsync(
+            PCVueWebServiceSettings settings,
+            PCVueSessionState state)
         {
-            var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/token";
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
+            _logger.LogInformation(
+                "Opening PCVue OAuth session for {Connection} at {Endpoint}",
+                SafeConnectionLabel(settings),
+                endpoint);
 
-            // --- SUPER LOGS ACTIVÉS ---
-            _logger.LogWarning("=================================================");
-            _logger.LogWarning($"[PCVUE DEBUG] TENTATIVE D'AUTHENTIFICATION");
-            _logger.LogWarning($"[PCVUE DEBUG] Cible       : {tokenEndpoint}");
-            _logger.LogWarning($"[PCVUE DEBUG] Client ID   : {settings.ClientId}");
-            _logger.LogWarning($"[PCVUE DEBUG] Utilisateur : {settings.Username}");
-            _logger.LogWarning("=================================================");
+            var form = new Dictionary<string, string>
+            {
+                ["username"] = settings.Username,
+                ["password"] = settings.Password,
+                ["grant_type"] = "password",
+                ["client_id"] = settings.ClientId,
+                ["client_secret"] = settings.ClientSecret,
+                ["scope"] = "RealtimeData RealtimeAlarm HistoricalData GraphicalData"
+            };
 
+            var attempt = await SendTokenRequestAsync(endpoint, form);
+            if (!attempt.Success)
+            {
+                LogAuthenticationFailure(settings, attempt, isRefresh: false);
+                return attempt.Response;
+            }
+
+            ApplySuccessfulToken(state, attempt.Response, preserveExistingRefreshToken: false);
+            _logger.LogInformation(
+                "PCVue OAuth session ready for {Connection}; access token lifetime {ExpiresIn}s.",
+                SafeConnectionLabel(settings),
+                attempt.Response.ExpiresIn);
+            return attempt.Response;
+        }
+
+        private async Task<TokenAttempt> RequestRefreshTokenAsync(
+            PCVueWebServiceSettings settings,
+            PCVueSessionState state)
+        {
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
+            var form = new Dictionary<string, string>
+            {
+                ["grant_type"] = "refresh_token",
+                ["refresh_token"] = state.RefreshToken!,
+                ["client_id"] = settings.ClientId,
+                ["client_secret"] = settings.ClientSecret
+            };
+
+            _logger.LogDebug(
+                "Refreshing PCVue OAuth session for {Connection}.",
+                SafeConnectionLabel(settings));
+
+            var attempt = await SendTokenRequestAsync(endpoint, form);
+            if (attempt.Success)
+            {
+                ApplySuccessfulToken(state, attempt.Response, preserveExistingRefreshToken: true);
+                return attempt with { Response = CachedResponse(state) };
+            }
+
+            LogAuthenticationFailure(settings, attempt, isRefresh: true);
+            return attempt;
+        }
+
+        private async Task<TokenAttempt> SendTokenRequestAsync(
+            string endpoint,
+            Dictionary<string, string> form)
+        {
             try
             {
-                var formParams = new Dictionary<string, string>
-                {
-                    {"username", settings.Username},
-                    {"password", settings.Password},
-                    {"grant_type", "password"},
-                    {"client_id", settings.ClientId},
-                    {"client_secret", settings.ClientSecret},
-                    {"scope", "RealtimeData RealtimeAlarm HistoricalData GraphicalData"}
-                };
-
-                var formContent = new FormUrlEncodedContent(formParams);
-
-                _logger.LogInformation("[PCVUE DEBUG] Envoi de la requête réseau en cours...");
-                var response = await _httpClient.PostAsync(tokenEndpoint, formContent);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                _logger.LogWarning($"[PCVUE DEBUG] Code HTTP Retourné : {(int)response.StatusCode} ({response.StatusCode})");
+                using var content = new FormUrlEncodedContent(form);
+                using var response = await _httpClient.PostAsync(endpoint, content);
+                var raw = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
-                    if (string.IsNullOrWhiteSpace(responseContent))
+                    if (string.IsNullOrWhiteSpace(raw))
                     {
-                        _logger.LogError("[PCVUE DEBUG] ❌ Le serveur PCVue a renvoyé un contenu vide au lieu du Token !");
-                        return new OAuthTokenResponse { Success = false, ErrorMessage = "Empty response from server" };
+                        return TokenAttempt.Failure(
+                            response.StatusCode,
+                            "PCVue returned an empty OAuth response.");
                     }
 
                     try
                     {
-                        var tokenResponse = JsonSerializer.Deserialize<OAuthTokenResponse>(responseContent, new JsonSerializerOptions
+                        var token = JsonSerializer.Deserialize<OAuthTokenResponse>(
+                            raw,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                        if (token == null || string.IsNullOrWhiteSpace(token.AccessToken))
                         {
-                            PropertyNameCaseInsensitive = true
-                        });
-
-                        if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.AccessToken))
-                        {
-                            _accessToken = tokenResponse.AccessToken;
-                            _refreshToken = tokenResponse.RefreshToken;
-
-                            int actualLifespan = Math.Min(tokenResponse.ExpiresIn - 60, 240);
-                            _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
-                            _lastTokenRefreshTime = DateTime.UtcNow;
-
-                            tokenResponse.Success = true;
-                            _logger.LogInformation("[PCVUE DEBUG] ✅ Authentification réussie. Jeton récupéré avec succès.");
-                            return tokenResponse;
+                            return TokenAttempt.Failure(
+                                response.StatusCode,
+                                "PCVue OAuth response does not contain access_token.");
                         }
 
-                        _logger.LogError("[PCVUE DEBUG] ❌ Le JSON retourné par PCVue ne contenait pas d'AccessToken.");
-                        return new OAuthTokenResponse { Success = false, ErrorMessage = $"Token request failed: {response.StatusCode}" };
+                        token.Success = true;
+                        return TokenAttempt.Successful(response.StatusCode, token);
                     }
                     catch (JsonException ex)
                     {
-                        _logger.LogError(ex, $"[PCVUE DEBUG] ❌ Erreur de lecture du JSON de PCVue. Réponse brute : {responseContent}");
-                        return new OAuthTokenResponse { Success = false, ErrorMessage = $"Error parsing token response: {ex.Message}" };
+                        _logger.LogWarning(ex, "Unable to parse PCVue OAuth response.");
+                        return TokenAttempt.Failure(
+                            response.StatusCode,
+                            "Unable to parse PCVue OAuth response.");
                     }
                 }
 
-                // SI CA PLANTE COTE PCVUE (Erreur 400, 401, 404, etc.)
-                _logger.LogError($"[PCVUE DEBUG] ❌ PCVue a refusé la connexion ! Raison détaillée : {responseContent}");
-                return new OAuthTokenResponse { Success = false, ErrorMessage = $"PCVue a refusé l'accès : {responseContent}" };
+                var oauthError = ParseOAuthError(raw);
+                var serverCode = oauthError?.ErrorDescription;
+                var tooManyUsers = string.Equals(
+                    serverCode,
+                    "E_TooManyUsers",
+                    StringComparison.OrdinalIgnoreCase);
+
+                var mayOpenReplacementSession =
+                    !tooManyUsers &&
+                    (response.StatusCode == HttpStatusCode.Unauthorized ||
+                     string.Equals(serverCode, "E_InvalidSessionId", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(oauthError?.Error, "invalid_grant", StringComparison.OrdinalIgnoreCase));
+
+                var message = tooManyUsers
+                    ? "PCVue Web Services connection limit reached (E_TooManyUsers). " +
+                      "PoWorks paused new authentication attempts for 60 seconds."
+                    : BuildOAuthErrorMessage(response.StatusCode, oauthError);
+
+                return TokenAttempt.Failure(
+                    response.StatusCode,
+                    message,
+                    tooManyUsers,
+                    mayOpenReplacementSession);
             }
-            catch (HttpRequestException httpEx)
+            catch (HttpRequestException ex)
             {
-                _logger.LogError(httpEx, $"[PCVUE DEBUG] ❌ ERREUR RESEAU MAJEURE ! Impossible d'atteindre l'URL : {tokenEndpoint}. Vérifiez que PCVue est démarré, que l'adresse est bonne et que le pare-feu laisse passer.");
-                return new OAuthTokenResponse { Success = false, ErrorMessage = $"Network error: {httpEx.Message}" };
+                _logger.LogWarning(ex, "Network error while contacting PCVue OAuth endpoint {Endpoint}.", endpoint);
+                return TokenAttempt.Failure(
+                    null,
+                    $"Network error while contacting PCVue OAuth: {ex.Message}");
             }
-            catch (Exception ex)
+            catch (TaskCanceledException ex)
             {
-                _logger.LogError(ex, $"[PCVUE DEBUG] ❌ ERREUR SYSTEME FATALE LORS DE LA CONNEXION A PCVUE.");
-                return new OAuthTokenResponse { Success = false, ErrorMessage = $"Unexpected error: {ex.Message}" };
+                _logger.LogWarning(ex, "Timeout while contacting PCVue OAuth endpoint {Endpoint}.", endpoint);
+                return TokenAttempt.Failure(null, "Timeout while contacting PCVue OAuth.");
             }
         }
 
-        private async Task<string?> RefreshTokenAsync(PCVueWebServiceSettings settings)
+        private void ApplySuccessfulToken(
+            PCVueSessionState state,
+            OAuthTokenResponse response,
+            bool preserveExistingRefreshToken)
         {
-            try
+            var expiresIn = response.ExpiresIn > 0 ? response.ExpiresIn : 1200;
+            var safetyMarginSeconds = Math.Clamp(expiresIn / 10, 5, 30);
+            var usableLifetimeSeconds = Math.Max(1, expiresIn - safetyMarginSeconds);
+
+            state.AccessToken = response.AccessToken;
+
+            if (!preserveExistingRefreshToken || !string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                var tokenEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/OAuth/Token";
-
-                var formParams = new Dictionary<string, string>
+                if (!string.IsNullOrWhiteSpace(response.RefreshToken))
                 {
-                    {"grant_type", "refresh_token"},
-                    {"refresh_token", _refreshToken!},
-                    {"client_id", settings.ClientId},
-                    {"client_secret", settings.ClientSecret}
-                };
-
-                var formContent = new FormUrlEncodedContent(formParams);
-                var response = await _httpClient.PostAsync(tokenEndpoint, formContent);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseContent = await response.Content.ReadAsStringAsync();
-                    var tokenData = JsonSerializer.Deserialize<JsonElement>(responseContent);
-
-                    if (tokenData.TryGetProperty("access_token", out var accessElement))
-                    {
-                        _accessToken = accessElement.GetString();
-
-                        if (tokenData.TryGetProperty("refresh_token", out var refreshElement))
-                        {
-                            _refreshToken = refreshElement.GetString();
-                        }
-
-                        var expiresIn = tokenData.TryGetProperty("expires_in", out var expiresElement) ? expiresElement.GetInt32() : 3600;
-                        int actualLifespan = Math.Min(expiresIn - 60, 240);
-                        _tokenExpiry = DateTime.UtcNow.AddSeconds(actualLifespan);
-                        _lastTokenRefreshTime = DateTime.UtcNow;
-
-                        return _accessToken;
-                    }
+                    state.RefreshToken = response.RefreshToken;
                 }
-                return null;
             }
-            catch (Exception)
-            {
-                return null;
-            }
+
+            state.TokenType = string.IsNullOrWhiteSpace(response.TokenType)
+                ? "Bearer"
+                : response.TokenType;
+            state.OriginalExpiresIn = expiresIn;
+            state.AccessTokenExpiresAtUtc = _timeProvider.GetUtcNow().AddSeconds(usableLifetimeSeconds);
+            state.RetryAfterUtc = DateTimeOffset.MinValue;
+            state.LastError = null;
+            state.LastFailureWasTooManyUsers = false;
+
+            response.ExpiresIn = expiresIn;
+            response.RefreshToken = state.RefreshToken;
+            response.Success = true;
         }
 
+        private static bool IsAccessTokenUsable(
+            PCVueSessionState state,
+            DateTimeOffset now)
+            => !string.IsNullOrWhiteSpace(state.AccessToken) &&
+               now < state.AccessTokenExpiresAtUtc;
+
+        private static OAuthTokenResponse CachedResponse(PCVueSessionState state)
+            => new()
+            {
+                Success = true,
+                AccessToken = state.AccessToken ?? string.Empty,
+                RefreshToken = state.RefreshToken,
+                TokenType = state.TokenType,
+                ExpiresIn = state.OriginalExpiresIn
+            };
+
+        private void ApplyAuthenticationBackoff(
+            PCVueSessionState state,
+            string? message,
+            TimeSpan delay,
+            bool tooManyUsers)
+        {
+            state.LastError = message;
+            state.LastFailureWasTooManyUsers = tooManyUsers;
+            state.RetryAfterUtc = _timeProvider.GetUtcNow().Add(delay);
+        }
+
+        private void LogAuthenticationFailure(
+            PCVueWebServiceSettings settings,
+            TokenAttempt attempt,
+            bool isRefresh)
+        {
+            if (attempt.IsTooManyUsers)
+            {
+                _logger.LogWarning(
+                    "PCVue rejected {Grant} authentication for {Connection}: E_TooManyUsers. " +
+                    "Authentication storm protection is active.",
+                    isRefresh ? "refresh-token" : "password",
+                    SafeConnectionLabel(settings));
+                return;
+            }
+
+            _logger.LogWarning(
+                "PCVue rejected {Grant} authentication for {Connection}. HTTP {Status}: {Error}",
+                isRefresh ? "refresh-token" : "password",
+                SafeConnectionLabel(settings),
+                attempt.StatusCode,
+                attempt.Response.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Tests both the OAuth session and the HistoricalData service. Repeated tests
+        /// reuse the existing OAuth session instead of consuming another PCVue slot.
+        /// </summary>
         public async Task<WebServiceTestResult> TestConnectionAsync(PCVueWebServiceSettings settings)
         {
+            var token = await AcquireTokenAsync(settings, forceRefresh: false);
+            if (!token.Success)
+            {
+                return new WebServiceTestResult
+                {
+                    Success = false,
+                    ErrorMessage = token.ErrorMessage,
+                    TokenInfo = token.IsTooManyUsers ? "E_TooManyUsers" : null
+                };
+            }
+
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/HistoricalData/v2/Status";
+            var statusCode = await GetBearerStatusCodeAsync(endpoint, token.AccessToken);
+
+            if (statusCode == HttpStatusCode.Unauthorized)
+            {
+                var refreshed = await AcquireTokenAsync(settings, forceRefresh: true);
+                if (!refreshed.Success)
+                {
+                    return new WebServiceTestResult
+                    {
+                        Success = false,
+                        ErrorMessage = refreshed.ErrorMessage
+                    };
+                }
+
+                statusCode = await GetBearerStatusCodeAsync(endpoint, refreshed.AccessToken);
+            }
+
+            if ((int)statusCode < 200 || (int)statusCode > 299)
+            {
+                return new WebServiceTestResult
+                {
+                    Success = false,
+                    ErrorMessage = $"PCVue HistoricalData status failed: HTTP {(int)statusCode} ({statusCode})."
+                };
+            }
+
+            return new WebServiceTestResult
+            {
+                Success = true,
+                Message = "PCVue OAuth session and HistoricalData service are available.",
+                TokenInfo = $"expires_in={token.ExpiresIn}"
+            };
+        }
+
+        private async Task<HttpStatusCode> GetBearerStatusCodeAsync(string endpoint, string token)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await _httpClient.SendAsync(request);
+            return response.StatusCode;
+        }
+
+        public async Task<bool> LogoutAsync(PCVueWebServiceSettings settings)
+            => await LogoutBySessionKeyAsync(BuildSessionKey(settings));
+
+        public async Task<bool> LogoutConnectionAsync(string connectionId)
+        {
+            if (string.IsNullOrWhiteSpace(connectionId)) return true;
+
+            var alias = "id:" + connectionId.Trim();
+            if (!_connectionAliases.TryRemove(alias, out var sessionKey))
+            {
+                return true;
+            }
+
+            return await LogoutBySessionKeyAsync(sessionKey);
+        }
+
+        private async Task<bool> LogoutBySessionKeyAsync(string sessionKey)
+        {
+            if (!_sessions.TryGetValue(sessionKey, out var state)) return true;
+
+            await state.Gate.WaitAsync();
             try
             {
-                var validationResult = ValidateSettings(settings);
-                if (!validationResult.IsValid) return new WebServiceTestResult { Success = false, ErrorMessage = validationResult.ErrorMessage };
-
-                var tokenResponse = await RequestNewTokenAsync(settings);
-                if (tokenResponse.Success)
-                {
-                    return new WebServiceTestResult { Success = true, Message = "Connection successful!" };
-                }
-                return new WebServiceTestResult { Success = false, ErrorMessage = tokenResponse.ErrorMessage };
+                var success = await TryLogoutStateAsync(state, CancellationToken.None);
+                state.ClearTokens();
+                _sessions.TryRemove(sessionKey, out _);
+                return success;
             }
-            catch (Exception ex)
+            finally
             {
-                return new WebServiceTestResult { Success = false, ErrorMessage = ex.Message };
+                state.Gate.Release();
             }
         }
 
-        private static ValidationResult ValidateSettings(PCVueWebServiceSettings settings)
+        private async Task<bool> TryLogoutStateAsync(
+            PCVueSessionState state,
+            CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(settings.BaseUrl)) return new ValidationResult(false, "Base URL is required");
-            return new ValidationResult(true, "Settings are valid");
+            if (string.IsNullOrWhiteSpace(state.AccessToken) ||
+                string.IsNullOrWhiteSpace(state.BaseUrl))
+            {
+                return true;
+            }
+
+            var endpoint = $"{state.BaseUrl}/OAuth/Account/logout";
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", state.AccessToken);
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+                // If the session is already invalid, the intended end state is reached.
+                return response.IsSuccessStatusCode ||
+                       response.StatusCode == HttpStatusCode.Unauthorized;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                _logger.LogDebug(ex, "Unable to close PCVue OAuth session at {Endpoint}.", endpoint);
+                return false;
+            }
         }
 
         public void ClearTokens()
         {
-            _accessToken = null;
-            _refreshToken = null;
-            _tokenExpiry = DateTime.MinValue;
+            foreach (var state in _sessions.Values)
+            {
+                state.ClearTokens();
+            }
         }
 
-        public void ClearToken()
-        {
-            ClearTokens();
-        }
+        public void ClearToken() => ClearTokens();
 
-        public async Task<string> BulkReadVariablesAsync(PCVueWebServiceSettings settings, string[] variables, string[] properties = null)
+        public async Task<string> BulkReadVariablesAsync(
+            PCVueWebServiceSettings settings,
+            string[] variables,
+            string[]? properties = null)
         {
             var token = await GetValidAccessTokenAsync(settings);
-            if (string.IsNullOrEmpty(token)) throw new Exception("Failed to get valid access token");
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                throw new InvalidOperationException("Failed to get a valid PCVue access token.");
+            }
 
-            var bulkReadEndpoint = $"{settings.BaseUrl.TrimEnd('/')}/RealTimeData/v2/BulkRead";
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealTimeData/v2/BulkRead";
             properties ??= new[] { "VariableName", "Description", "Unit" };
 
-            var requestPayload = new { Variables = variables, Properties = properties };
-            var jsonContent = JsonSerializer.Serialize(requestPayload);
+            var payload = JsonSerializer.Serialize(new
+            {
+                Variables = variables,
+                Properties = properties
+            });
 
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, bulkReadEndpoint);
-            httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-            httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-            httpRequest.Content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.SendAsync(httpRequest);
-            var responseContent = await response.Content.ReadAsStringAsync();
+            using var response = await _httpClient.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode) return raw;
 
-            if (response.IsSuccessStatusCode) return responseContent;
+            _logger.LogError(
+                "PCVue BulkRead failed. HTTP {Status}: {Response}",
+                response.StatusCode,
+                raw);
+            throw new InvalidOperationException(
+                $"PCVue BulkRead failed: HTTP {(int)response.StatusCode} ({response.StatusCode}).");
+        }
 
-            _logger.LogError($"[PCVUE DEBUG]  Erreur lors du BulkRead. Statut : {response.StatusCode}. Réponse : {responseContent}");
-            throw new Exception($"API call failed: {response.StatusCode} - {responseContent}");
+        private static ValidationResult ValidateSettings(PCVueWebServiceSettings settings)
+        {
+            if (settings == null) return new ValidationResult(false, "PCVue settings are required.");
+            if (string.IsNullOrWhiteSpace(settings.BaseUrl)) return new ValidationResult(false, "Base URL is required.");
+            if (!Uri.TryCreate(settings.BaseUrl, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttps)
+            {
+                return new ValidationResult(false, "PCVue Base URL must be an absolute HTTPS URL.");
+            }
+            if (string.IsNullOrWhiteSpace(settings.ClientId)) return new ValidationResult(false, "Client ID is required.");
+            if (string.IsNullOrWhiteSpace(settings.ClientSecret)) return new ValidationResult(false, "Client Secret is required.");
+            if (string.IsNullOrWhiteSpace(settings.Username)) return new ValidationResult(false, "Username is required.");
+            if (string.IsNullOrWhiteSpace(settings.Password)) return new ValidationResult(false, "Password is required.");
+            return new ValidationResult(true, "Settings are valid");
+        }
+
+        private static string BuildSessionKey(PCVueWebServiceSettings settings)
+        {
+            // A PCVue OAuth session is a server/client/user concept, not a local DB-row
+            // concept. Reusing this identity prevents the settings UI and AutoImportWorker
+            // from opening duplicate sessions for the same PCVue user.
+            var identity = string.Join("|",
+                NormalizeBaseUrl(settings.BaseUrl).ToUpperInvariant(),
+                settings.ClientId.Trim(),
+                settings.Username.Trim().ToUpperInvariant());
+            return "oauth:" + Hash(identity);
+        }
+
+        private static string BuildConfigurationFingerprint(PCVueWebServiceSettings settings)
+        {
+            var value = string.Join("|",
+                NormalizeBaseUrl(settings.BaseUrl).ToUpperInvariant(),
+                settings.ClientId,
+                settings.ClientSecret,
+                settings.Username,
+                settings.Password);
+            return Hash(value);
+        }
+
+        private static string NormalizeBaseUrl(string baseUrl)
+            => baseUrl.Trim().TrimEnd('/');
+
+        private static string Hash(string value)
+            => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+        private static string SafeConnectionLabel(PCVueWebServiceSettings settings)
+            => !string.IsNullOrWhiteSpace(settings.ConnectionName)
+                ? settings.ConnectionName
+                : (!string.IsNullOrWhiteSpace(settings.ConnectionId)
+                    ? settings.ConnectionId
+                    : settings.BaseUrl);
+
+        private static OAuthErrorResponse? ParseOAuthError(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            try
+            {
+                return JsonSerializer.Deserialize<OAuthErrorResponse>(
+                    raw,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private static string BuildOAuthErrorMessage(
+            HttpStatusCode statusCode,
+            OAuthErrorResponse? error)
+        {
+            if (!string.IsNullOrWhiteSpace(error?.ErrorDescription))
+            {
+                return $"PCVue OAuth failed: {error.ErrorDescription}";
+            }
+            if (!string.IsNullOrWhiteSpace(error?.Error))
+            {
+                return $"PCVue OAuth failed: {error.Error}";
+            }
+            return $"PCVue OAuth failed: HTTP {(int)statusCode} ({statusCode}).";
+        }
+
+        private static OAuthTokenResponse Failed(
+            string message,
+            bool tooManyUsers = false)
+            => new()
+            {
+                Success = false,
+                ErrorMessage = message,
+                IsTooManyUsers = tooManyUsers
+            };
+
+        private sealed class PCVueSessionState
+        {
+            public SemaphoreSlim Gate { get; } = new(1, 1);
+            public string ConfigurationFingerprint { get; private set; } = string.Empty;
+            public string BaseUrl { get; private set; } = string.Empty;
+            public string? AccessToken { get; set; }
+            public string? RefreshToken { get; set; }
+            public string TokenType { get; set; } = "Bearer";
+            public int OriginalExpiresIn { get; set; }
+            public DateTimeOffset AccessTokenExpiresAtUtc { get; set; } = DateTimeOffset.MinValue;
+            public DateTimeOffset RetryAfterUtc { get; set; } = DateTimeOffset.MinValue;
+            public string? LastError { get; set; }
+            public bool LastFailureWasTooManyUsers { get; set; }
+
+            public void ResetForConfiguration(string fingerprint, string baseUrl)
+            {
+                ClearTokens();
+                ConfigurationFingerprint = fingerprint;
+                BaseUrl = baseUrl;
+            }
+
+            public void ClearTokens()
+            {
+                AccessToken = null;
+                RefreshToken = null;
+                TokenType = "Bearer";
+                OriginalExpiresIn = 0;
+                AccessTokenExpiresAtUtc = DateTimeOffset.MinValue;
+                RetryAfterUtc = DateTimeOffset.MinValue;
+                LastError = null;
+                LastFailureWasTooManyUsers = false;
+            }
+        }
+
+        private sealed record TokenAttempt(
+            OAuthTokenResponse Response,
+            HttpStatusCode? StatusCode,
+            bool IsTooManyUsers,
+            bool CanFallbackToPasswordGrant)
+        {
+            public bool Success => Response.Success;
+
+            public static TokenAttempt Successful(
+                HttpStatusCode statusCode,
+                OAuthTokenResponse response)
+                => new(response, statusCode, false, false);
+
+            public static TokenAttempt Failure(
+                HttpStatusCode? statusCode,
+                string message,
+                bool tooManyUsers = false,
+                bool canFallbackToPasswordGrant = false)
+                => new(
+                    new OAuthTokenResponse
+                    {
+                        Success = false,
+                        ErrorMessage = message,
+                        IsTooManyUsers = tooManyUsers
+                    },
+                    statusCode,
+                    tooManyUsers,
+                    canFallbackToPasswordGrant);
         }
     }
 
@@ -287,7 +742,8 @@ namespace PoWorks_Rework.Services
     {
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
-        [JsonPropertyName("access_token")] public string AccessToken { get; set; } = "";
+        public bool IsTooManyUsers { get; set; }
+        [JsonPropertyName("access_token")] public string AccessToken { get; set; } = string.Empty;
         [JsonPropertyName("token_type")] public string TokenType { get; set; } = "Bearer";
         [JsonPropertyName("expires_in")] public int ExpiresIn { get; set; }
         [JsonPropertyName("refresh_token")] public string? RefreshToken { get; set; }
@@ -296,9 +752,9 @@ namespace PoWorks_Rework.Services
 
     public class OAuthErrorResponse
     {
-        public string Error { get; set; } = "";
-        public string ErrorDescription { get; set; } = "";
-        public string? ErrorUri { get; set; }
+        [JsonPropertyName("error")] public string Error { get; set; } = string.Empty;
+        [JsonPropertyName("error_description")] public string ErrorDescription { get; set; } = string.Empty;
+        [JsonPropertyName("error_uri")] public string? ErrorUri { get; set; }
     }
 
     public class WebServiceTestResult
@@ -313,6 +769,7 @@ namespace PoWorks_Rework.Services
     {
         public bool IsValid { get; }
         public string ErrorMessage { get; }
+
         public ValidationResult(bool isValid, string errorMessage)
         {
             IsValid = isValid;
