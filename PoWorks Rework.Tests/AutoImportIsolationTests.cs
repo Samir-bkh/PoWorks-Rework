@@ -66,12 +66,14 @@ public class AutoImportIsolationTests
         command.Parameters.AddWithValue("companyId", 1);
         command.Parameters.AddWithValue("meterIds", new[] { 1 });
 
-        await using var reader = await command.ExecuteReaderAsync();
-        Assert.True(await reader.ReadAsync());
-        Assert.Equal(1, reader.GetInt32(0));
-        Assert.Equal(new DateTime(2026, 9, 29, 9, 0, 0), reader.GetDateTime(1));
-        Assert.Equal(20m, reader.GetDecimal(2));
-        Assert.False(await reader.ReadAsync());
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(1, reader.GetInt32(0));
+            Assert.Equal(new DateTime(2026, 9, 29, 9, 0, 0), reader.GetDateTime(1));
+            Assert.Equal(20m, reader.GetDecimal(2));
+            Assert.False(await reader.ReadAsync());
+        }
 
         await transaction.RollbackAsync();
     }
