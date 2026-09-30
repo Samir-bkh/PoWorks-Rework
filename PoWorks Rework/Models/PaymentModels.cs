@@ -48,12 +48,12 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// Invoice reference number for customer communication
         /// </summary>
-        public string BillNumber { get; set; }
+        public string BillNumber { get; set; } = string.Empty;
 
         /// <summary>
         /// Name of the tenant/customer
         /// </summary>
-        public string TenantName { get; set; }
+        public string TenantName { get; set; } = string.Empty;
 
         /// <summary>
         /// Total bill amount including all charges and tax
