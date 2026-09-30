@@ -10,7 +10,7 @@ namespace PoWorks_Rework.Models
         {
             Readings = new List<MeterReading>();
             AvailableMeters = new List<MeterOption>();
-            SelectedMeterIds = new List<int>(); 
+            SelectedMeterIds = new List<int>();
             MeterStats = new MeterStats();
             ViewType = "raw";
             PageSize = 50;
@@ -18,7 +18,7 @@ namespace PoWorks_Rework.Models
             EndDate = DateTime.Now.Date;
             StartDate = EndDate.Value.AddDays(-30);
         }
-        public string ViewType { get; set; } = "raw"; 
+        public string ViewType { get; set; } = "raw";
         public List<int> SelectedMeterIds { get; set; } = new List<int>();
         public int? SelectedMeterId
         {
@@ -96,7 +96,7 @@ namespace PoWorks_Rework.Models
     /// </summary>
     public class MeterReadingsFilter
     {
-        public List<int> MeterIds { get; set; } = new List<int>(); 
+        public List<int> MeterIds { get; set; } = new List<int>();
         public string ViewType { get; set; } = "raw";
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -122,23 +122,26 @@ namespace PoWorks_Rework.Models
             if (Page < 1) return false;
             if (PageSize < 1 || PageSize > 1000) return false;
             if (StartDate.HasValue && EndDate.HasValue && StartDate > EndDate) return false;
+            if (string.IsNullOrWhiteSpace(ViewType)) return false;
 
             var validViewTypes = new[] { "raw", "daily", "monthly", "yearly" };
-            if (!validViewTypes.Contains(ViewType.ToLower())) return false;
+            if (!validViewTypes.Contains(ViewType.ToLowerInvariant())) return false;
 
             return true;
         }
 
-        public string GetValidationError()
+        public string? GetValidationError()
         {
             if (Page < 1) return "Page number must be greater than 0";
             if (PageSize < 1) return "Page size must be greater than 0";
             if (PageSize > 1000) return "Page size cannot exceed 1000";
             if (StartDate.HasValue && EndDate.HasValue && StartDate > EndDate)
                 return "Start date cannot be after end date";
+            if (string.IsNullOrWhiteSpace(ViewType))
+                return "View type is required";
 
             var validViewTypes = new[] { "raw", "daily", "monthly", "yearly" };
-            if (!validViewTypes.Contains(ViewType.ToLower()))
+            if (!validViewTypes.Contains(ViewType.ToLowerInvariant()))
                 return "Invalid view type. Valid types are: " + string.Join(", ", validViewTypes);
 
             return null;
