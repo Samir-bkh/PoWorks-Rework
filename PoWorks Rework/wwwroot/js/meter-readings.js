@@ -47,7 +47,9 @@ const MeterReadings = {
 
     moveEndDateToNow: function () {
         const value = this.formatLocalDateTime(new Date());
-        this.config.endDate = value;
+        // datetime-local shows minutes; the API must include the entire minute
+        // so a reading at 15:58:37 is visible while the input shows 15:58.
+        this.config.endDate = value + ':59';
         const input = document.getElementById('endDate');
         if (input) input.value = value;
     },

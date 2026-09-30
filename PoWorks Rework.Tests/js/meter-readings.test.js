@@ -56,12 +56,12 @@ test('initial range ends now and automatic refresh includes the next readings', 
     state.manager.init({ selectedMeterIds: [4], endDate: state.inputs.endDate.value, startDate: state.inputs.startDate.value });
     await settle();
     assert.equal(state.manager.config.selectedMeterId, '4');
-    assert.match(state.requests[0].searchParams.get('endDate'), /T15:58$/);
+    assert.match(state.requests[0].searchParams.get('endDate'), /T15:58:59$/);
 
     state.setNow(new Date(2026, 8, 30, 16, 0, 0));
     state.tick();
     await settle();
-    assert.match(state.requests.at(-1).searchParams.get('endDate'), /T16:00$/);
+    assert.match(state.requests.at(-1).searchParams.get('endDate'), /T16:00:59$/);
     assert.equal(state.requests.at(-1).searchParams.get('meterIds'), '4');
 });
 
