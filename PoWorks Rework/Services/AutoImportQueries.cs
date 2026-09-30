@@ -13,6 +13,7 @@ namespace PoWorks_Rework.Services
             SELECT DISTINCT ON (""MeterId"") ""MeterId"", ""Timestamp"", ""Value""
             FROM ""MeterReadings""
             WHERE ""CompanyId"" = @companyId
+              AND ""MeterId"" = ANY(@meterIds)
             ORDER BY ""MeterId"", ""Timestamp"" DESC";
 
         public const string ApiSettings = @"
