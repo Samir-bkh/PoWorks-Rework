@@ -233,10 +233,10 @@ namespace PoWorks_Rework.Controllers
                 using var conn = _databaseService.CreateNewConnection();
                 await conn.OpenAsync();
 
-                string sql = "DELETE FROM \"SqlServerConnections\" WHERE \"ConnectionId\" = @id";
-                using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("id", request.ConnectionId);
-                await cmd.ExecuteNonQueryAsync();
+                var deleted = await SettingsConnectionDeletion.DeleteSqlServerAsync(
+                    conn, request.ConnectionId, _companyContext.CurrentCompanyId);
+                if (deleted == 0)
+                    return Json(new { success = false, error = "Connection not found in the current workspace." });
 
                 _sqlServerService.LoadSettingsFromDatabase();
 
@@ -552,10 +552,10 @@ namespace PoWorks_Rework.Controllers
                 using var conn = _databaseService.CreateNewConnection();
                 await conn.OpenAsync();
 
-                string sql = "DELETE FROM \"WebServiceConnections\" WHERE \"ConnectionId\" = @id";
-                using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("id", request.ConnectionId);
-                await cmd.ExecuteNonQueryAsync();
+                var deleted = await SettingsConnectionDeletion.DeleteWebServiceAsync(
+                    conn, request.ConnectionId, _companyContext.CurrentCompanyId);
+                if (deleted == 0)
+                    return Json(new { success = false, error = "Connection not found in the current workspace." });
 
                 return Json(new { success = true, message = "Web Service Connection deleted successfully!" });
             }
