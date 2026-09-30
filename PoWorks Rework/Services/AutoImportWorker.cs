@@ -113,7 +113,12 @@ namespace PoWorks_Rework.Services
 
                         if (!metersToImport.Any()) return;
 
-                        var lastReadings = await GetLastKnownReadingsAsync(connection, transaction, companyId);
+                        var meterIds = metersToImport.Select(m => m.MeterId).ToArray();
+                        var lastReadings = await GetLastKnownReadingsAsync(
+                            connection,
+                            transaction,
+                            companyId,
+                            meterIds);
                         DateTime endTime = DateTime.Now;
 
                         var meterGroups = metersToImport
@@ -225,16 +230,28 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// Retrieves the most recent reading timestamp and value for each meter.
+        /// Retrieves the most recent reading timestamp and value for the meters in the current import batch.
         /// </summary>
         /// <param name="conn">The database connection to use.</param>
         /// <param name="tr">The transaction to use.</param>
+        /// <param name="companyId">The workspace owning the readings.</param>
+        /// <param name="meterIds">The exact active meters being imported in this cycle.</param>
         /// <returns>A dictionary mapping meter IDs to their last known reading.</returns>
-        private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int companyId)
+        private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(
+            NpgsqlConnection conn,
+            NpgsqlTransaction tr,
+            int companyId,
+            IReadOnlyCollection<int> meterIds)
         {
             var dict = new Dictionary<int, (DateTime Timestamp, decimal Value)>();
+            if (meterIds.Count == 0)
+            {
+                return dict;
+            }
+
             using var cmd = new NpgsqlCommand(AutoImportQueries.LastReadings, conn, tr);
             cmd.Parameters.AddWithValue("companyId", companyId);
+            cmd.Parameters.AddWithValue("meterIds", meterIds.Distinct().ToArray());
             using var reader = await cmd.ExecuteReaderAsync();
 
             while (await reader.ReadAsync())
