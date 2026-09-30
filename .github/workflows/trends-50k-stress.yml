@@ -1,0 +1,38 @@
+name: PCVue Trends 50k simulated stress
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - validation/trends-50k-stress-workflow-20260930
+    paths:
+      - .github/workflows/trends-50k-stress.yml
+      - PoWorks Rework.Tests/TrendsLargeBatchBenchmarkTests.cs
+      - PoWorks Rework/Services/TrendsService.cs
+      - PoWorks Rework/Services/PCVueWebService.cs
+
+permissions:
+  contents: read
+
+jobs:
+  legacy-trends-50k:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POWORKS_STRESS_TRENDS_50K: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore tests
+        run: dotnet restore 'PoWorks Rework.Tests/PoWorks Rework.Tests.csproj'
+      - name: Benchmark 50k simulated PCVue variable requests
+        run: >-
+          dotnet test 'PoWorks Rework.Tests/PoWorks Rework.Tests.csproj'
+          --no-restore
+          --configuration Release
+          --filter 'FullyQualifiedName~TrendsLargeBatchBenchmarkTests'
+          --logger 'console;verbosity=detailed'
