@@ -576,12 +576,47 @@ namespace PoWorks_Rework.Services
                 if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
                     continue;
 
-                _logger.LogError("PCVue BulkRead failed. HTTP {Status}: {Response}", response.StatusCode, raw);
+                // IIS may return a full diagnostic page (including machine paths). Never log it.
+                _logger.LogWarning("PCVue BulkRead failed. HTTP {Status}; response URI {Path}",
+                    response.StatusCode, response.RequestMessage?.RequestUri?.AbsolutePath);
                 throw new InvalidOperationException(
                     $"PCVue BulkRead failed: HTTP {(int)response.StatusCode} ({response.StatusCode}).");
             }
 
             throw new InvalidOperationException("PCVue BulkRead failed after refreshing the access token.");
+        }
+
+        public async Task<string> ReadVariablesAsync(
+            PCVueWebServiceSettings settings,
+            string[] variables,
+            CancellationToken cancellationToken = default)
+        {
+            // PCVue also exposes a GET for multiple values. Keep batches small enough
+            // for web servers with conservative URL length limits.
+            var query = string.Join("&", variables.Select((name, index) =>
+                $"Variables[{index}]={Uri.EscapeDataString(name)}"));
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealTimeData/v2/Values/?{query}";
+
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var token = await GetValidAccessTokenAsync(settings, forceRefresh: attempt == 1);
+                if (string.IsNullOrWhiteSpace(token))
+                    throw new InvalidOperationException("Failed to get a valid PCVue access token.");
+
+                using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+                if (response.IsSuccessStatusCode)
+                    return await response.Content.ReadAsStringAsync(cancellationToken);
+                if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
+                    continue;
+                throw new InvalidOperationException(
+                    $"PCVue Values failed: HTTP {(int)response.StatusCode} ({response.StatusCode}).");
+            }
+
+            throw new InvalidOperationException("PCVue Values failed after refreshing the access token.");
         }
 
         private static ValidationResult ValidateSettings(PCVueWebServiceSettings settings)

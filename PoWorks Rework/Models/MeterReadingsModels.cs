@@ -15,8 +15,8 @@ namespace PoWorks_Rework.Models
             ViewType = "raw";
             PageSize = 50;
             CurrentPage = 1;
-            EndDate = DateTime.Now.Date;
-            StartDate = EndDate.Value.AddDays(-30);
+            EndDate = DateTime.Now;
+            StartDate = DateTime.Today.AddDays(-30);
         }
         public string ViewType { get; set; } = "raw";
         public List<int> SelectedMeterIds { get; set; } = new List<int>();

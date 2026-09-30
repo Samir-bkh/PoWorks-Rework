@@ -11,6 +11,109 @@ namespace PoWorks_Rework.Tests;
 public class AutoImportSnapshotReaderTests
 {
     [Fact]
+    public async Task BulkReturnsUnexpectedArray_ValuesGetReadsLiveValueEveryTwoMinutes()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 9, 30, 15, 0, 0, TimeSpan.Zero));
+        var getCalls = 0;
+        using var handler = new PcVueHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/OAuth/token")) return TokenResponse();
+            if (request.RequestUri.AbsolutePath.EndsWith("/BulkRead")) return Json("[]");
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/RealTimeData/v2/Values/", request.RequestUri.AbsolutePath);
+            Assert.Contains("Building.Water", request.RequestUri.Query);
+            getCalls++;
+            return Json("""
+                {"Building.Water":{"result":{"code":{"value":1}},
+                "value":600,"quality":"Good","QualityValue":192}}
+                """);
+        });
+        using var client = new HttpClient(handler);
+        var reader = new AutoImportSnapshotReader(
+            new PCVueWebService(client, NullLogger<PCVueWebService>.Instance, clock), clock);
+
+        var first = Assert.Single(await reader.ReadAsync(Settings(), Meters("Building.Water")));
+        clock.Advance(TimeSpan.FromMinutes(2));
+        var second = Assert.Single(await reader.ReadAsync(Settings(), Meters("Building.Water")));
+
+        Assert.Equal(2, getCalls);
+        Assert.Equal(first.Value, second.Value);
+        Assert.Equal(first.Timestamp.AddMinutes(2), second.Timestamp);
+    }
+
+    [Fact]
+    public async Task RealTimeUnavailable_RecentPcVueHistorySuppliesOneSnapshotPerPoll()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 9, 30, 15, 0, 0, TimeSpan.Zero));
+        var trendPosts = 0;
+        var trendDeletes = 0;
+        using var handler = new PcVueHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token")) return TokenResponse();
+            if (path.EndsWith("/BulkRead")) return Json("[]");
+            if (path.EndsWith("/Values/")) return new HttpResponseMessage(HttpStatusCode.NotFound);
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+            {
+                trendPosts++;
+                return Json("\"request-1\"");
+            }
+            if (request.Method == HttpMethod.Delete && path.EndsWith("/HistoricalData/v2/Trends/request-1"))
+            {
+                trendDeletes++;
+                return Json("{}");
+            }
+            if (request.Method == HttpMethod.Get && path.EndsWith("/HistoricalData/v2/Trends/request-1"))
+            {
+                var timestamp = clock.GetUtcNow().AddMinutes(-1).ToString("yyyy-MM-ddTHH:mm:ss");
+                return Json($$"""{"values":[{"value":600,"timestamp":"{{timestamp}}","quality":"Good","qualityValue":192}],"maxNumberExceeded":false}""");
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var client = new HttpClient(handler);
+        var web = new PCVueWebService(client, NullLogger<PCVueWebService>.Instance, clock);
+        var trends = new TrendsService(web, NullLogger<TrendsService>.Instance);
+        var reader = new AutoImportSnapshotReader(web, clock, trends);
+
+        var first = Assert.Single(await reader.ReadAsync(Settings(), Meters("Building.Water"), intervalMinutes: 2));
+        clock.Advance(TimeSpan.FromMinutes(2));
+        var second = Assert.Single(await reader.ReadAsync(Settings(), Meters("Building.Water"), intervalMinutes: 2));
+
+        Assert.Equal(2, trendPosts);
+        Assert.Equal(2, trendDeletes);
+        Assert.Equal(600m, first.Value);
+        Assert.Equal(600m, second.Value);
+        Assert.Equal(first.Timestamp.AddMinutes(2), second.Timestamp);
+    }
+
+    [Fact]
+    public async Task StaleHistoricalValue_DoesNotMasqueradeAsCurrentReading()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 9, 30, 15, 0, 0, TimeSpan.Zero));
+        using var handler = new PcVueHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token")) return TokenResponse();
+            if (path.EndsWith("/BulkRead")) return Json("[]");
+            if (path.EndsWith("/Values/")) return new HttpResponseMessage(HttpStatusCode.NotFound);
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends")) return Json("\"request-1\"");
+            if (request.Method == HttpMethod.Delete && path.EndsWith("/HistoricalData/v2/Trends/request-1")) return Json("{}");
+            if (request.Method == HttpMethod.Get && path.EndsWith("/HistoricalData/v2/Trends/request-1"))
+                return Json("""
+                    {"values":[{"value":600,"timestamp":"2026-09-30T11:27:58",
+                    "quality":"Good","qualityValue":192}],"maxNumberExceeded":false}
+                    """);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var client = new HttpClient(handler);
+        var web = new PCVueWebService(client, NullLogger<PCVueWebService>.Instance, clock);
+        var reader = new AutoImportSnapshotReader(web, clock,
+            new TrendsService(web, NullLogger<TrendsService>.Instance));
+
+        Assert.Empty(await reader.ReadAsync(Settings(), Meters("Building.Water"), intervalMinutes: 2));
+    }
+
+    [Fact]
     public async Task UnchangedPcVueValue_ProducesOneNewReadingAtEachTwoMinutePoll()
     {
         var clock = new ManualClock(new DateTimeOffset(2026, 9, 30, 10, 0, 0, TimeSpan.Zero));

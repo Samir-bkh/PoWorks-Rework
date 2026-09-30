@@ -42,11 +42,12 @@ jobs:
         run: |
           node --check "PoWorks Rework/wwwroot/js/energy-chart-core.js"
           node --check "PoWorks Rework/wwwroot/js/energy-dashboard.js"
+          node --check "PoWorks Rework/wwwroot/js/meter-readings.js"
           node --check "PoWorks Rework/wwwroot/js/import/webservices_import.js"
           node --check "PoWorks Rework/wwwroot/js/import/webservices_import_v2.js"
 
       - name: Run dashboard JavaScript unit tests
-        run: node --test "PoWorks Rework.Tests/js/energy-chart-core.test.js"
+        run: node --test "PoWorks Rework.Tests/js/energy-chart-core.test.js" "PoWorks Rework.Tests/js/meter-readings.test.js"
 
       - name: Restore application
         run: dotnet restore "PoWorks Rework/PoWorks Rework.csproj"

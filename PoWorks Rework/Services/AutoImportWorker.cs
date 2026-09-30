@@ -65,7 +65,10 @@ namespace PoWorks_Rework.Services
                 using var scope = _serviceProvider.CreateScope();
                 var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
                 var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
-                var snapshotReader = new AutoImportSnapshotReader(webService);
+                var snapshotReader = new AutoImportSnapshotReader(
+                    webService,
+                    trendsService: scope.ServiceProvider.GetRequiredService<TrendsService>(),
+                    logger: scope.ServiceProvider.GetRequiredService<ILogger<AutoImportSnapshotReader>>());
 
                 var companyIds = await GetAllCompanyIdsAsync(dbService);
                 _logger.LogInformation(">> Found {Count} compan(y/ies) in the database.", companyIds.Count);
@@ -74,6 +77,8 @@ namespace PoWorks_Rework.Services
                 {
                     stoppingToken.ThrowIfCancellationRequested();
                     _logger.LogInformation(">> Processing company ID: {CompanyId}", companyId);
+                    try
+                    {
 
                     var apiSettings = await GetApiSettingsAsync(dbService, companyId);
                     if (apiSettings == null)
@@ -115,7 +120,8 @@ namespace PoWorks_Rework.Services
                         if (metersToImport.Count == 0) return;
 
                         var snapshots = await snapshotReader.ReadAsync(
-                            apiSettings, metersToImport, stoppingToken);
+                            apiSettings, metersToImport, stoppingToken,
+                            apiSettings.AutoImportIntervalMinutes);
 
                         if (snapshots.Count == 0)
                         {
@@ -130,6 +136,15 @@ namespace PoWorks_Rework.Services
                             ">> Import completed: {Received} current PCVue values received, {Inserted} new database rows, {Skipped} meter(s) with no valid value.",
                             snapshots.Count, inserted, metersToImport.Count - snapshots.Count);
                     });
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Auto-import failed for company {CompanyId}; other companies will continue.", companyId);
+                    }
                 }
             }
             finally

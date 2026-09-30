@@ -15,6 +15,7 @@
     let lastAnalyticsPayload = null;
     let lastAnalyticsRequest = null;
     let autoRefreshInterval = null;
+    let backgroundRefreshInProgress = false;
     let reloadTimer = null;
 
     document.addEventListener('DOMContentLoaded', async function () {
@@ -43,6 +44,7 @@
 
             await loadMetersForCurrentDateRange();
             await loadChartData();
+            enableAutoRefresh(true);
         } catch (error) {
             console.error('Dashboard initialization failed:', error);
             updateDataStatus('Unable to initialize building analytics.', 'danger');
@@ -1620,15 +1622,27 @@
             window.clearInterval(autoRefreshInterval);
             autoRefreshInterval = null;
             button?.classList.remove('active');
+            button?.setAttribute('aria-pressed', 'false');
             showNotification('Live refresh disabled.', 'info');
             return;
         }
 
+        enableAutoRefresh(false);
+    }
+
+    function enableAutoRefresh(silent) {
+        if (autoRefreshInterval) return;
         autoRefreshInterval = window.setInterval(function () {
-            loadChartData();
+            if (document.hidden || backgroundRefreshInProgress) return;
+            backgroundRefreshInProgress = true;
+            Promise.resolve(loadChartData()).finally(function () {
+                backgroundRefreshInProgress = false;
+            });
         }, 30000);
+        const button = document.getElementById('autoRefresh');
         button?.classList.add('active');
-        showNotification('Live refresh enabled every 30 seconds.', 'success');
+        button?.setAttribute('aria-pressed', 'true');
+        if (!silent) showNotification('Live refresh enabled every 30 seconds.', 'success');
     }
 
     function exportChart() {

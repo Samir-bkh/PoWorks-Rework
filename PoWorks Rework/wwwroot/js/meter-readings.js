@@ -10,6 +10,7 @@ const MeterReadings = {
         pageSize: 50,
         startDate: null,
         endDate: null,
+        endDateFollowsNow: false,
         isLoading: false
     },
 
@@ -21,8 +22,34 @@ const MeterReadings = {
 
     init: function (options = {}) {
         Object.assign(this.config, options);
+        if (Array.isArray(options.selectedMeterIds))
+            this.config.selectedMeterId = options.selectedMeterIds.length
+                ? options.selectedMeterIds.join(',') : null;
+        if (this.config.endDate) {
+            this.config.endDateFollowsNow = true;
+            this.moveEndDateToNow();
+        }
         this.setupEventListeners();
         this.updateUIState();
+        this.loadReadings();
+        this.updateMeterStats();
+        window.setInterval(() => {
+            if (document.hidden) return;
+            if (this.config.endDateFollowsNow) this.moveEndDateToNow();
+            this.refreshData();
+        }, 30000);
+    },
+
+    formatLocalDateTime: function (date) {
+        const pad = value => String(value).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    },
+
+    moveEndDateToNow: function () {
+        const value = this.formatLocalDateTime(new Date());
+        this.config.endDate = value;
+        const input = document.getElementById('endDate');
+        if (input) input.value = value;
     },
 
     setupEventListeners: function () {
@@ -49,7 +76,10 @@ const MeterReadings = {
         }
 
         if (startDate) startDate.addEventListener('change', () => this.config.startDate = startDate.value);
-        if (endDate) endDate.addEventListener('change', () => this.config.endDate = endDate.value);
+        if (endDate) endDate.addEventListener('change', () => {
+            this.config.endDate = endDate.value;
+            this.config.endDateFollowsNow = false;
+        });
         if (pageSize) {
             pageSize.addEventListener('change', () => {
                 this.config.pageSize = parseInt(pageSize.value);
@@ -85,11 +115,13 @@ const MeterReadings = {
             else if (viewType === 'yearly') newStart.setFullYear(today.getFullYear() - 5);
 
      
-            startDateInput.value = newStart.toISOString().split('T')[0] + 'T00:00';
-            endDateInput.value = today.toISOString().split('T')[0] + 'T23:59';
+            newStart.setHours(0, 0, 0, 0);
+            startDateInput.value = this.formatLocalDateTime(newStart);
+            endDateInput.value = this.formatLocalDateTime(today);
             
             this.config.startDate = startDateInput.value;
             this.config.endDate = endDateInput.value;
+            this.config.endDateFollowsNow = true;
         }
 
         this.updateActiveTab(viewType);
@@ -306,6 +338,7 @@ const MeterReadings = {
 
         if (startDateInput) this.config.startDate = startDateInput.value;
         if (endDateInput) this.config.endDate = endDateInput.value;
+        this.config.endDateFollowsNow = false;
         
         if (meterSelect) {
             const selected = Array.from(meterSelect.selectedOptions).map(opt => opt.value);
@@ -315,40 +348,6 @@ const MeterReadings = {
         this.config.currentPage = 1;
         this.loadReadings();
         this.updateMeterStats();
-    },
-
-    loadReadings: function () {
-        if (this.config.isLoading) return;
-
-        this.config.isLoading = true;
-        this.showLoading(true);
-
-        const params = new URLSearchParams({
-            viewType: this.config.currentViewType,
-            page: this.config.currentPage,
-            pageSize: this.config.pageSize,
-            _t: new Date().getTime() 
-        });
-
-        if (this.config.selectedMeterId) params.append('meterIds', this.config.selectedMeterId);
-        if (this.config.startDate) params.append('startDate', this.config.startDate);
-        if (this.config.endDate) params.append('endDate', this.config.endDate);
-
-        fetch(`${this.endpoints.getReadings}?${params}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    this.updateReadingsTable(data.data, data.pagination);
-                    this.updatePaginationInfo(data.pagination);
-                } else {
-                    throw new Error(data.error || 'Failed to load readings');
-                }
-            })
-            .catch(error => this.showError('Failed to load readings: ' + error.message))
-            .finally(() => {
-                this.config.isLoading = false;
-                this.showLoading(false);
-            });
     },
 
     clearFilters: function () {
@@ -362,6 +361,7 @@ const MeterReadings = {
         this.config.selectedMeterId = null;
         this.config.startDate = null;
         this.config.endDate = null;
+        this.config.endDateFollowsNow = false;
         this.config.currentPage = 1;
 
         const statsPanel = document.getElementById('statsPanel');
