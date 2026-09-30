@@ -36,17 +36,17 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// Method of payment (e.g., Cash, Check, Bank Transfer, Credit Card)
         /// </summary>
-        public string PaymentMethod { get; set; }
+        public string PaymentMethod { get; set; } = string.Empty;
 
         /// <summary>
         /// Reference number for the payment (e.g., check number, transaction ID)
         /// </summary>
-        public string Reference { get; set; }
+        public string Reference { get; set; } = string.Empty;
 
         /// <summary>
         /// Additional notes about the payment
         /// </summary>
-        public string Notes { get; set; }
+        public string Notes { get; set; } = string.Empty;
 
         /// <summary>
         /// Timestamp when this payment record was created in the system
@@ -56,12 +56,12 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// Username or ID of the user who recorded this payment
         /// </summary>
-        public string RecordedBy { get; set; }
+        public string RecordedBy { get; set; } = string.Empty;
 
         /// <summary>
         /// Tenant name for display purposes
         /// </summary>
-        public string TenantName { get; set; }
+        public string TenantName { get; set; } = string.Empty;
 
         /// <summary>
         /// Original bill total amount
@@ -71,6 +71,6 @@ namespace PoWorks_Rework.Models
         /// <summary>
         /// Status of the associated bill
         /// </summary>
-        public string BillStatus { get; set; }
+        public string BillStatus { get; set; } = string.Empty;
     }
 }
