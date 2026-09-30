@@ -19,7 +19,8 @@ namespace PoWorks_Rework.Services
         public const string ApiSettings = @"
             SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
                    ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",
-                   ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport""
+                   ""ProjectName"", ""IsDefault"", ""IsActive"", ""EnableAutomaticImport"",
+                   ""AutoImportIntervalMinutes""
             FROM ""WebServiceConnections""
             WHERE ""CompanyId"" = @companyId
               AND ""IsActive"" = TRUE

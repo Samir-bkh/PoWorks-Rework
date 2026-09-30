@@ -371,8 +371,9 @@
                                                 <label class="form-check-label" for="autoImport-@connection.ConnectionId">Enable Automatic Data Import</label>
                                             </div>
                                             <div class="mt-2">
-                                                <label class="form-label" for="autoImportInterval-@connection.ConnectionId">Import interval (minutes)</label>
+                                                <label class="form-label" for="autoImportInterval-@connection.ConnectionId">Check PcVue every (minutes)</label>
                                                 <input type="number" class="form-control form-control-sm" name="AutoImportIntervalMinutes" id="autoImportInterval-@connection.ConnectionId" value="@connection.AutoImportIntervalMinutes" min="1" max="1440" />
+                                                <div class="form-text">Each check imports all new historian readings, even those recorded between checks.</div>
                                             </div>
                                         </div>
                                     </div>
@@ -910,9 +911,10 @@ if (!connectionData.useWindowsAuth && !connectionData.username) {
                                 <label class="form-check-label" for="autoImport-${connectionId}">Enable Automatic Data Import</label>
                             </div>
                             <div class="mt-2">
-                                <label class="form-label" for="autoImportInterval-${connectionId}">Import interval (minutes)</label>
+                                <label class="form-label" for="autoImportInterval-${connectionId}">Check PcVue every (minutes)</label>
                                 <input type="number" class="form-control form-control-sm" name="AutoImportIntervalMinutes"
                                        id="autoImportInterval-${connectionId}" value="1" min="1" max="1440" />
+                                <div class="form-text">Each check imports all new historian readings, even those recorded between checks.</div>
                             </div>
                         </div>
                     </div>

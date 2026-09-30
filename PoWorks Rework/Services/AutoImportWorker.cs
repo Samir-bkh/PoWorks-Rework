@@ -13,6 +13,7 @@ namespace PoWorks_Rework.Services
         private readonly ILogger<AutoImportWorker> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly EncryptionService _encryptionService;
+        private readonly AutoImportSchedule _schedule = new();
         private const int DefaultCycleDelayMinutes = 1;
 
         public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider, EncryptionService encryptionService)
@@ -78,15 +79,28 @@ namespace PoWorks_Rework.Services
                     var apiSettings = await GetApiSettingsAsync(dbService, companyId);
                     if (apiSettings == null)
                     {
+                        _schedule.Forget(companyId);
                         _logger.LogWarning(">> No WebService settings found for company {Id}.", companyId);
                         continue;
                     }
 
                     if (!apiSettings.EnableAutomaticImport)
                     {
+                        _schedule.Forget(companyId);
                         _logger.LogInformation(">> Auto-import disabled for company {Id}.", companyId);
                         continue;
                     }
+
+                    if (!_schedule.TryStart(companyId, apiSettings.ConnectionId,
+                            apiSettings.AutoImportIntervalMinutes, DateTimeOffset.UtcNow))
+                    {
+                        _logger.LogDebug(">> Auto-import not due yet for company {Id}, connection {ConnectionId} ({Interval} min).",
+                            companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
+                        continue;
+                    }
+
+                    _logger.LogInformation(">> Auto-import starting for company {Id}, connection {ConnectionId} ({Interval} min).",
+                        companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
 
                     var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
                     if (string.IsNullOrEmpty(testToken))
@@ -325,7 +339,10 @@ namespace PoWorks_Rework.Services
                             TimeoutSeconds = reader.IsDBNull(9) ? 30 : Convert.ToInt32(reader.GetValue(9)),
                             ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
                             IsDefault = !reader.IsDBNull(11) && reader.GetBoolean(11),
-                            EnableAutomaticImport = !reader.IsDBNull(13) && reader.GetBoolean(13)
+                            EnableAutomaticImport = !reader.IsDBNull(13) && reader.GetBoolean(13),
+                            AutoImportIntervalMinutes = reader.IsDBNull(14)
+                                ? 1
+                                : Math.Clamp(reader.GetInt32(14), 1, 1440)
                         };
                     }
 
