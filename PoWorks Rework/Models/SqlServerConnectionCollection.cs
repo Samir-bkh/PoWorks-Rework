@@ -1,5 +1,3 @@
-﻿using System.Diagnostics.Eventing.Reader;
-
 namespace PoWorks_Rework.Models
 {
     /// <summary>
@@ -22,7 +20,7 @@ namespace PoWorks_Rework.Models
         /// Gets the default connection or falls back to first available connection.
         /// Returns null if no connections exist.
         /// </summary>
-        public SqlServerSettings GetDefaultConnection()
+        public SqlServerSettings? GetDefaultConnection()
         {
             return Connections.FirstOrDefault(c => c.ConnectionId == DefaultConnectionId)
                    ?? Connections.FirstOrDefault(c => c.IsDefault)
@@ -33,7 +31,7 @@ namespace PoWorks_Rework.Models
         /// Retrieves a specific connection by connection ID.
         /// Returns null if not found.
         /// </summary>
-        public SqlServerSettings GetConnection(string connectionId)
+        public SqlServerSettings? GetConnection(string connectionId)
         {
             return Connections.FirstOrDefault(c => c.ConnectionId == connectionId);
         }
@@ -94,7 +92,7 @@ namespace PoWorks_Rework.Models
             {
                 newDefault.IsDefault = true;
                 DefaultConnectionId = connectionId;
-             }
+            }
         }
     }
 }
