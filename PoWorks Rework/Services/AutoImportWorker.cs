@@ -5,8 +5,8 @@ using PoWorks_Rework.Models;
 namespace PoWorks_Rework.Services
 {
     /// <summary>
-    /// Background service that periodically imports meter readings from PCVue web services.
-    /// Runs automatic import cycles for all companies with auto-import enabled.
+    /// Background service that periodically imports real meter readings from PCVue.
+    /// Failed or empty historian queries are not converted into synthetic readings.
     /// </summary>
     public class AutoImportWorker : BackgroundService
     {
@@ -15,9 +15,6 @@ namespace PoWorks_Rework.Services
         private readonly EncryptionService _encryptionService;
         private const int DefaultCycleDelayMinutes = 1;
 
-        /// <summary>
-        /// Initializes the auto import worker with logging, service provider, and encryption dependencies.
-        /// </summary>
         public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider, EncryptionService encryptionService)
         {
             _logger = logger;
@@ -25,14 +22,9 @@ namespace PoWorks_Rework.Services
             _encryptionService = encryptionService;
         }
 
-        /// <summary>
-        /// Runs the background import loop, executing import cycles at the configured interval.
-        /// </summary>
-        /// <param name="stoppingToken">The cancellation token to stop the background service.</param>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("PILOT START - The import service has started.");
-
             while (!stoppingToken.IsCancellationRequested)
             {
                 int cycleDelayMinutes = DefaultCycleDelayMinutes;
@@ -52,7 +44,7 @@ namespace PoWorks_Rework.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("IMPORT CYCLE FAILED | Reason: {Message} | StackTrace: {Stack}", ex.Message, ex.StackTrace);
+                    _logger.LogError(ex, "IMPORT CYCLE FAILED");
                 }
 
                 _logger.LogInformation("--- END OF CYCLE, GOING TO SLEEP ({Delay} min) ---", cycleDelayMinutes);
@@ -60,10 +52,6 @@ namespace PoWorks_Rework.Services
             }
         }
 
-        /// <summary>
-        /// Executes a single import cycle for all companies with auto-import enabled.
-        /// </summary>
-        /// <param name="stoppingToken">The cancellation token.</param>
         private async Task RunImportCycleAsync(CancellationToken stoppingToken)
         {
             if (!await ImportLock.Gate.WaitAsync(0, stoppingToken))
@@ -84,25 +72,26 @@ namespace PoWorks_Rework.Services
 
                 foreach (var companyId in companyIds)
                 {
+                    stoppingToken.ThrowIfCancellationRequested();
                     _logger.LogInformation(">> Processing company ID: {CompanyId}", companyId);
 
                     var apiSettings = await GetApiSettingsAsync(dbService, companyId);
                     if (apiSettings == null)
                     {
-                        _logger.LogWarning(">> ERROR: No WebService settings found for company {Id}. Moving to the next one.", companyId);
+                        _logger.LogWarning(">> No WebService settings found for company {Id}.", companyId);
                         continue;
                     }
 
                     if (!apiSettings.EnableAutomaticImport)
                     {
-                        _logger.LogInformation(">> Auto-import disabled for company {Id}. Moving to the next one.", companyId);
+                        _logger.LogInformation(">> Auto-import disabled for company {Id}.", companyId);
                         continue;
                     }
 
                     var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
                     if (string.IsNullOrEmpty(testToken))
                     {
-                        _logger.LogWarning(">> ERROR: Unable to retrieve the PCVue token for company {Id}.", companyId);
+                        _logger.LogWarning(">> Unable to retrieve the PCVue token for company {Id}.", companyId);
                         continue;
                     }
 
@@ -110,8 +99,7 @@ namespace PoWorks_Rework.Services
                     {
                         var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction, companyId);
                         _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
-
-                        if (!metersToImport.Any()) return;
+                        if (metersToImport.Count == 0) return;
 
                         var meterIds = metersToImport.Select(m => m.MeterId).ToArray();
                         var lastReadings = await GetLastKnownReadingsAsync(
@@ -122,104 +110,106 @@ namespace PoWorks_Rework.Services
                         DateTime endTime = DateTime.Now;
 
                         var meterGroups = metersToImport
-                            .GroupBy(m => lastReadings.ContainsKey(m.MeterId) ? lastReadings[m.MeterId].Timestamp : endTime.AddHours(-1))
+                            .GroupBy(m => lastReadings.TryGetValue(m.MeterId, out var last)
+                                ? last.Timestamp : endTime.AddHours(-1))
                             .ToList();
 
                         var allTrendResults = new List<VariableTrendResult>();
-
                         foreach (var group in meterGroups)
                         {
+                            stoppingToken.ThrowIfCancellationRequested();
                             var groupStartTime = group.Key;
                             if (groupStartTime >= endTime) continue;
 
                             var variableNames = group.Select(m => m.OriginalVariableName).ToList();
-                            _logger.LogInformation(">> Calling PCVue for {Count} variable(s) since {Time}", variableNames.Count, groupStartTime);
-
+                            _logger.LogInformation(">> Calling PCVue for {Count} variable(s) since {Time}",
+                                variableNames.Count, groupStartTime);
                             var groupResults = await trendsService.ProcessVariablesTrendsAsync(
                                 variableNames,
                                 groupStartTime.ToUniversalTime(),
                                 endTime.ToUniversalTime(),
                                 apiSettings,
                                 $"Company {companyId}");
-
                             allTrendResults.AddRange(groupResults);
                         }
+
+                        // A lookup prevents a per-meter linear scan of up to tens of
+                        // thousands of result objects, while keeping the prior first-match behavior.
+                        var resultsByVariable = allTrendResults.ToLookup(
+                            result => result.VariableName,
+                            StringComparer.Ordinal);
 
                         using var tempTableCmd = new NpgsqlCommand(@"
                             CREATE TEMP TABLE ""TempMeterReadings"" (LIKE ""MeterReadings"" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
                             ALTER TABLE ""TempMeterReadings"" DROP COLUMN ""ReadingId"";
                         ", connection, transaction);
+                        await tempTableCmd.ExecuteNonQueryAsync(stoppingToken);
 
-                        await tempTableCmd.ExecuteNonQueryAsync();
+                        int realPointsRetrieved = 0;
+                        int failedMeters = 0;
+                        int noNewDataMeters = 0;
 
-                        int pointsAdded = 0;
-                        int paddingAdded = 0;
-
-                        using (var writer = await connection.BeginBinaryImportAsync(@"COPY ""TempMeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"") FROM STDIN (FORMAT BINARY)", stoppingToken))
+                        using (var writer = await connection.BeginBinaryImportAsync(@"
+                            COPY ""TempMeterReadings""
+                            (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                            FROM STDIN (FORMAT BINARY)", stoppingToken))
                         {
                             foreach (var meter in metersToImport)
                             {
-                                var result = allTrendResults.FirstOrDefault(r => r.VariableName == meter.OriginalVariableName);
-
-                                bool hasNewData = false;
-                                decimal latestValue = 0;
-                                DateTime meterStartTime = lastReadings.ContainsKey(meter.MeterId) ? lastReadings[meter.MeterId].Timestamp : endTime.AddHours(-1);
-
-                                if (result != null && result.Success && result.TrendData != null)
+                                stoppingToken.ThrowIfCancellationRequested();
+                                var result = resultsByVariable[meter.OriginalVariableName].FirstOrDefault();
+                                if (result is null || !result.Success || result.MaxNumberExceeded)
                                 {
-                                    foreach (var point in result.TrendData)
-                                    {
-                                        if (point.Quality?.ToLower() != "good" || !point.TimestampParsed.HasValue) continue;
-
-                                        DateTime localTime = point.TimestampParsed.Value.ToLocalTime();
-                                        if (localTime <= meterStartTime) continue;
-
-                                        decimal pointValue = Convert.ToDecimal(point.Value);
-
-                                        await writer.StartRowAsync(stoppingToken);
-                                        await writer.WriteAsync(meter.MeterId, NpgsqlDbType.Integer, stoppingToken);
-                                        await writer.WriteAsync(localTime, NpgsqlDbType.Timestamp, stoppingToken);
-                                        await writer.WriteAsync(pointValue, NpgsqlDbType.Numeric, stoppingToken);
-                                        await writer.WriteAsync(192, NpgsqlDbType.Integer, stoppingToken);
-                                        await writer.WriteAsync(companyId, NpgsqlDbType.Integer, stoppingToken);
-
-                                        hasNewData = true;
-                                        latestValue = pointValue;
-                                        pointsAdded++;
-                                    }
+                                    failedMeters++;
+                                    continue;
                                 }
 
-                                if (!hasNewData && lastReadings.ContainsKey(meter.MeterId))
+                                var meterStartTime = lastReadings.TryGetValue(meter.MeterId, out var last)
+                                    ? last.Timestamp : endTime.AddHours(-1);
+                                var readings = AutoImportReadingPolicy.SelectNewRealReadings(
+                                    result,
+                                    meterStartTime);
+                                if (readings.Count == 0)
                                 {
-                                    latestValue = lastReadings[meter.MeterId].Value;
-                                    hasNewData = true;
+                                    noNewDataMeters++;
+                                    continue;
                                 }
 
-                                if (hasNewData)
+                                foreach (var reading in readings)
                                 {
                                     await writer.StartRowAsync(stoppingToken);
                                     await writer.WriteAsync(meter.MeterId, NpgsqlDbType.Integer, stoppingToken);
-                                    await writer.WriteAsync(endTime, NpgsqlDbType.Timestamp, stoppingToken);
-                                    await writer.WriteAsync(latestValue, NpgsqlDbType.Numeric, stoppingToken);
+                                    await writer.WriteAsync(reading.Timestamp, NpgsqlDbType.Timestamp, stoppingToken);
+                                    await writer.WriteAsync(reading.Value, NpgsqlDbType.Numeric, stoppingToken);
                                     await writer.WriteAsync(192, NpgsqlDbType.Integer, stoppingToken);
                                     await writer.WriteAsync(companyId, NpgsqlDbType.Integer, stoppingToken);
-                                    paddingAdded++;
+                                    realPointsRetrieved++;
                                 }
                             }
                             await writer.CompleteAsync(stoppingToken);
                         }
 
-                        _logger.LogInformation(">> Import completed: {Points} new PCVue points, {Padding} padding points generated.", pointsAdded, paddingAdded);
+                        if (realPointsRetrieved == 0)
+                        {
+                            _logger.LogInformation(
+                                ">> Import completed: 0 real PCVue points; {Empty} unchanged meter(s), {Failed} failed meter(s). No synthetic readings written.",
+                                noNewDataMeters,
+                                failedMeters);
+                            return;
+                        }
 
-                        var insertCmd = new NpgsqlCommand(@"
-                            INSERT INTO ""MeterReadings"" (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
+                        using var insertCmd = new NpgsqlCommand(@"
+                            INSERT INTO ""MeterReadings""
+                            (""MeterId"", ""Timestamp"", ""Value"", ""Quality"", ""CompanyId"")
                             SELECT ""MeterId"", ""Timestamp"", ""Value"", ""Quality"", @companyId
                             FROM ""TempMeterReadings""
                             ON CONFLICT (""MeterId"", ""Timestamp"") DO NOTHING", connection, transaction);
-
                         insertCmd.Parameters.AddWithValue("companyId", companyId);
                         insertCmd.CommandTimeout = 300;
-                        await insertCmd.ExecuteNonQueryAsync();
+                        var inserted = await insertCmd.ExecuteNonQueryAsync(stoppingToken);
+                        _logger.LogInformation(
+                            ">> Import completed: {Retrieved} real PCVue points received, {Inserted} new database rows, {Empty} unchanged meter(s), {Failed} failed meter(s); no synthetic readings generated.",
+                            realPointsRetrieved, inserted, noNewDataMeters, failedMeters);
                     });
                 }
             }
@@ -230,13 +220,8 @@ namespace PoWorks_Rework.Services
         }
 
         /// <summary>
-        /// Retrieves the most recent reading timestamp and value for the meters in the current import batch.
+        /// Retrieves only the last reading for the currently selected workspace and meter IDs.
         /// </summary>
-        /// <param name="conn">The database connection to use.</param>
-        /// <param name="tr">The transaction to use.</param>
-        /// <param name="companyId">The workspace owning the readings.</param>
-        /// <param name="meterIds">The exact active meters being imported in this cycle.</param>
-        /// <returns>A dictionary mapping meter IDs to their last known reading.</returns>
         private async Task<Dictionary<int, (DateTime Timestamp, decimal Value)>> GetLastKnownReadingsAsync(
             NpgsqlConnection conn,
             NpgsqlTransaction tr,
@@ -244,61 +229,37 @@ namespace PoWorks_Rework.Services
             IReadOnlyCollection<int> meterIds)
         {
             var dict = new Dictionary<int, (DateTime Timestamp, decimal Value)>();
-            if (meterIds.Count == 0)
-            {
-                return dict;
-            }
+            if (meterIds.Count == 0) return dict;
 
             using var cmd = new NpgsqlCommand(AutoImportQueries.LastReadings, conn, tr);
             cmd.Parameters.AddWithValue("companyId", companyId);
             cmd.Parameters.AddWithValue("meterIds", meterIds.Distinct().ToArray());
             using var reader = await cmd.ExecuteReaderAsync();
-
             while (await reader.ReadAsync())
-            {
                 dict[reader.GetInt32(0)] = (reader.GetDateTime(1), reader.GetDecimal(2));
-            }
+
             return dict;
         }
 
-        /// <summary>
-        /// Reads the minimum auto-import interval from the database across all active connections.
-        /// </summary>
-        /// <param name="stoppingToken">The cancellation token.</param>
-        /// <returns>The minimum interval in minutes, clamped between 1 and 1440.</returns>
         private async Task<int> GetMinimumAutoImportIntervalMinutesAsync(CancellationToken stoppingToken)
         {
             using var scope = _serviceProvider.CreateScope();
             var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-
-            if (!dbService.IsInitialized)
-            {
-                return DefaultCycleDelayMinutes;
-            }
+            if (!dbService.IsInitialized) return DefaultCycleDelayMinutes;
 
             using var conn = dbService.CreateNewConnection();
             await conn.OpenAsync(stoppingToken);
-
             using var cmd = new NpgsqlCommand(@"
                 SELECT MIN(""AutoImportIntervalMinutes"")
                 FROM ""WebServiceConnections""
                 WHERE ""EnableAutomaticImport"" = TRUE
                   AND ""IsActive"" = TRUE", conn);
-
             var result = await cmd.ExecuteScalarAsync(stoppingToken);
-            if (result == null || result == DBNull.Value)
-            {
-                return DefaultCycleDelayMinutes;
-            }
-
-            return Math.Clamp(Convert.ToInt32(result), 1, 1440);
+            return result is null or DBNull
+                ? DefaultCycleDelayMinutes
+                : Math.Clamp(Convert.ToInt32(result), 1, 1440);
         }
 
-        /// <summary>
-        /// Retrieves the list of all company IDs from the database.
-        /// </summary>
-        /// <param name="dbService">The database service to use.</param>
-        /// <returns>A list of company IDs.</returns>
         private async Task<List<int>> GetAllCompanyIdsAsync(DatabaseService dbService)
         {
             var ids = new List<int>();
@@ -306,31 +267,27 @@ namespace PoWorks_Rework.Services
             {
                 using var conn = dbService.CreateNewConnection();
                 await conn.OpenAsync();
-                using var cmd = new NpgsqlCommand("SELECT \"CompanyId\" FROM \"Companies\" WHERE \"Active\" = TRUE", conn);
+                using var cmd = new NpgsqlCommand(
+                    "SELECT \"CompanyId\" FROM \"Companies\" WHERE \"Active\" = TRUE", conn);
                 using var reader = await cmd.ExecuteReaderAsync();
-
-                while (await reader.ReadAsync())
-                {
-                    ids.Add(reader.GetInt32(0));
-                }
+                while (await reader.ReadAsync()) ids.Add(reader.GetInt32(0));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unable to retrieve the companies available for auto-import.");
+            }
             return ids;
         }
 
-        /// <summary>
-        /// Retrieves the active meters to import for the current company.
-        /// </summary>
-        /// <param name="conn">The database connection to use.</param>
-        /// <param name="tr">The transaction to use.</param>
-        /// <returns>A list of meters for trends analysis.</returns>
-        private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(NpgsqlConnection conn, NpgsqlTransaction tr, int companyId)
+        private async Task<List<MeterForTrendsAnalysis>> GetMetersForCurrentCompanyAsync(
+            NpgsqlConnection conn,
+            NpgsqlTransaction tr,
+            int companyId)
         {
             var meters = new List<MeterForTrendsAnalysis>();
             using var cmd = new NpgsqlCommand(AutoImportQueries.ActiveMeters, conn, tr);
             cmd.Parameters.AddWithValue("companyId", companyId);
             using var reader = await cmd.ExecuteReaderAsync();
-
             while (await reader.ReadAsync())
             {
                 meters.Add(new MeterForTrendsAnalysis
@@ -343,12 +300,6 @@ namespace PoWorks_Rework.Services
             return meters;
         }
 
-        /// <summary>
-        /// Retrieves the web service API settings for a specific company.
-        /// </summary>
-        /// <param name="dbService">The database service to use.</param>
-        /// <param name="companyId">The company ID to retrieve settings for.</param>
-        /// <returns>The web service settings, or null if not found.</returns>
         private async Task<PCVueWebServiceSettings?> GetApiSettingsAsync(DatabaseService dbService, int companyId)
         {
             try
@@ -358,13 +309,11 @@ namespace PoWorks_Rework.Services
                     using var cmd = new NpgsqlCommand(AutoImportQueries.ApiSettings, conn, tr);
                     cmd.Parameters.AddWithValue("companyId", companyId);
                     using var reader = await cmd.ExecuteReaderAsync();
-
                     if (await reader.ReadAsync())
                     {
                         return new PCVueWebServiceSettings
                         {
-                            // Use GetValue().ToString() instead of GetString() in case the ID is a number/GUID
-                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString(),
+                            ConnectionId = reader.IsDBNull(0) ? "" : reader.GetValue(0).ToString() ?? "",
                             ConnectionName = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             BaseUrl = reader.IsDBNull(2) ? "" : reader.GetString(2),
                             ClientId = reader.IsDBNull(3) ? "" : reader.GetString(3),
@@ -376,19 +325,17 @@ namespace PoWorks_Rework.Services
                             TimeoutSeconds = reader.IsDBNull(9) ? 30 : Convert.ToInt32(reader.GetValue(9)),
                             ProjectName = reader.IsDBNull(10) ? "" : reader.GetString(10),
                             IsDefault = !reader.IsDBNull(11) && reader.GetBoolean(11),
-
-                            // Column 13 = EnableAutomaticImport
                             EnableAutomaticImport = !reader.IsDBNull(13) && reader.GetBoolean(13)
                         };
                     }
 
-                    _logger.LogWarning(">> DB: The SQL query returned no rows for company {Id}.", companyId);
+                    _logger.LogWarning(">> No active WebService connection found for company {Id}.", companyId);
                     return null;
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, ">> CRITICAL ERROR while reading the API settings for company {CompanyId}", companyId);
+                _logger.LogError(ex, ">> Error reading the API settings for company {CompanyId}", companyId);
                 return null;
             }
         }
