@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 using PoWorks_Rework.Models;
 
 namespace PoWorks_Rework.Services
@@ -194,28 +195,27 @@ namespace PoWorks_Rework.Services
                 var newBillId =
                     Convert.ToInt32(await cmdBill.ExecuteScalarAsync());
 
-                const string insertLineQuery = @"
-                    INSERT INTO ""BillLineItems"" (
-                        ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"",
-                        ""Unit"", ""UnitPrice"", ""LineTotalHT"")
-                    VALUES (
-                        @billId, @meterId, @meterName, @consumption,
-                        @unit, @unitPrice, @lineTotal);";
-
-                foreach (var item in bill.LineItems)
+                if (bill.LineItems.Count > 0)
                 {
-                    await using var cmdLine =
-                        new NpgsqlCommand(insertLineQuery, connection, transaction);
+                    using var writer = await connection.BeginBinaryImportAsync(@"
+                        COPY ""BillLineItems"" (
+                            ""BillId"", ""MeterId"", ""MeterName"", ""Consumption"",
+                            ""Unit"", ""UnitPrice"", ""LineTotalHT"")
+                        FROM STDIN (FORMAT BINARY)");
 
-                    cmdLine.Parameters.AddWithValue("billId", newBillId);
-                    cmdLine.Parameters.AddWithValue("meterId", item.MeterId);
-                    cmdLine.Parameters.AddWithValue("meterName", item.MeterName);
-                    cmdLine.Parameters.AddWithValue("consumption", item.Consumption);
-                    cmdLine.Parameters.AddWithValue("unit", item.Unit);
-                    cmdLine.Parameters.AddWithValue("unitPrice", item.UnitPrice);
-                    cmdLine.Parameters.AddWithValue("lineTotal", item.LineTotalExclTax);
+                    foreach (var item in bill.LineItems)
+                    {
+                        await writer.StartRowAsync();
+                        await writer.WriteAsync(newBillId, NpgsqlDbType.Integer);
+                        await writer.WriteAsync(item.MeterId, NpgsqlDbType.Integer);
+                        await writer.WriteAsync(item.MeterName, NpgsqlDbType.Varchar);
+                        await writer.WriteAsync(item.Consumption, NpgsqlDbType.Numeric);
+                        await writer.WriteAsync(item.Unit, NpgsqlDbType.Varchar);
+                        await writer.WriteAsync(item.UnitPrice, NpgsqlDbType.Numeric);
+                        await writer.WriteAsync(item.LineTotalExclTax, NpgsqlDbType.Numeric);
+                    }
 
-                    await cmdLine.ExecuteNonQueryAsync();
+                    await writer.CompleteAsync();
                 }
 
                 await transaction.CommitAsync();
