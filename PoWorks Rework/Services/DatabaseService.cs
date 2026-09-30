@@ -10,9 +10,9 @@ namespace PoWorks_Rework.Services
     public class DatabaseService
     {
         private readonly IConfiguration _configuration;
-        private readonly EncryptionService _encryptionService; 
-        private DatabaseSettings _currentSettings;
-        private NpgsqlConnection _connection;
+        private readonly EncryptionService _encryptionService;
+        private DatabaseSettings _currentSettings = new();
+        private NpgsqlConnection? _connection;
         private bool _isInitialized = false;
 
         /// <summary>
