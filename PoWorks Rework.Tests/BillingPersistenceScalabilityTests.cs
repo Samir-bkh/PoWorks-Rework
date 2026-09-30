@@ -10,7 +10,7 @@ public class BillingPersistenceScalabilityTests
         var source = ReadSource("Services", "BillingService.cs");
 
         Assert.Contains("BeginBinaryImportAsync", source);
-        Assert.Contains(@"COPY ""BillLineItems""", source);
+        Assert.Contains("COPY \"\"BillLineItems\"\"", source);
         Assert.Contains("FROM STDIN (FORMAT BINARY)", source);
         Assert.Contains("await writer.CompleteAsync()", source);
         Assert.Contains("NpgsqlDbType.Numeric", source);
