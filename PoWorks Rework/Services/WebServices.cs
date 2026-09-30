@@ -549,7 +549,7 @@ namespace PoWorks_Rework.Services
             string[]? properties = null,
             CancellationToken cancellationToken = default)
         {
-            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealTimeData/v2/BulkRead";
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealtimeData/v2/BulkRead";
             properties ??= new[] { "VariableName", "Description", "Unit" };
 
             var payload = JsonSerializer.Serialize(new
@@ -595,7 +595,7 @@ namespace PoWorks_Rework.Services
             // for web servers with conservative URL length limits.
             var query = string.Join("&", variables.Select((name, index) =>
                 $"Variables[{index}]={Uri.EscapeDataString(name)}"));
-            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealTimeData/v2/Values/?{query}";
+            var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealtimeData/v2/Values/?{query}";
 
             for (var attempt = 0; attempt < 2; attempt++)
             {

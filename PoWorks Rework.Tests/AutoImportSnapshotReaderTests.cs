@@ -20,7 +20,7 @@ public class AutoImportSnapshotReaderTests
             if (request.RequestUri!.AbsolutePath.EndsWith("/OAuth/token")) return TokenResponse();
             if (request.RequestUri.AbsolutePath.EndsWith("/BulkRead")) return Json("[]");
             Assert.Equal(HttpMethod.Get, request.Method);
-            Assert.Equal("/RealTimeData/v2/Values/", request.RequestUri.AbsolutePath);
+            Assert.Equal("/RealtimeData/v2/Values/", request.RequestUri.AbsolutePath);
             Assert.Contains("Building.Water", request.RequestUri.Query);
             getCalls++;
             return Json("""
@@ -122,7 +122,7 @@ public class AutoImportSnapshotReaderTests
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("/OAuth/token"))
                 return TokenResponse();
-            Assert.Equal("/RealTimeData/v2/BulkRead", request.RequestUri.AbsolutePath);
+            Assert.Equal("/RealtimeData/v2/BulkRead", request.RequestUri.AbsolutePath);
             bulkCalls++;
             return Json("""
                 {"Building.Water":{
@@ -194,7 +194,7 @@ public class AutoImportSnapshotReaderTests
                 return TokenResponse();
             }
 
-            Assert.Equal("/RealTimeData/v2/BulkRead", request.RequestUri.AbsolutePath);
+            Assert.Equal("/RealtimeData/v2/BulkRead", request.RequestUri.AbsolutePath);
             using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
             var names = payload.RootElement.GetProperty("Variables").EnumerateArray()
                 .Select(v => v.GetString()!).ToArray();
