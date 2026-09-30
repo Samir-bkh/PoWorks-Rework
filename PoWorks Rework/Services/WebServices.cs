@@ -546,14 +546,9 @@ namespace PoWorks_Rework.Services
         public async Task<string> BulkReadVariablesAsync(
             PCVueWebServiceSettings settings,
             string[] variables,
-            string[]? properties = null)
+            string[]? properties = null,
+            CancellationToken cancellationToken = default)
         {
-            var token = await GetValidAccessTokenAsync(settings);
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                throw new InvalidOperationException("Failed to get a valid PCVue access token.");
-            }
-
             var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/RealTimeData/v2/BulkRead";
             properties ??= new[] { "VariableName", "Description", "Unit" };
 
@@ -563,21 +558,30 @@ namespace PoWorks_Rework.Services
                 Properties = properties
             });
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var token = await GetValidAccessTokenAsync(settings, forceRefresh: attempt == 1);
+                if (string.IsNullOrWhiteSpace(token))
+                    throw new InvalidOperationException("Failed to get a valid PCVue access token.");
 
-            using var response = await _httpClient.SendAsync(request);
-            var raw = await response.Content.ReadAsStringAsync();
-            if (response.IsSuccessStatusCode) return raw;
+                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
-            _logger.LogError(
-                "PCVue BulkRead failed. HTTP {Status}: {Response}",
-                response.StatusCode,
-                raw);
-            throw new InvalidOperationException(
-                $"PCVue BulkRead failed: HTTP {(int)response.StatusCode} ({response.StatusCode}).");
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+                var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (response.IsSuccessStatusCode) return raw;
+                if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
+                    continue;
+
+                _logger.LogError("PCVue BulkRead failed. HTTP {Status}: {Response}", response.StatusCode, raw);
+                throw new InvalidOperationException(
+                    $"PCVue BulkRead failed: HTTP {(int)response.StatusCode} ({response.StatusCode}).");
+            }
+
+            throw new InvalidOperationException("PCVue BulkRead failed after refreshing the access token.");
         }
 
         private static ValidationResult ValidateSettings(PCVueWebServiceSettings settings)

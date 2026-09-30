@@ -9,13 +9,6 @@ namespace PoWorks_Rework.Services
               AND (""Name"" LIKE '%.%' OR ""Name"" LIKE 'varsets.%')
               AND ""Active"" = TRUE";
 
-        public const string LastReadings = @"
-            SELECT DISTINCT ON (""MeterId"") ""MeterId"", ""Timestamp"", ""Value""
-            FROM ""MeterReadings""
-            WHERE ""CompanyId"" = @companyId
-              AND ""MeterId"" = ANY(@meterIds)
-            ORDER BY ""MeterId"", ""Timestamp"" DESC";
-
         public const string ApiSettings = @"
             SELECT ""ConnectionId"", ""ConnectionName"", ""BaseUrl"", ""ClientId"", ""ClientSecret"",
                    ""ApiKey"", ""Username"", ""Password"", ""AuthType"", ""TimeoutSeconds"",

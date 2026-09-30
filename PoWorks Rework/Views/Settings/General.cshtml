@@ -373,7 +373,7 @@
                                             <div class="mt-2">
                                                 <label class="form-label" for="autoImportInterval-@connection.ConnectionId">Check PcVue every (minutes)</label>
                                                 <input type="number" class="form-control form-control-sm" name="AutoImportIntervalMinutes" id="autoImportInterval-@connection.ConnectionId" value="@connection.AutoImportIntervalMinutes" min="1" max="1440" />
-                                                <div class="form-text">Each check imports all new historian readings, even those recorded between checks.</div>
+                                                <div class="form-text">Each check saves one current value per meter, timestamped when PoWorks reads it.</div>
                                             </div>
                                         </div>
                                     </div>
@@ -914,7 +914,7 @@ if (!connectionData.useWindowsAuth && !connectionData.username) {
                                 <label class="form-label" for="autoImportInterval-${connectionId}">Check PcVue every (minutes)</label>
                                 <input type="number" class="form-control form-control-sm" name="AutoImportIntervalMinutes"
                                        id="autoImportInterval-${connectionId}" value="1" min="1" max="1440" />
-                                <div class="form-text">Each check imports all new historian readings, even those recorded between checks.</div>
+                                <div class="form-text">Each check saves one current value per meter, timestamped when PoWorks reads it.</div>
                             </div>
                         </div>
                     </div>
