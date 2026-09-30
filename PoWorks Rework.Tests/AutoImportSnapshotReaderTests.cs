@@ -80,7 +80,7 @@ public class AutoImportSnapshotReaderTests
     [Fact]
     public async Task LargeMeterSet_UsesBoundedBulkReadBatchesWithOneValuePerMeter()
     {
-        const int meterCount = 2_001;
+        const int meterCount = 50_000;
         var bulkCalls = 0;
         var tokenCalls = 0;
         using var handler = new PcVueHandler(async request =>
@@ -118,7 +118,7 @@ public class AutoImportSnapshotReaderTests
 
         var snapshots = await reader.ReadAsync(Settings(), meters);
 
-        Assert.Equal(9, bulkCalls);
+        Assert.Equal(200, bulkCalls);
         Assert.Equal(1, tokenCalls);
         Assert.Equal(meterCount, snapshots.Count);
         Assert.Equal(meterCount, snapshots.Select(s => s.MeterId).Distinct().Count());
