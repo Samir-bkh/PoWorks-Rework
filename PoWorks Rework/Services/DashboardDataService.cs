@@ -118,7 +118,7 @@ namespace PoWorks_Rework.Services
         /// Retrieves the overall available date range and data statistics from meter readings.
         /// </summary>
         /// <returns>A DateRangeInfo with the earliest/latest reading dates and data counts.</returns>
-        public async Task<DateRangeInfo> GetAvailableDateRangesAsync(int? tenantId = null)
+        public async Task<DateRangeInfo> GetAvailableDateRangesAsync(int? tenantId = null, IReadOnlyCollection<int>? meterIds = null, bool includeCounts = true)
         {
             var result = new DateRangeInfo();
             int currentCompanyId = _companyContext.CurrentCompanyId;
@@ -132,27 +132,41 @@ namespace PoWorks_Rework.Services
                     var tenantFilter = tenantId.HasValue
                         ? @" AND m.""TenantID"" = @TenantId"
                         : string.Empty;
+                    var selectedIds = meterIds?.Distinct().ToArray() ?? Array.Empty<int>();
+                    var meterFilter = selectedIds.Length > 0
+                        ? @" AND m.""MeterId"" = ANY(@MeterIds)"
+                        : string.Empty;
+
+                    var counts = includeCounts
+                        ? @"COUNT(*) as total_readings,
+                            COUNT(DISTINCT mr.""MeterId"") as meters_with_data,
+                            COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data"
+                        : @"0::bigint as total_readings,
+                            0::bigint as meters_with_data,
+                            0::bigint as days_with_data";
 
                     var query = @"
                         SELECT 
                             MIN(mr.""Timestamp"") as earliest_reading,
                             MAX(mr.""Timestamp"") as latest_reading,
-                            COUNT(*) as total_readings,
-                            COUNT(DISTINCT mr.""MeterId"") as meters_with_data,
-                            COUNT(DISTINCT DATE(mr.""Timestamp"")) as days_with_data
+                            " + counts + @"
                         FROM ""MeterReadings"" mr
                         INNER JOIN ""Meters"" m
                           ON mr.""MeterId"" = m.""MeterId""
                          AND mr.""CompanyId"" = m.""CompanyId""
                         WHERE m.""Active"" = true
                           AND m.""CompanyId"" = @CompanyId"
-                        + tenantFilter;
+                        + tenantFilter + meterFilter;
 
                     using var cmd = new NpgsqlCommand(query, connection, transaction);
                     cmd.Parameters.AddWithValue("@CompanyId", currentCompanyId);
                     if (tenantId.HasValue)
                     {
                         cmd.Parameters.AddWithValue("@TenantId", tenantId.Value);
+                    }
+                    if (selectedIds.Length > 0)
+                    {
+                        cmd.Parameters.AddWithValue("@MeterIds", selectedIds);
                     }
                     using var reader = await cmd.ExecuteReaderAsync();
 
@@ -163,8 +177,9 @@ namespace PoWorks_Rework.Services
                             result.EarliestReading = reader.GetDateTime("earliest_reading");
                             result.LatestReading = reader.GetDateTime("latest_reading");
                             result.TotalReadings = reader.GetInt64("total_readings");
-                            result.MetersWithData = reader.GetInt32("meters_with_data");
-                            result.DaysWithData = reader.GetInt32("days_with_data");
+                            // PostgreSQL COUNT returns bigint, including COUNT(DISTINCT ...).
+                            result.MetersWithData = checked((int)reader.GetInt64("meters_with_data"));
+                            result.DaysWithData = checked((int)reader.GetInt64("days_with_data"));
                             result.HasData = true;
                         }
                     }
@@ -188,7 +203,7 @@ namespace PoWorks_Rework.Services
             var suggestions = new DateRangeSuggestions();
             try
             {
-                var dateInfo = await GetAvailableDateRangesAsync(tenantId);
+                var dateInfo = await GetAvailableDateRangesAsync(tenantId, includeCounts: false);
 
                 if (!dateInfo.HasData)
                 {
@@ -203,24 +218,9 @@ namespace PoWorks_Rework.Services
                 var latestDate = latest.Date;
                 var earliestDate = earliest.Date;
 
-                if (latest > DateTime.Now.AddDays(-7))
-                {
-                    suggestions.DefaultStartDate = latestDate.AddDays(-29);
-                    suggestions.DefaultEndDate = latestDate;
-                    suggestions.Message = $"Recent data available. Showing last 30 calendar days ending {latest:yyyy-MM-dd}.";
-                }
-                else if (latest > DateTime.Now.AddDays(-90))
-                {
-                    suggestions.DefaultStartDate = latestDate.AddDays(-29);
-                    suggestions.DefaultEndDate = latestDate;
-                    suggestions.Message = $"Latest data from {latest:yyyy-MM-dd}. Showing 30 calendar days ending at latest data.";
-                }
-                else
-                {
-                    suggestions.DefaultStartDate = latestDate.AddDays(-59);
-                    suggestions.DefaultEndDate = latestDate;
-                    suggestions.Message = $"Data available from {earliest:yyyy-MM-dd} to {latest:yyyy-MM-dd}. Showing the last 60 calendar days of available data.";
-                }
+                suggestions.DefaultStartDate = earliestDate;
+                suggestions.DefaultEndDate = latestDate;
+                suggestions.Message = $"Showing all available readings from {earliest:yyyy-MM-dd} to {latest:yyyy-MM-dd}.";
 
                 suggestions.AlternativeRanges = new List<DateRangeOption>
                 {

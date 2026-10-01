@@ -209,13 +209,26 @@ namespace PoWorks_Rework.Services
                 }
 
                 if (!document.RootElement.TryGetProperty("values", out var values) ||
-                    values.ValueKind != JsonValueKind.Array)
+                    (values.ValueKind != JsonValueKind.Array &&
+                     values.ValueKind != JsonValueKind.Null))
                 {
                     return new TrendDataResult
                     {
                         Success = false,
                         RequestId = requestId,
                         ErrorMessage = $"PCVue returned no trend values array: {response.Content}"
+                    };
+                }
+
+                if (values.ValueKind == JsonValueKind.Null &&
+                    document.RootElement.TryGetProperty("maxNumberExceeded", out var exceeded) &&
+                    exceeded.ValueKind == JsonValueKind.True)
+                {
+                    return new TrendDataResult
+                    {
+                        Success = false,
+                        RequestId = requestId,
+                        ErrorMessage = "PCVue reported truncated history without returning any trend points."
                     };
                 }
 

@@ -24,6 +24,31 @@
         return new Date(value).getTime();
     }
 
+    // Use UTC calendar days: the chosen dashboard period should not shift at DST changes.
+    function chooseGranularity(startDate, endDate) {
+        const span = (Date.parse(endDate + 'T00:00:00Z') - Date.parse(startDate + 'T00:00:00Z')) / 86400000;
+        if (!Number.isFinite(span) || span < 0) return 'daily';
+        if (span <= 2) return 'hourly';
+        if (span <= 90) return 'daily';
+        if (span <= 3650) return 'monthly';
+        return 'yearly';
+    }
+
+    function focusRange(startDate, endDate, granularity) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '') ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(endDate || '') || startDate > endDate)
+            return null;
+
+        const days = { hourly: 2, daily: 90, monthly: 1826 }[granularity];
+        if (!days) return { startDate, endDate };
+        const end = Date.parse(endDate + 'T00:00:00Z');
+        const start = Date.parse(startDate + 'T00:00:00Z');
+        if (!Number.isFinite(end) || !Number.isFinite(start)) return null;
+        const focusedStart = new Date(Math.max(start, end - (days - 1) * 86400000))
+            .toISOString().slice(0, 10);
+        return { startDate: focusedStart, endDate };
+    }
+
     function shiftIsoDateByYears(dateString, deltaYears) {
         if (typeof dateString !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateString))
             return null;
@@ -293,6 +318,8 @@
 
     return {
         parseBucketTimestamp,
+        chooseGranularity,
+        focusRange,
         shiftIsoDateByYears,
         toTimeSeries,
         sumDataset,

@@ -931,16 +931,10 @@ function validateWebServiceDateRange() {
     startDateInput.classList.remove('is-invalid');
     endDateInput.classList.remove('is-invalid');
 
-    if (startDate >= endDate) {
+    if (!Number.isFinite(startDate.getTime()) ||
+        !Number.isFinite(endDate.getTime()) || startDate >= endDate) {
         endDateInput.classList.add('is-invalid');
         console.warn('Invalid WebService date range');
-        return false;
-    }
-
-    const oneYear = 365 * 24 * 60 * 60 * 1000;
-    if (endDate - startDate > oneYear) {
-        startDateInput.classList.add('is-invalid');
-        endDateInput.classList.add('is-invalid');
         return false;
     }
     return true;

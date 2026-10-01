@@ -194,6 +194,27 @@ namespace PoWorks_Rework.Controllers
                 return Json(new { success = false, hasData = false });
             }
         }
+        /// <summary>Returns the first and last reading for the selected sources in the authorized workspace.</summary>
+        [HttpPost]
+        public async Task<IActionResult> GetAvailableDateRangesForSelection([FromBody] DashboardRangeRequest request)
+        {
+            if (HasInvalidTenantScope)
+                return Forbid();
+
+            if (request == null || request.MeterIds?.Count > 2000 || request.MeterIds?.Any(id => id <= 0) == true)
+                return BadRequest(new { success = false, message = "Invalid meter selection." });
+
+            var dateInfo = await _dashboardDataService.GetAvailableDateRangesAsync(
+                IsTenantUser ? CurrentTenantId : request.TenantId, request.MeterIds, includeCounts: false);
+
+            return Json(new
+            {
+                success = true,
+                hasData = dateInfo.HasData,
+                earliestReading = dateInfo.EarliestReading?.ToString("yyyy-MM-dd"),
+                latestReading = dateInfo.LatestReading?.ToString("yyyy-MM-dd")
+            });
+        }
         /// <summary>
         /// Returns active meters that have readings within the requested date range, with pagination.
         /// </summary>
@@ -664,5 +685,11 @@ namespace PoWorks_Rework.Controllers
         /// Whether meters without a tenant should be included.
         /// </summary>
         public bool? IncludeNullTenants { get; set; } = true;
+    }
+
+    public class DashboardRangeRequest
+    {
+        public int? TenantId { get; set; }
+        public List<int> MeterIds { get; set; } = new();
     }
 }

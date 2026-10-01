@@ -9,6 +9,35 @@ test('parseBucketTimestamp supports hourly, daily, monthly and annual buckets', 
     assert.ok(Number.isFinite(core.parseBucketTimestamp('2026')));
 });
 
+test('all history chooses a readable bucket size without dropping early years', () => {
+    assert.equal(core.chooseGranularity('2024-01-01', '2026-10-01'), 'monthly');
+    assert.equal(core.chooseGranularity('2026-09-30', '2026-10-01'), 'hourly');
+    assert.equal(core.chooseGranularity('2026-08-01', '2026-10-01'), 'daily');
+    assert.equal(core.chooseGranularity('2010-01-01', '2026-10-01'), 'yearly');
+    assert.equal(core.chooseGranularity('2026-10-02', '2026-10-01'), 'daily');
+});
+
+test('period buttons focus on latest available readings while respecting source history', () => {
+    const start = '2024-01-15';
+    const end = '2026-10-01';
+    assert.deepEqual(core.focusRange(start, end, 'hourly'), {
+        startDate: '2026-09-30', endDate: end
+    });
+    assert.deepEqual(core.focusRange(start, end, 'daily'), {
+        startDate: '2026-07-04', endDate: end
+    });
+    assert.deepEqual(core.focusRange(start, end, 'monthly'), {
+        startDate: start, endDate: end
+    });
+    assert.deepEqual(core.focusRange(start, end, 'yearly'), {
+        startDate: start, endDate: end
+    });
+    assert.deepEqual(core.focusRange('2026-09-30', end, 'daily'), {
+        startDate: '2026-09-30', endDate: end
+    });
+    assert.equal(core.focusRange('2026-10-02', end, 'hourly'), null);
+});
+
 test('shiftIsoDateByYears keeps calendar dates and clamps leap day', () => {
     assert.equal(core.shiftIsoDateByYears('2026-09-15', -1), '2025-09-15');
     assert.equal(core.shiftIsoDateByYears('2028-02-29', -1), '2027-02-28');

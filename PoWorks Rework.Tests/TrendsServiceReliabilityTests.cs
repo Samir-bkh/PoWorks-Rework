@@ -128,6 +128,49 @@ public class TrendsServiceReliabilityTests
     }
 
     [Fact]
+    public async Task PcVueNullValuesWithoutTruncation_AreAnEmptyArchiveNotAnImportFailure()
+    {
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase)) return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Text(HttpStatusCode.OK, "\"empty-archive\"");
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/empty-archive"))
+                return Json(HttpStatusCode.OK, "{\"values\":null,\"maxNumberExceeded\":false}");
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var result = Assert.Single(await CreateTrendsService(handler).ProcessVariablesTrendsAsync(
+            new List<string> { "NotHistorized" }, Utc(2024, 1, 1, 0), Utc(2026, 10, 1, 0), Settings()));
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Empty(result.TrendData);
+        Assert.Equal(1, handler.Count(HttpMethod.Delete, "/HistoricalData/v2/Trends/empty-archive"));
+    }
+
+    [Fact]
+    public async Task PcVueNullValuesWithTruncation_IsRejected()
+    {
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase)) return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Text(HttpStatusCode.OK, "\"truncated-empty\"");
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/truncated-empty"))
+                return Json(HttpStatusCode.OK, "{\"values\":null,\"maxNumberExceeded\":true}");
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var result = Assert.Single(await CreateTrendsService(handler).ProcessVariablesTrendsAsync(
+            new List<string> { "Truncated" }, Utc(2024, 1, 1, 0), Utc(2026, 10, 1, 0), Settings()));
+
+        Assert.False(result.Success);
+        Assert.Contains("truncated", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ExactlyFourThousandPoints_SplitsEvenIfPcVueFlagIsFalse()
     {
         var calls = 0;

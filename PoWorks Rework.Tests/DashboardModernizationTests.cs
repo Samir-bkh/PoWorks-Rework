@@ -239,13 +239,15 @@ public class DashboardModernizationTests
         Assert.Contains("maxCurves", view);
         Assert.Contains("meterLimit", view);
 
-        // Granularity remains independent of the chosen primary date range.
+        // Full history is the default; choosing a bucket focuses a readable period.
+        Assert.Contains("tabAuto", view);
         Assert.Contains("tabHourly", view);
         Assert.Contains("tabDaily", view);
         Assert.Contains("tabMonthly", view);
         Assert.Contains("tabYearly", view);
         Assert.Contains("switchGranularity", script);
-        Assert.DoesNotContain("startDate.value = formatDate", script);
+        Assert.Contains("chartCore.focusRange", script);
+        Assert.Contains("GetAvailableDateRangesForSelection", script);
 
         // All measurements remain discoverable; compatibility is handled analytically.
         Assert.DoesNotContain("supportedEnergyUnit", dataService);
@@ -253,7 +255,7 @@ public class DashboardModernizationTests
         Assert.Contains("Other measurements", script);
 
         // User choices are persisted instead of being forced on every visit.
-        Assert.Contains("poworks.dashboard.analytics.v3", script);
+        Assert.Contains("poworks.dashboard.analytics.v4", script);
         Assert.Contains("localStorage.setItem", script);
 
         // Export is useful outside PoWorks and spreadsheet cells are protected

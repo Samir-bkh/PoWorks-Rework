@@ -3,7 +3,7 @@
     'use strict';
 
     const chartCore = window.PoWorksEnergyChartCore;
-    const preferenceKey = 'poworks.dashboard.analytics.v3';
+    const preferenceKey = 'poworks.dashboard.analytics.v4';
 
     let metricCatalog = [];
     let dashboardAccess = { tenantLocked: false, currentTenantId: null };
@@ -17,6 +17,10 @@
     let autoRefreshInterval = null;
     let backgroundRefreshInProgress = false;
     let reloadTimer = null;
+    let availableRange = null;
+    let viewGranularity = 'auto';
+    let rangeRequestSequence = 0;
+    let chartRequestSequence = 0;
 
     document.addEventListener('DOMContentLoaded', async function () {
         if (!chartCore) {
@@ -39,10 +43,11 @@
 
             restorePreferences();
             refreshAggregationOptions();
-            setActiveGranularity(valueOf('dateFilter', 'daily'));
+            setActiveGranularity(viewGranularity);
             updateComparisonUi();
 
             await loadMetersForCurrentDateRange();
+            await loadSelectedRange();
             await loadChartData();
             enableAutoRefresh(true);
         } catch (error) {
@@ -54,7 +59,9 @@
 
     function bindEvents() {
         bindAsyncChange('tenantFilter', async function () {
+            await loadSelectedRange(true);
             await loadMetersForCurrentDateRange();
+            await loadSelectedRange();
             await loadChartData();
         });
 
@@ -62,6 +69,7 @@
             refreshAggregationOptions();
             populateMeterDropdown();
             savePreferences();
+            await loadSelectedRange();
             await loadChartData();
         });
 
@@ -94,6 +102,10 @@
 
         document.getElementById('applyFilters')?.addEventListener('click', async function () {
             if (!validateDateRange()) return;
+            if (viewGranularity === 'auto') {
+                document.getElementById('dateFilter').value = chartCore.chooseGranularity(valueOf('startDate'), valueOf('endDate'));
+            }
+            updateRangeHint(true);
             await loadMetersForCurrentDateRange();
             await loadChartData();
         });
@@ -109,6 +121,7 @@
         document.getElementById('startDate')?.addEventListener('change', updateComparisonUi);
         document.getElementById('endDate')?.addEventListener('change', updateComparisonUi);
 
+        document.getElementById('tabAuto')?.addEventListener('click', function () { switchGranularity('auto'); });
         document.getElementById('tabHourly')?.addEventListener('click', function () { switchGranularity('hourly'); });
         document.getElementById('tabDaily')?.addEventListener('click', function () { switchGranularity('daily'); });
         document.getElementById('tabMonthly')?.addEventListener('click', function () { switchGranularity('monthly'); });
@@ -208,6 +221,7 @@
             if (payload.success) {
                 document.getElementById('startDate').value = payload.defaultStartDate;
                 document.getElementById('endDate').value = payload.defaultEndDate;
+                availableRange = { startDate: payload.defaultStartDate, endDate: payload.defaultEndDate };
                 updateDataStatus(payload.message, 'info');
                 return;
             }
@@ -220,6 +234,68 @@
         start.setDate(start.getDate() - 30);
         document.getElementById('startDate').value = formatLocalDate(start);
         document.getElementById('endDate').value = formatLocalDate(end);
+        availableRange = { startDate: formatLocalDate(start), endDate: formatLocalDate(end) };
+    }
+
+    async function loadSelectedRange(ignoreMeters) {
+        const sequence = ++rangeRequestSequence;
+        const explicit = ignoreMeters ? [] : selectedMeterIds();
+        const compatible = meters.filter(function (meter) {
+            return (meter.compatibleMetrics || []).includes(valueOf('measurementMetric', 'energy'));
+        }).map(function (meter) { return Number(meter.id); });
+        const meterIds = explicit.length ? explicit : (ignoreMeters ? [] : compatible);
+
+        try {
+            const response = await fetch('/Dashboard/GetAvailableDateRangesForSelection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId: nullableNumber(valueOf('tenantFilter')),
+                    meterIds: meterIds.slice(0, 2000)
+                })
+            });
+            if (!response.ok) throw new Error('Unable to determine source history.');
+            const payload = await response.json();
+            if (sequence !== rangeRequestSequence) return;
+
+            if (payload.success && payload.hasData && payload.earliestReading && payload.latestReading) {
+                availableRange = { startDate: payload.earliestReading, endDate: payload.latestReading };
+                applyViewRange();
+            } else {
+                availableRange = null;
+                updateRangeHint(false, 'No readings for the selected source.');
+            }
+        } catch (error) {
+            if (sequence !== rangeRequestSequence) return;
+            console.warn('Source history unavailable:', error);
+            updateRangeHint(false, 'Source history unavailable. Showing the current date range.');
+        }
+    }
+
+    function applyViewRange() {
+        if (!availableRange) return;
+        const focused = viewGranularity === 'auto'
+            ? availableRange
+            : chartCore.focusRange(availableRange.startDate, availableRange.endDate, viewGranularity);
+        if (!focused) return;
+        document.getElementById('startDate').value = focused.startDate;
+        document.getElementById('endDate').value = focused.endDate;
+        document.getElementById('dateFilter').value = viewGranularity === 'auto'
+            ? chartCore.chooseGranularity(focused.startDate, focused.endDate)
+            : viewGranularity;
+        updateComparisonUi();
+        updateRangeHint();
+    }
+
+    function updateRangeHint(manual, message) {
+        const hint = document.getElementById('dashboardRangeHint');
+        if (!hint) return;
+        if (message) { hint.textContent = message; return; }
+        const labels = { hourly: 'hour', daily: 'day', monthly: 'month', yearly: 'year' };
+        const resolution = labels[valueOf('dateFilter', 'daily')];
+        const range = formatDashboardDate(valueOf('startDate')) + ' → ' + formatDashboardDate(valueOf('endDate'));
+        hint.textContent = (manual ? 'Custom period' : viewGranularity === 'auto'
+            ? 'All available readings' : 'Focused period') + ': ' + range + ' · grouped by ' + resolution + '.';
     }
 
     function restorePreferences() {
@@ -235,7 +311,9 @@
         setSelectValueIfAvailable('chartType', preferences.chartType);
         setSelectValueIfAvailable('maxCurves', preferences.maxCurves);
         setSelectValueIfAvailable('meterLimit', preferences.rankingLimit);
-        setSelectValueIfAvailable('dateFilter', preferences.dateFilter);
+        viewGranularity = ['auto', 'hourly', 'daily', 'monthly', 'yearly'].includes(preferences.viewGranularity)
+            ? preferences.viewGranularity : 'auto';
+        applyViewRange();
         setSelectValueIfAvailable('comparePreset', preferences.comparePreset);
 
         if (preferences.comparison === true) {
@@ -256,7 +334,7 @@
             chartType: valueOf('chartType', 'line'),
             maxCurves: valueOf('maxCurves', '10'),
             rankingLimit: valueOf('meterLimit', '5'),
-            dateFilter: valueOf('dateFilter', 'daily'),
+            viewGranularity,
             comparePreset: valueOf('comparePreset', 'previous'),
             comparison: document.getElementById('modeComparison')?.checked === true
         };
@@ -373,8 +451,8 @@
 
         try {
             const body = {
-                startDate: valueOf('startDate'),
-                endDate: valueOf('endDate'),
+                startDate: availableRange?.startDate || valueOf('startDate'),
+                endDate: availableRange?.endDate || valueOf('endDate'),
                 tenantId: nullableNumber(valueOf('tenantFilter')),
                 limit: 2000,
                 offset: 0,
@@ -692,11 +770,18 @@
 
     function scheduleChartReload() {
         window.clearTimeout(reloadTimer);
-        reloadTimer = window.setTimeout(function () { loadChartData(); }, 180);
+        reloadTimer = window.setTimeout(async function () {
+            viewGranularity = 'auto';
+            setActiveGranularity(viewGranularity);
+            await loadSelectedRange();
+            await loadChartData();
+        }, 180);
     }
 
     async function refreshMeters() {
+        await loadSelectedRange();
         await loadMetersForCurrentDateRange();
+        await loadSelectedRange();
         await loadChartData();
         showNotification('Source catalogue refreshed.', 'success');
     }
@@ -734,6 +819,7 @@
 
     async function loadChartData() {
         if (!validateDateRange()) return;
+        const sequence = ++chartRequestSequence;
 
         // Never let export actions use a payload from an older filter state
         // after the current analytical view has become invalid or failed.
@@ -769,6 +855,7 @@
 
             if (!response.ok) throw new Error('HTTP ' + response.status);
             const payload = await response.json();
+            if (sequence !== chartRequestSequence) return;
 
             if (payload.success === false) {
                 disposeChart();
@@ -815,7 +902,7 @@
                     payload.comparison.startDate);
             }
 
-            renderChart(chartData, payload.metadata);
+            renderChart(chartData, payload.metadata, request);
             updateSummaryCards(payload.summary, payload.compareSummary, payload.metadata);
             updateRanking(payload.ranking || [], payload.metadata);
             updateDashboardContext(payload.summary, payload.metadata, request);
@@ -825,17 +912,18 @@
             updateDataStatus(payload.message || 'Analytics updated.', 'success');
             savePreferences();
         } catch (error) {
+            if (sequence !== chartRequestSequence) return;
             console.error('Dashboard analytics request failed:', error);
             disposeChart();
             updateChartHeader(null, null, request);
             setChartEmpty(true, 'Unable to load analytics', 'The dashboard request failed. Check server logs and the selected period.');
             updateDataStatus('Unable to load analytical data.', 'danger');
         } finally {
-            showLoading(false);
+            if (sequence === chartRequestSequence) showLoading(false);
         }
     }
 
-    function renderChart(data, metadata) {
+    function renderChart(data, metadata, request) {
         disposeChart();
 
         const chartdiv = document.getElementById('chartdiv');
@@ -848,7 +936,7 @@
         }
 
         const chartType = valueOf('chartType', 'line');
-        const dateFilter = valueOf('dateFilter', 'daily');
+        const dateFilter = request.dateFilter;
         const timeUnit =
             dateFilter === 'yearly' ? 'year' :
             dateFilter === 'monthly' ? 'month' :
@@ -1381,6 +1469,7 @@
                     return;
                 }
 
+                await loadSelectedRange();
                 await loadChartData();
                 return;
             }
@@ -1411,6 +1500,7 @@
             });
             updateMeterDropdownText();
             savePreferences();
+            await loadSelectedRange();
             await loadChartData();
             return;
         }
@@ -1440,6 +1530,7 @@
             updateAdvancedControlState();
             updateMeterDropdownText();
             savePreferences();
+            await loadSelectedRange();
             await loadChartData();
         }
     }
@@ -1472,7 +1563,7 @@
         }
 
         const periodContext = document.getElementById('dashboardPeriodContext');
-        if (periodContext) periodContext.textContent = request.startDate + ' → ' + request.endDate;
+        if (periodContext) periodContext.textContent = formatDashboardDate(request.startDate) + ' → ' + formatDashboardDate(request.endDate);
 
         const rankingScope = document.getElementById('rankingScopeBadge');
         if (rankingScope) {
@@ -1573,15 +1664,18 @@
     }
 
     function switchGranularity(value) {
-        const dateFilter = document.getElementById('dateFilter');
-        if (dateFilter) dateFilter.value = value;
+        viewGranularity = value;
         setActiveGranularity(value);
+        if (!availableRange && value !== 'auto') document.getElementById('dateFilter').value = value;
+        applyViewRange();
+        if (!availableRange) updateRangeHint();
         savePreferences();
         loadChartData();
     }
 
     function setActiveGranularity(value) {
         const mapping = {
+            auto: 'tabAuto',
             hourly: 'tabHourly',
             daily: 'tabDaily',
             monthly: 'tabMonthly',
@@ -1608,20 +1702,22 @@
         document.getElementById('chartType').value = 'line';
         document.getElementById('maxCurves').value = '10';
         document.getElementById('meterLimit').value = '5';
-        document.getElementById('dateFilter').value = 'daily';
+        viewGranularity = 'auto';
         document.getElementById('modeStandard').checked = true;
         document.getElementById('comparePreset').value = 'previous';
         document.getElementById('compareStartDate').value = '';
 
         refreshAggregationOptions();
         document.getElementById('aggregationMode').value = 'auto';
-        setActiveGranularity('daily');
+        setActiveGranularity('auto');
         updateScopeDescription();
         updateAdvancedControlState();
         updateComparisonUi();
 
         await loadDateRangeSuggestions();
+        applyViewRange();
         await loadMetersForCurrentDateRange();
+        await loadSelectedRange();
         await loadChartData();
     }
 
@@ -1903,6 +1999,11 @@
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return year + '-' + month + '-' + day;
+    }
+
+    function formatDashboardDate(isoDate) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate || '')) return isoDate || '';
+        return isoDate.slice(8, 10) + '/' + isoDate.slice(5, 7) + '/' + isoDate.slice(0, 4);
     }
 
     function addDays(date, days) {

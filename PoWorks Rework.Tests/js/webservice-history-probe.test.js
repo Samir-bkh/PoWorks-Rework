@@ -58,3 +58,34 @@ test('history check rejects an excessively broad range before contacting PcVue',
     assert.equal(requests.length, 0);
     assert.match(status.textContent, /up to 7 days/);
 });
+
+test('Web Service import accepts January 2024 through today and rejects reversed dates', () => {
+    const invalid = new Set();
+    const elements = Object.fromEntries(['webServiceStartDate', 'webServiceEndDate'].map(id => [id, {
+        value: '',
+        classList: {
+            add: value => invalid.add(id + ':' + value),
+            remove: value => invalid.delete(id + ':' + value)
+        }
+    }]));
+    const context = vm.createContext({
+        window: {},
+        document: {
+            addEventListener: () => {},
+            getElementById: id => elements[id]
+        },
+        console,
+        Date
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname,
+        '../../PoWorks Rework/wwwroot/js/import/webservices_import.js'), 'utf8'), context);
+
+    elements.webServiceStartDate.value = '2024-01-01T00:00';
+    elements.webServiceEndDate.value = '2026-10-01T12:00';
+    assert.equal(vm.runInContext('validateWebServiceDateRange()', context), true);
+    assert.equal(invalid.size, 0);
+
+    elements.webServiceEndDate.value = '2023-12-31T00:00';
+    assert.equal(vm.runInContext('validateWebServiceDateRange()', context), false);
+    assert.ok(invalid.has('webServiceEndDate:is-invalid'));
+});

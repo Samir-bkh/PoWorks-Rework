@@ -86,20 +86,38 @@
             </select>
         </div>
 
+        <div class="analytics-filter analytics-source-filter">
+            <label>Meters / sensors</label>
+            <div class="dropdown w-100">
+                <button class="form-select form-select-sm text-start d-flex justify-content-between align-items-center"
+                        type="button" id="meterDropdownBtn" data-bs-toggle="dropdown"
+                        aria-expanded="false" data-bs-auto-close="outside">
+                    <span id="meterDropdownText" class="text-truncate text-muted">All compatible sources</span>
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+                <ul class="dropdown-menu w-100 p-2 shadow-sm" aria-labelledby="meterDropdownBtn"
+                    id="meterFilterContainer">
+                    <li><span class="dropdown-item-text text-muted">Loading sources…</span></li>
+                </ul>
+            </div>
+            <small id="meterCompatibilityHint">Choose a source to see its full history.</small>
+        </div>
+
         <div class="analytics-filter analytics-filter-period">
             <label>Period</label>
             <div class="analytics-date-range">
-                <input type="date" id="startDate" class="form-control form-control-sm" aria-label="Start date" />
+                <input type="date" id="startDate" lang="fr-FR" class="form-control form-control-sm" aria-label="Start date" />
                 <span>–</span>
-                <input type="date" id="endDate" class="form-control form-control-sm" aria-label="End date" />
+                <input type="date" id="endDate" lang="fr-FR" class="form-control form-control-sm" aria-label="End date" />
             </div>
         </div>
 
         <div class="analytics-granularity" role="group" aria-label="Time aggregation">
-            <button type="button" class="btn btn-sm" id="tabHourly">Hour</button>
-            <button type="button" class="btn btn-sm active" id="tabDaily">Day</button>
-            <button type="button" class="btn btn-sm" id="tabMonthly">Month</button>
-            <button type="button" class="btn btn-sm" id="tabYearly">Year</button>
+            <button type="button" class="btn btn-sm active" id="tabAuto" title="Full available history, grouped automatically">All data</button>
+            <button type="button" class="btn btn-sm" id="tabHourly" title="Latest 2 days, grouped by hour">Hour</button>
+            <button type="button" class="btn btn-sm" id="tabDaily" title="Latest 90 days, grouped by day">Day</button>
+            <button type="button" class="btn btn-sm" id="tabMonthly" title="Latest 5 years, grouped by month">Month</button>
+            <button type="button" class="btn btn-sm" id="tabYearly" title="Full history, grouped by year">Year</button>
         </div>
 
         <div class="analytics-mode-switch" role="group" aria-label="Comparison mode">
@@ -125,6 +143,10 @@
         </button>
     </section>
 
+    <div id="dashboardRangeHint" class="small text-muted px-3 pb-2" aria-live="polite">
+        All available readings · choose Hour, Day, Month or Year to focus the chart. Dates can also be edited manually.
+    </div>
+
     <section class="collapse analytics-advanced-panel" id="advancedAnalyticsPanel">
         <div class="analytics-advanced-grid">
             <div class="analytics-filter">
@@ -141,27 +163,6 @@
                 <label for="aggregationMode">Aggregation</label>
                 <select id="aggregationMode" class="form-select form-select-sm"></select>
                 <small id="metricDescription"></small>
-            </div>
-
-            <div class="analytics-filter analytics-source-filter">
-                <label>Meters / sensors</label>
-                <div class="dropdown w-100">
-                    <button class="form-select form-select-sm text-start d-flex justify-content-between align-items-center"
-                            type="button"
-                            id="meterDropdownBtn"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                            data-bs-auto-close="outside">
-                        <span id="meterDropdownText" class="text-truncate text-muted">All compatible sources</span>
-                        <i class="bi bi-chevron-down"></i>
-                    </button>
-                    <ul class="dropdown-menu w-100 p-2 shadow-sm"
-                        aria-labelledby="meterDropdownBtn"
-                        id="meterFilterContainer">
-                        <li><span class="dropdown-item-text text-muted">Loading sources…</span></li>
-                    </ul>
-                </div>
-                <small id="meterCompatibilityHint">Compatible sources are selected automatically.</small>
             </div>
 
             <div class="analytics-filter">

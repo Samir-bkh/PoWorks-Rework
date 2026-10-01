@@ -685,7 +685,7 @@
 
 .analytics-commandbar {
     display:grid;
-    grid-template-columns:minmax(125px,.8fr) minmax(165px,1fr) minmax(300px,1.55fr) auto auto auto auto;
+    grid-template-columns:minmax(110px,.65fr) minmax(145px,.85fr) minmax(170px,1fr) minmax(260px,1.35fr) auto auto auto auto;
     align-items:end; gap:8px; padding:9px 10px; margin-bottom:8px;
     border:1px solid var(--pw-border-v4); border-radius:10px; background:#fff;
     box-shadow:0 1px 2px rgba(15,23,42,.04);
@@ -788,7 +788,7 @@
 
 
 #meterFilterContainer {
-    max-height:min(420px,55vh); overflow-y:auto; border:1px solid var(--pw-border-v4);
+    min-width:min(380px,90vw); max-height:min(420px,55vh); overflow-y:auto; border:1px solid var(--pw-border-v4);
     border-radius:8px; background:#fff;
 }
 .dashboard-meter-toolbar {
@@ -951,12 +951,15 @@
 
 @media (max-width: 1399.98px) {
     .analytics-commandbar {
-        grid-template-columns:minmax(120px,.85fr) minmax(150px,1fr) minmax(265px,1.45fr) auto auto auto;
+        grid-template-columns:repeat(6,minmax(0,1fr));
     }
     .analytics-advanced-grid {
         grid-template-columns:repeat(4,minmax(0,1fr));
     }
     .analytics-source-filter { grid-column:span 2; }
+    .analytics-filter-period { grid-column:span 2; }
+    .analytics-granularity,
+    .analytics-mode-switch { grid-column:span 2; justify-self:start; }
     .analytics-advanced-actions { grid-column:span 2; justify-content:flex-start; }
 }
 

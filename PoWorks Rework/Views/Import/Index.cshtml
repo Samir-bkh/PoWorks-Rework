@@ -171,7 +171,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                             <input type="datetime-local" class="form-control form-control-sm" id="webServiceEndDate">
                                         </div>
                                     </div>
-                                    <div class="form-text">Select the actual archive dates to retrieve historical readings. The default is only the last 24 hours.</div>
+                                    <div class="form-text">Select the dates of the PcVue archive. Multi-year history is supported and imported progressively by meter; large ranges can take time.</div>
                                 </div>
 
                                 @* Web Services Preset Timeframe Controls *@
@@ -188,7 +188,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     <label for="webServiceHistoryProbeVariable" class="form-label small">Check archived points on PcVue</label>
                                     <div class="input-group input-group-sm">
                                         <input id="webServiceHistoryProbeVariable" class="form-control" value="Building.Power.kW" aria-label="PcVue variable name">
-                                        <button type="button" class="btn btn-outline-secondary" id="probePcVueHistoryBtn">Check 7 days</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="probePcVueHistoryBtn">Check up to 7 days</button>
                                     </div>
                                     <div class="form-text">Uses the selected connection and dates above. Reads PcVue history without changing PoWorks data.</div>
                                     <div id="pcVueHistoryProbeStatus" class="small mt-2" role="status" aria-live="polite"></div>

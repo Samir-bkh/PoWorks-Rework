@@ -299,6 +299,24 @@ public class ConsumptionBillingConsistencyTests
         Assert.Contains(visibleMeters, meter => meter.MeterId == 110);
         Assert.DoesNotContain(visibleMeters, meter => meter.MeterId == 201);
 
+        var fullHistory = await dashboardService.GetAvailableDateRangesAsync();
+        Assert.True(fullHistory.HasData);
+        Assert.Equal(new DateTime(2026, 8, 31), fullHistory.EarliestReading!.Value.Date);
+        Assert.Equal(2, fullHistory.DaysWithData);
+        Assert.True(fullHistory.MetersWithData > 0);
+
+        var selectedHistory = await dashboardService.GetAvailableDateRangesAsync(10, new[] { 101, 201 });
+        Assert.True(selectedHistory.HasData);
+        Assert.Equal(4, selectedHistory.TotalReadings);
+        Assert.Equal(1, selectedHistory.MetersWithData);
+        Assert.Equal(new DateTime(2026, 8, 31), selectedHistory.EarliestReading!.Value.Date);
+        Assert.Equal(new DateTime(2026, 9, 1), selectedHistory.LatestReading!.Value.Date);
+        Assert.False((await dashboardService.GetAvailableDateRangesAsync(10, new[] { 201 })).HasData);
+
+        var suggestions = await dashboardService.GetDateRangeSuggestionsAsync(10);
+        Assert.Equal(new DateTime(2026, 8, 31), suggestions.DefaultStartDate.Date);
+        Assert.Equal(new DateTime(2026, 9, 1), suggestions.DefaultEndDate.Date);
+
         var temperature = await analyticsService.GetAnalyticsAsync(
             new DashboardAnalyticsQuery
             {

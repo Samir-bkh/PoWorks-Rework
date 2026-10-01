@@ -1102,8 +1102,6 @@ namespace PoWorks_Rework.Controllers
             if (string.IsNullOrEmpty(request.ConnectionId)) return (false, "Connection ID is required");
             if (request.StartDate >= request.EndDate) return (false, "Start date must be before end date");
             if (request.EndDate > DateTime.UtcNow) return (false, "End date cannot be in the future");
-            var timeSpan = request.EndDate - request.StartDate;
-            if (timeSpan.TotalDays > 365) return (false, "Date range cannot exceed 365 days");
             return (true, null);
         }
 
