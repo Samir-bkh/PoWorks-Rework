@@ -1,6 +1,45 @@
 (() => {
     'use strict';
 
+    let activeHistoryJobId = null;
+    async function followHistoricalImport(jobId) {
+        if (!jobId) return;
+        activeHistoryJobId = jobId;
+        try { sessionStorage.setItem('poworksHistoricalJobId', jobId); } catch (_) { /* private browsing */ }
+        const status = document.getElementById('historicalImportStatus');
+        if (status) status.style.display = 'block';
+
+        try {
+            const response = await fetch(`/Import/HistoricalTrendJobStatus/${encodeURIComponent(jobId)}`);
+            if (!response.ok) throw new Error('Import status is no longer available (the server may have restarted).');
+            const progress = await response.json();
+            if (jobId !== activeHistoryJobId) return;
+
+            if (status) {
+                status.className = `alert ${progress.complete && (progress.failed || progress.failedVariables || !progress.pointsReturned) ? 'alert-warning' : 'alert-info'}`;
+                const prefix = progress.complete ? 'Historical import finished.' : 'Historical import in progress.';
+                status.textContent = `${prefix} ${progress.processedVariables}/${progress.totalVariables} variables processed; ` +
+                    `${progress.variablesWithData} with archive data; ${progress.pointsReturned} points received; ` +
+                    `${progress.insertedReadings} new readings saved; ${progress.failedVariables} failed.` +
+                    (progress.complete && !progress.pointsReturned ? ' No archived points were returned for this selection and date range.' : '') +
+                    (progress.complete && progress.pointsReturned && !progress.insertedReadings ? ' The points may already exist in PoWorks.' : '');
+            }
+
+            if (progress.complete) {
+                try { sessionStorage.removeItem('poworksHistoricalJobId'); } catch (_) { /* private browsing */ }
+            } else {
+                setTimeout(() => { if (activeHistoryJobId === jobId) followHistoricalImport(jobId); }, 3000);
+            }
+        } catch (error) {
+            if (status && jobId === activeHistoryJobId) {
+                status.className = 'alert alert-warning';
+                status.textContent = `Unable to check historical import: ${error.message}`;
+            }
+        }
+    }
+
+    window.PoWorksHistoricalImport = { follow: followHistoricalImport };
+
     function isSystemVariable(variable) {
         const branches = variable?.branches || variable?.Branches || [];
         if (Array.isArray(branches) && branches.some(b => String(b).toLowerCase() === 'system')) {
@@ -156,6 +195,7 @@
         message += `Errors: ${data.errorCount || 0}`;
         if (data.trendsQueued) message += '\n\nHistorical trends import has started in the background.';
         alert(message);
+        if (data.historyJobId) followHistoricalImport(data.historyJobId);
     }
 
     function installImportOverride() {
@@ -209,6 +249,15 @@
                 connectionId: connectionInfo.connectionId || ''
             };
 
+            if (requestData.importTrendsData &&
+                (!requestData.connectionId || !requestData.trendsStartDate || !requestData.trendsEndDate ||
+                 !Number.isFinite(Date.parse(requestData.trendsStartDate)) ||
+                 !Number.isFinite(Date.parse(requestData.trendsEndDate)) ||
+                 Date.parse(requestData.trendsStartDate) >= Date.parse(requestData.trendsEndDate))) {
+                alert('Select a PcVue Web Service connection and a valid historical date range first.');
+                return;
+            }
+
             const importBtn = document.getElementById('importSelectedBtn');
             const previousHtml = importBtn?.innerHTML || 'Import Selected Variables';
             if (importBtn) {
@@ -260,5 +309,11 @@
     // The view scripts are rendered before this enhancement script. Install immediately,
     // then once more on DOMContentLoaded for pages where script ordering changes later.
     install();
-    document.addEventListener('DOMContentLoaded', install);
+    document.addEventListener('DOMContentLoaded', () => {
+        install();
+        try {
+            const pendingJob = sessionStorage.getItem('poworksHistoricalJobId');
+            if (pendingJob) followHistoricalImport(pendingJob);
+        } catch (_) { /* private browsing */ }
+    });
 })();

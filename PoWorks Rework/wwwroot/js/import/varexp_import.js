@@ -103,6 +103,9 @@ function convertVarexpToMeterSelection(records) {
     const header = records.find(record => record?.[0]?.trim().toLowerCase() === 'class');
     const unitIndex = header?.findIndex(column => column?.trim().toLowerCase() === 'unit') ?? -1;
 
+    // VAREXP includes text, timestamps and system metadata as well as sampled
+    // values. Only numeric and boolean variables can become meter readings.
+    const readingTypes = new Set(['REG', 'CTV', 'BIT', 'CMD']);
     const meterRecords = records.filter(record => {
         if (!record || record.length < 2) return false;
 
@@ -112,12 +115,11 @@ function convertVarexpToMeterSelection(records) {
         if (combinedName === 'CombinedName' || recordType === 'Class') return false;
         if (combinedName.toLowerCase().startsWith('system')) return false;
 
-        const validTypes = ['CHR', 'CMD', 'REG', 'TXT', 'CTV'];
-        return validTypes.includes(recordType.toUpperCase()) && combinedName;
+        return readingTypes.has(recordType.toUpperCase()) && !!combinedName;
     });
 
     if (meterRecords.length === 0) {
-        alert('No valid meter records found in VAREXP.DAT file.');
+        alert('No numeric or boolean variables found in VAREXP.DAT file.');
         return;
     }
 
@@ -161,7 +163,10 @@ function showMeterSelectionForVarexp(meters) {
     window.currentHDSContext = null;
 
     const importReadingsCheckbox = document.getElementById('importReadings');
-    importReadingsCheckbox?.closest('.form-check')?.style?.setProperty('display', 'none');
+    if (importReadingsCheckbox) {
+        importReadingsCheckbox.checked = false;
+        importReadingsCheckbox.closest('.form-check')?.style?.removeProperty('display');
+    }
 
     renderVarexpMetersTable(meters);
 
@@ -198,8 +203,8 @@ function renderVarexpMetersTable(meters) {
     headerRow.className = 'table-info';
     headerRow.innerHTML = `
         <td colspan="6" class="text-center">
-            <small><strong>VAREXP Import:</strong> Showing ${meters.length} meters from VAREXP.DAT file. 
-            PcVue units are filled in when defined in VAREXP.DAT. Check empty units before importing.</small>
+            <small><strong>VAREXP Import:</strong> Showing ${meters.length} numeric/boolean variables.
+            Units come from VAREXP. Historical readings require a PcVue Web Service connection and date range above.</small>
         </td>
     `;
     tbody.appendChild(headerRow);
@@ -217,7 +222,7 @@ function renderVarexpMetersTable(meters) {
             <td>
                 <div>
                     <span class="badge bg-secondary me-2">${meter.recordType}</span>
-                    <span title="VAREXP Meter ${index + 1} of ${meters.length}">${meter.hdsMeterName}</span>
+                    <span title="VAREXP Meter ${index + 1} of ${meters.length}"></span>
                 </div>
             </td>
             <td>
@@ -240,6 +245,7 @@ function renderVarexpMetersTable(meters) {
         `;
 
         tbody.appendChild(row);
+        row.querySelector('td:nth-child(2) span:not(.badge)').textContent = meter.hdsMeterName;
         row.querySelector('.meter-unit').value = meter.unit || '';
     });
 
@@ -348,22 +354,13 @@ function handleVarexpPrint() {
 /**
  * Handles importing selected VAREXP meters into the database.
  */
-function handleVarexpImport() {
+async function handleVarexpImport() {
 
     const selectedCheckboxes = document.querySelectorAll('.meter-checkbox:checked');
     if (!selectedCheckboxes.length) {
         alert('Please select at least one meter to import.');
         return;
     }
-
-    if (!confirm(`Import ${selectedCheckboxes.length} meters from VAREXP?`)) {
-        return;
-    }
-
-    const importBtn = document.getElementById('importSelectedBtn');
-    const originalText = importBtn.textContent;
-    importBtn.disabled = true;
-    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importing...';
 
     const skipExisting = document.getElementById('skipExisting')?.checked ?? true;
     const updateExisting = document.getElementById('updateExisting')?.checked ?? false;
@@ -397,47 +394,84 @@ function handleVarexpImport() {
 
     if (!meters.length) {
         alert('No valid meters found to import.');
-        importBtn.disabled = false;
-        importBtn.textContent = originalText;
         return;
     }
 
-    fetch('/VarexpImport/ImportVarexpMeters', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            meters,
-            skipExisting,
-            updateExisting,
-            createMissingParents
-        })
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
+    const importHistory = document.getElementById('importReadings')?.checked === true;
+    const connectionId = document.getElementById('webServiceConnection')?.value || '';
+    const startDate = document.getElementById('webServiceStartDate')?.value || '';
+    const endDate = document.getElementById('webServiceEndDate')?.value || '';
 
-            importBtn.disabled = false;
-            importBtn.textContent = originalText;
+    if (importHistory && (!connectionId || !startDate || !endDate ||
+        !Number.isFinite(Date.parse(startDate)) || !Number.isFinite(Date.parse(endDate)) ||
+        Date.parse(startDate) >= Date.parse(endDate))) {
+        alert('To import archived readings, select a PcVue Web Service connection and a valid start/end date range first.');
+        return;
+    }
 
-            showVarexpImportResults(data);
+    const question = importHistory
+        ? `Import ${meters.length} VAREXP meters and retrieve PcVue history for the selected range?`
+        : `Import ${meters.length} meters from VAREXP?`;
+    if (!confirm(question)) return;
 
-            if (data.success && (data.importedCount > 0 || data.updatedCount > 0)) {
-                setTimeout(() => {
-                    if (confirm('Import completed successfully! Reload page to see the new meters?')) {
-                        window.location.href = '/Meter/Management';
-                    }
-                }, 2000);
-            }
-        })
-        .catch(error => {
-            importBtn.disabled = false;
-            importBtn.textContent = originalText;
-            alert(`Error importing meters: ${error.message}`);
+    const importBtn = document.getElementById('importSelectedBtn');
+    const originalText = importBtn?.innerHTML;
+    if (importBtn) {
+        importBtn.disabled = true;
+        importBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importing...';
+    }
+
+    try {
+        const response = await fetch('/VarexpImport/ImportVarexpMeters', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ meters, skipExisting, updateExisting, createMissingParents })
         });
+        if (!response.ok) throw new Error(`VAREXP HTTP ${response.status}`);
+        const data = await response.json();
+        showVarexpImportResults(data);
+        if (!data.success) return;
+
+        if (importHistory) {
+            // The DAT file has definitions, not archived points. The same selected
+            // names are resolved against the live PcVue HistoricalData endpoint.
+            const historyResponse = await fetch('/Import/UpsertWebServiceVariablesWithTrends', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    variables: meters.map(meter => ({
+                        variableName: meter.meterName,
+                        unit: meter.unit,
+                        type: meter.type,
+                        parentMeterId: meter.parentMeterId,
+                        active: meter.active
+                    })),
+                    importTrendsData: true,
+                    trendsStartDate: startDate,
+                    trendsEndDate: endDate,
+                    connectionId
+                })
+            });
+            if (!historyResponse.ok) throw new Error(`PcVue history HTTP ${historyResponse.status}`);
+            const history = await historyResponse.json();
+            if (!history.success || !history.trendsQueued || !history.historyJobId) {
+                throw new Error(history.error || 'PcVue historical import could not be started.');
+            }
+            window.PoWorksHistoricalImport?.follow(history.historyJobId);
+        } else if (data.importedCount > 0 || data.updatedCount > 0) {
+            if (confirm('Meters imported. Open Meter Management?')) {
+                window.location.href = '/Meter/Management';
+            }
+        }
+    } catch (error) {
+        alert(`Import failed: ${error.message}`);
+    } finally {
+        if (importBtn) {
+            importBtn.disabled = false;
+            importBtn.innerHTML = originalText;
+            if (typeof updateMeterCounter === 'function') updateMeterCounter();
+        }
+    }
 }
 
 /**

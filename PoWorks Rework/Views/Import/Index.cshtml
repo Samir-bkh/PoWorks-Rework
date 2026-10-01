@@ -107,6 +107,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                 <button type="button" class="btn btn-sm btn-secondary" id="parseVarexpBtn">
                                     <i class="bi bi-file-earmark-text"></i> Import VAREXP.DAT
                                 </button>
+                                <div class="form-text mt-2">VAREXP contains variable names and units. For older readings, select the PcVue Web Service connection and dates in the next panel, then tick “Import historical readings” below the selection table.</div>
                             </div>
                         </div>
                     </div>
@@ -170,7 +171,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                             <input type="datetime-local" class="form-control form-control-sm" id="webServiceEndDate">
                                         </div>
                                     </div>
-                                    <div class="form-text">Select date range for trends data extraction</div>
+                                    <div class="form-text">Select the actual archive dates to retrieve historical readings. The default is only the last 24 hours.</div>
                                 </div>
 
                                 @* Web Services Preset Timeframe Controls *@
@@ -201,6 +202,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
 
                 @* Asynchronous Status Container *@
                 <div id="webServiceStatus" class="mt-3" style="display: none;"></div>
+                <div id="historicalImportStatus" class="mt-3" role="status" aria-live="polite" style="display: none;"></div>
 
                 @* VAREXP Parse Records Container *@
                 <div id="varexpRecordsContainer" class="mt-4"></div>

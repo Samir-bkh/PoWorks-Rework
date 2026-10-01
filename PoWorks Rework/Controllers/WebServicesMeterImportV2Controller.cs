@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
@@ -15,6 +16,7 @@ namespace PoWorks_Rework.Controllers;
 [Authorize(Policy = "ImportExportAccess")]
 public class WebServicesMeterImportV2Controller : Controller
 {
+    private static readonly ConcurrentDictionary<Guid, HistoricalImportProgress> HistoricalJobs = new();
     private readonly DatabaseService _databaseService;
     private readonly ICompanyContext _companyContext;
     private readonly EncryptionService _encryptionService;
@@ -46,6 +48,21 @@ public class WebServicesMeterImportV2Controller : Controller
             return Json(new { success = false, error = "Database connection not initialized." });
 
         var companyId = _companyContext.CurrentCompanyId;
+        PCVueWebServiceSettings? trendsSettings = null;
+        if (request.ImportTrendsData)
+        {
+            if (string.IsNullOrWhiteSpace(request.ConnectionId) ||
+                !request.TrendsStartDate.HasValue || !request.TrendsEndDate.HasValue ||
+                request.TrendsStartDate.Value >= request.TrendsEndDate.Value)
+            {
+                return Json(new { success = false, error = "Select a PcVue Web Service connection and a valid historical date range." });
+            }
+
+            trendsSettings = await GetWebServiceConnectionByIdAsync(request.ConnectionId, companyId);
+            if (trendsSettings == null)
+                return Json(new { success = false, error = "The selected PcVue Web Service connection is unavailable." });
+        }
+
         var candidates = request.Variables
             .Where(v => v != null && !string.IsNullOrWhiteSpace(v.VariableName))
             .GroupBy(v => v.VariableName.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -107,28 +124,17 @@ public class WebServicesMeterImportV2Controller : Controller
         var meterIds = upsert.MeterIds;
         var errorCount = upsert.Errors.Count;
 
-        var processTrends = request.ImportTrendsData
-                            && meterIds.Count > 0
-                            && !string.IsNullOrWhiteSpace(request.ConnectionId)
-                            && request.TrendsStartDate.HasValue
-                            && request.TrendsEndDate.HasValue;
+        var processTrends = trendsSettings != null && meterIds.Count > 0;
+        Guid? historyJobId = null;
 
         if (processTrends)
         {
-            var settings = await GetWebServiceConnectionByIdAsync(request.ConnectionId, companyId);
-            if (settings != null)
-            {
-                QueueTrendImport(
-                    meterIds,
-                    request.TrendsStartDate!.Value,
-                    request.TrendsEndDate!.Value,
-                    settings,
-                    companyId);
-            }
-            else
-            {
-                processTrends = false;
-            }
+            historyJobId = QueueTrendImport(
+                meterIds,
+                request.TrendsStartDate!.Value,
+                request.TrendsEndDate!.Value,
+                trendsSettings!,
+                companyId);
         }
 
         return Json(new
@@ -142,10 +148,20 @@ public class WebServicesMeterImportV2Controller : Controller
             errorCount,
             detailedErrors = upsert.Errors,
             trendsQueued = processTrends,
+            historyJobId,
             message = processTrends
                 ? "Meters saved. Historical trends are being imported in the background."
                 : "Meters saved."
         });
+    }
+
+    [HttpGet("/Import/HistoricalTrendJobStatus/{jobId:guid}")]
+    public IActionResult HistoricalTrendJobStatus(Guid jobId)
+    {
+        if (!HistoricalJobs.TryGetValue(jobId, out var job) || job.CompanyId != _companyContext.CurrentCompanyId)
+            return NotFound();
+
+        return Json(job.Snapshot());
     }
 
     private async Task<PCVueWebServiceSettings?> GetWebServiceConnectionByIdAsync(
@@ -199,141 +215,197 @@ public class WebServicesMeterImportV2Controller : Controller
             });
     }
 
-    private void QueueTrendImport(
+    private Guid QueueTrendImport(
         IReadOnlyDictionary<string, int> meterIds,
         DateTime startDate,
         DateTime endDate,
         PCVueWebServiceSettings settings,
         int companyId)
     {
+        foreach (var oldJob in HistoricalJobs.Where(pair => pair.Value.CreatedUtc < DateTime.UtcNow.AddDays(-1)))
+            HistoricalJobs.TryRemove(oldJob.Key, out _);
+
         var variableNames = meterIds.Keys.ToList();
         var meterMap = meterIds.ToDictionary(
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
+        var jobId = Guid.NewGuid();
+        var progress = new HistoricalImportProgress(companyId, variableNames.Count);
+        HistoricalJobs[jobId] = progress;
 
         _ = Task.Run(async () =>
         {
-            using var scope = _scopeFactory.CreateScope();
-            var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
-            var databaseService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<WebServicesMeterImportV2Controller>>();
-
             await ImportLock.Gate.WaitAsync();
             try
             {
+                using var scope = _scopeFactory.CreateScope();
+                var trendsService = scope.ServiceProvider.GetRequiredService<TrendsService>();
+                var databaseService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<WebServicesMeterImportV2Controller>>();
+
                 logger.LogInformation(
                     "Web Service trends import started for {Count} meter(s).",
                     variableNames.Count);
 
-                var processed = 0;
-                var insertedTotal = 0;
                 foreach (var batch in variableNames.Chunk(25))
                 {
-                    var results = await trendsService.ProcessVariablesTrendsAsync(
-                        batch.ToList(),
-                        startDate.ToUniversalTime(),
-                        endDate.ToUniversalTime(),
-                        settings,
-                        $"Manual company {companyId}");
-
-                    await using var connection = new NpgsqlConnection(databaseService.GetConnectionString());
-                    await connection.OpenAsync();
-                    await using var transaction = await connection.BeginTransactionAsync();
-
                     try
                     {
-                    await using (var temp = new NpgsqlCommand(
-                        """
-                        CREATE TEMP TABLE "TempMeterReadingsManualV2"
-                        (LIKE "MeterReadings" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
-                        ALTER TABLE "TempMeterReadingsManualV2" DROP COLUMN "ReadingId";
-                        """,
-                        connection,
-                        transaction))
-                    {
-                        await temp.ExecuteNonQueryAsync();
-                    }
+                        var results = await trendsService.ProcessVariablesTrendsAsync(
+                            batch.ToList(),
+                            startDate.ToUniversalTime(),
+                            endDate.ToUniversalTime(),
+                            settings,
+                            $"Manual company {companyId}");
+                        var failed = results.Count(result => !result.Success);
+                        var withData = results.Count(result => result.Success && result.TrendData?.Count > 0);
+                        var received = results.Where(result => result.Success).Sum(result => result.TrendData?.Count ?? 0);
 
-                    await using (var writer = await connection.BeginBinaryImportAsync(
-                        """
-                        COPY "TempMeterReadingsManualV2"
-                            ("MeterId", "Timestamp", "Value", "Quality", "CompanyId")
-                        FROM STDIN (FORMAT BINARY)
-                        """))
-                    {
-                        foreach (var result in results)
+                        await using var connection = new NpgsqlConnection(databaseService.GetConnectionString());
+                        await connection.OpenAsync();
+                        await using var transaction = await connection.BeginTransactionAsync();
+                        try
                         {
-                            if (!result.Success ||
-                                result.TrendData == null ||
-                                !meterMap.TryGetValue(result.VariableName, out var meterId))
+                            await using (var temp = new NpgsqlCommand(
+                                """
+                                CREATE TEMP TABLE "TempMeterReadingsManualV2"
+                                (LIKE "MeterReadings" EXCLUDING CONSTRAINTS) ON COMMIT DROP;
+                                ALTER TABLE "TempMeterReadingsManualV2" DROP COLUMN "ReadingId";
+                                """,
+                                connection,
+                                transaction))
                             {
-                                continue;
+                                await temp.ExecuteNonQueryAsync();
                             }
 
-                            foreach (var point in result.TrendData)
+                            await using (var writer = await connection.BeginBinaryImportAsync(
+                                """
+                                COPY "TempMeterReadingsManualV2"
+                                    ("MeterId", "Timestamp", "Value", "Quality", "CompanyId")
+                                FROM STDIN (FORMAT BINARY)
+                                """))
                             {
-                                if (!PcVueTimestamp.TryToLocalDatabaseTime(
-                                        point.Timestamp, TimeZoneInfo.Local, out var localTimestamp)) continue;
+                                foreach (var result in results)
+                                {
+                                    if (!result.Success ||
+                                        result.TrendData == null ||
+                                        !meterMap.TryGetValue(result.VariableName, out var meterId))
+                                        continue;
 
-                                await writer.StartRowAsync();
-                                await writer.WriteAsync(meterId, NpgsqlDbType.Integer);
-                                await writer.WriteAsync(
-                                    localTimestamp,
-                                    NpgsqlDbType.Timestamp);
-                                await writer.WriteAsync(
-                                    Convert.ToDecimal(point.Value),
-                                    NpgsqlDbType.Numeric);
-                                await writer.WriteAsync(
-                                    point.IsGoodQuality ? 192 : 0,
-                                    NpgsqlDbType.Integer);
-                                await writer.WriteAsync(companyId, NpgsqlDbType.Integer);
+                                    foreach (var point in result.TrendData)
+                                    {
+                                        if (!PcVueTimestamp.TryToLocalDatabaseTime(
+                                                point.Timestamp, TimeZoneInfo.Local, out var localTimestamp) ||
+                                            !double.IsFinite(point.Value) ||
+                                            point.Value >= (double)decimal.MaxValue ||
+                                            point.Value <= (double)decimal.MinValue)
+                                            continue;
+
+                                        await writer.StartRowAsync();
+                                        await writer.WriteAsync(meterId, NpgsqlDbType.Integer);
+                                        await writer.WriteAsync(localTimestamp, NpgsqlDbType.Timestamp);
+                                        await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric);
+                                        await writer.WriteAsync(point.IsGoodQuality ? 192 : 0, NpgsqlDbType.Integer);
+                                        await writer.WriteAsync(companyId, NpgsqlDbType.Integer);
+                                    }
+                                }
+                                await writer.CompleteAsync();
                             }
+
+                            await using var insert = new NpgsqlCommand(
+                                """
+                                INSERT INTO "MeterReadings"
+                                    ("MeterId", "Timestamp", "Value", "Quality", "CompanyId")
+                                SELECT "MeterId", "Timestamp", "Value", "Quality", "CompanyId"
+                                FROM "TempMeterReadingsManualV2"
+                                ON CONFLICT ("MeterId", "Timestamp") DO NOTHING
+                                """,
+                                connection,
+                                transaction);
+                            insert.CommandTimeout = 300;
+                            var inserted = await insert.ExecuteNonQueryAsync();
+                            await transaction.CommitAsync();
+                            progress.Report(batch.Length, withData, failed, received, inserted);
+                            logger.LogInformation(
+                                "Web Service trends import: {Inserted} new readings; {Processed}/{Total} meters processed for company {CompanyId}.",
+                                inserted, progress.ProcessedVariables, variableNames.Count, companyId);
                         }
-
-                        await writer.CompleteAsync();
+                        catch
+                        {
+                            await transaction.RollbackAsync();
+                            throw;
+                        }
                     }
-
-                    await using var insert = new NpgsqlCommand(
-                        """
-                        INSERT INTO "MeterReadings"
-                            ("MeterId", "Timestamp", "Value", "Quality", "CompanyId")
-                        SELECT "MeterId", "Timestamp", "Value", "Quality", "CompanyId"
-                        FROM "TempMeterReadingsManualV2"
-                        ON CONFLICT ("MeterId", "Timestamp") DO NOTHING
-                        """,
-                        connection,
-                        transaction);
-                    insert.CommandTimeout = 300;
-                    var inserted = await insert.ExecuteNonQueryAsync();
-                    await transaction.CommitAsync();
-                    processed += batch.Length;
-                    insertedTotal += inserted;
-                    logger.LogInformation(
-                        "Web Service trends import: {Inserted} readings saved; {Processed}/{Total} meters processed for company {CompanyId}.",
-                        inserted, processed, variableNames.Count, companyId);
-                    }
-                    catch
+                    catch (Exception ex)
                     {
-                        await transaction.RollbackAsync();
-                        throw;
+                        progress.Report(batch.Length, 0, batch.Length, 0, 0);
+                        logger.LogError(ex, "Web Service trends batch failed for company {CompanyId}.", companyId);
                     }
                 }
                 logger.LogInformation("Web Service trends import completed for company {CompanyId}: {Inserted} new readings.",
-                    companyId, insertedTotal);
+                    companyId, progress.InsertedReadings);
             }
             catch (Exception ex)
             {
-                logger.LogError(
-                    ex,
-                    "Web Service trends background import failed for company {CompanyId}.",
-                    companyId);
+                progress.Fail();
+                _logger.LogError(ex, "Web Service trends background import failed for company {CompanyId}.", companyId);
             }
             finally
             {
+                progress.Complete();
                 ImportLock.Gate.Release();
             }
         });
+        return jobId;
+    }
+
+    private sealed class HistoricalImportProgress(int companyId, int totalVariables)
+    {
+        private readonly object _gate = new();
+        private int _processedVariables;
+        private int _variablesWithData;
+        private int _failedVariables;
+        private int _pointsReturned;
+        private int _insertedReadings;
+        private bool _complete;
+        private bool _failed;
+
+        public int CompanyId { get; } = companyId;
+        public DateTime CreatedUtc { get; } = DateTime.UtcNow;
+        public int ProcessedVariables { get { lock (_gate) return _processedVariables; } }
+        public int InsertedReadings { get { lock (_gate) return _insertedReadings; } }
+
+        public void Report(int processed, int withData, int failed, int received, int inserted)
+        {
+            lock (_gate)
+            {
+                _processedVariables += processed;
+                _variablesWithData += withData;
+                _failedVariables += failed;
+                _pointsReturned += received;
+                _insertedReadings += inserted;
+            }
+        }
+
+        public void Fail() { lock (_gate) _failed = true; }
+        public void Complete() { lock (_gate) _complete = true; }
+
+        public object Snapshot()
+        {
+            lock (_gate)
+                return new
+                {
+                    totalVariables,
+                    processedVariables = _processedVariables,
+                    variablesWithData = _variablesWithData,
+                    failedVariables = _failedVariables,
+                    pointsReturned = _pointsReturned,
+                    insertedReadings = _insertedReadings,
+                    complete = _complete,
+                    failed = _failed
+                };
+        }
     }
 }
 
