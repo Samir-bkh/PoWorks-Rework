@@ -100,6 +100,9 @@ function handleVarexpFileParse() {
  */
 function convertVarexpToMeterSelection(records) {
 
+    const header = records.find(record => record?.[0]?.trim().toLowerCase() === 'class');
+    const unitIndex = header?.findIndex(column => column?.trim().toLowerCase() === 'unit') ?? -1;
+
     const meterRecords = records.filter(record => {
         if (!record || record.length < 2) return false;
 
@@ -109,7 +112,7 @@ function convertVarexpToMeterSelection(records) {
         if (combinedName === 'CombinedName' || recordType === 'Class') return false;
         if (combinedName.toLowerCase().startsWith('system')) return false;
 
-        const validTypes = ['CHR', 'CMD', 'REG', 'TXT'];
+        const validTypes = ['CHR', 'CMD', 'REG', 'TXT', 'CTV'];
         return validTypes.includes(recordType.toUpperCase()) && combinedName;
     });
 
@@ -120,7 +123,7 @@ function convertVarexpToMeterSelection(records) {
 
     const meters = meterRecords.map(record => ({
         hdsMeterName: record[1].trim(),
-        unit: '',
+        unit: unitIndex >= 0 ? (record[unitIndex] || '').trim() : '',
         type: 'Main',
         active: true,
         isSelected: true,
@@ -196,7 +199,7 @@ function renderVarexpMetersTable(meters) {
     headerRow.innerHTML = `
         <td colspan="6" class="text-center">
             <small><strong>VAREXP Import:</strong> Showing ${meters.length} meters from VAREXP.DAT file. 
-            Only meter names are extracted. Fill in units and other details as needed.</small>
+            PcVue units are filled in when defined in VAREXP.DAT. Check empty units before importing.</small>
         </td>
     `;
     tbody.appendChild(headerRow);
@@ -237,6 +240,7 @@ function renderVarexpMetersTable(meters) {
         `;
 
         tbody.appendChild(row);
+        row.querySelector('.meter-unit').value = meter.unit || '';
     });
 
     if (typeof updateMeterCounter === 'function') {

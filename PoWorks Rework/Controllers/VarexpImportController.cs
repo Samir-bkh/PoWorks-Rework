@@ -134,9 +134,13 @@ namespace PoWorks_Rework.Controllers
                             }
                             else if (request.UpdateExisting)
                             {
-                                await UpdateExistingVarexpMeterAsync(existingMeter.MeterId, meter, connection);
-                                updatedCount++;
-                                _logger.LogInformation($"Updated meter: {meter.MeterName}");
+                                if (await VarexpUnitUpdater.UpdateAsync(
+                                        connection, companyId, existingMeter.MeterId, meter.Unit))
+                                {
+                                    updatedCount++;
+                                    _logger.LogInformation("Updated unit for meter: {Name}", meter.MeterName);
+                                }
+                                else skippedCount++;
                             }
                             else
                             {
@@ -322,40 +326,6 @@ namespace PoWorks_Rework.Controllers
 
             var newMeterId = await command.ExecuteScalarAsync();
             _logger.LogInformation($"Created meter {meter.MeterName} with ID {newMeterId}");
-        }
-        /// <summary>
-        /// Updates an existing meter with data from a VAREXP import item.
-        /// </summary>
-        /// <param name="meterId">The ID of the meter to update.</param>
-        /// <param name="meter">The meter data to apply.</param>
-        /// <param name="connection">The database connection to use.</param>
-        private async Task UpdateExistingVarexpMeterAsync(int meterId, VarexpMeterImportItem meter, NpgsqlConnection connection)
-        {
-            int? parentId = null;
-            if (!string.IsNullOrEmpty(meter.ParentMeterId) && int.TryParse(meter.ParentMeterId, out var parentIdValue))
-            {
-                var parentExists = await CheckMeterExistsAsync(parentIdValue, connection);
-                if (parentExists)
-                {
-                    parentId = parentIdValue;
-                }
-            }
-
-            var command = new NpgsqlCommand(@"
-        UPDATE ""Meters"" 
-        SET ""Type"" = @type, ""Unit"" = @unit, ""ParentId"" = @parentId, ""Active"" = @active
-        WHERE ""MeterId"" = @meterId
-          AND ""CompanyId"" = @companyId", connection);
-
-            command.Parameters.AddWithValue("@meterId", meterId);
-            command.Parameters.AddWithValue("@companyId", _companyContext.CurrentCompanyId);
-            command.Parameters.AddWithValue("@type", meter.Type?.ToLower() ?? "main"); 
-            command.Parameters.AddWithValue("@unit", meter.Unit ?? ""); 
-            command.Parameters.AddWithValue("@parentId", (object)parentId ?? DBNull.Value);
-            command.Parameters.AddWithValue("@active", meter.Active);
-
-            await command.ExecuteNonQueryAsync();
-            _logger.LogInformation($"Updated meter {meter.MeterName} with ID {meterId}");
         }
         /// <summary>
         /// Checks whether a meter with the given ID exists in the database.

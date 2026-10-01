@@ -1,4 +1,5 @@
 using Microsoft.VisualBasic.FileIO;
+using System.Text;
 
 namespace PoWorks_Rework.Services
 {
@@ -70,7 +71,24 @@ namespace PoWorks_Rework.Services
             try
             {
                 using var stream = file.OpenReadStream();
-                using var reader = new StreamReader(stream);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                var bytes = buffer.ToArray();
+
+                // PcVue VAREXP.DAT can be exported in DOS code page 850 (°C
+                // is byte F8). A default UTF-8 StreamReader silently replaces
+                // this byte, and the UI loses the real unit.
+                string content;
+                try
+                {
+                    content = new UTF8Encoding(false, true).GetString(bytes);
+                }
+                catch (DecoderFallbackException)
+                {
+                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                    content = Encoding.GetEncoding(850).GetString(bytes);
+                }
+                using var reader = new StringReader(content.TrimStart('\uFEFF'));
 
                 using var parser = new TextFieldParser(reader)
                 {
