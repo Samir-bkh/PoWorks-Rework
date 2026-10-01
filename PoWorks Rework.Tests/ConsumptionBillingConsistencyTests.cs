@@ -352,6 +352,41 @@ public class ConsumptionBillingConsistencyTests
             6);
         Assert.Equal("kWh", derivedEnergy.Summary.Unit);
 
+        // The dashboard's Hour view must also work for a selected kW meter
+        // across a full month, even when only a few hours contain readings.
+        var hourlyEnergy = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "energy",
+                ScopeMode = "aggregate",
+                Aggregation = "auto",
+                MeterIds = new List<int> { 103 },
+                StartDate = start,
+                EndDate = new DateTime(2026, 10, 1, 23, 59, 59),
+                DateFilter = "hourly"
+            });
+
+        var hourlyEnergySeries = Assert.Single(hourlyEnergy.ChartData.Datasets);
+        Assert.Equal("kWh", hourlyEnergy.Summary.Unit);
+        Assert.Equal(30d, hourlyEnergy.Summary.Kpis.Single(k => k.Key == "total").Value, 6);
+        Assert.Equal(new double?[] { 0d, 10d, 20d }, hourlyEnergySeries.Data);
+
+        var hourlyPower = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "power",
+                ScopeMode = "aggregate",
+                Aggregation = "auto",
+                MeterIds = new List<int> { 103 },
+                StartDate = start,
+                EndDate = new DateTime(2026, 10, 1, 23, 59, 59),
+                DateFilter = "hourly"
+            });
+
+        Assert.Equal("kW", hourlyPower.Summary.Unit);
+        Assert.Equal(new double?[] { 10d, 20d, 30d },
+            Assert.Single(hourlyPower.ChartData.Datasets).Data);
+
         var pressure = await analyticsService.GetAnalyticsAsync(
             new DashboardAnalyticsQuery
             {
