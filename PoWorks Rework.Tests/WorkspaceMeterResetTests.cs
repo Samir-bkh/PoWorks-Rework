@@ -20,10 +20,10 @@ public class WorkspaceMeterResetTests
                 INSERT INTO ""Meters"" (""MeterId"", ""Name"", ""ParentId"", ""CompanyId"")
                     VALUES (2, 'Building.Room.Power', 1, 1);
                 INSERT INTO ""MeterReadings"" (""MeterId"", ""CompanyId"") VALUES
-                    (1, 1), (2, 1), (NULL, 1), (3, 2);
-                INSERT INTO ""MeterReadingsDaily"" (""MeterId"", ""CompanyId"") VALUES (1, 1), (3, 2);
-                INSERT INTO ""MeterReadingsMonthly"" (""MeterId"", ""CompanyId"") VALUES (1, 1), (3, 2);
-                INSERT INTO ""MeterReadingsYearly"" (""MeterId"", ""CompanyId"") VALUES (1, 1), (3, 2);
+                    (1, 1), (2, 1), (NULL, 1), (1, 2), (3, 2);
+                INSERT INTO ""MeterReadingsDaily"" (""MeterId"", ""CompanyId"") VALUES (1, 1), (2, 2), (3, 2);
+                INSERT INTO ""MeterReadingsMonthly"" (""MeterId"", ""CompanyId"") VALUES (1, 1), (2, 2), (3, 2);
+                INSERT INTO ""MeterReadingsYearly"" (""MeterId"", ""CompanyId"") VALUES (1, 1), (2, 2), (3, 2);
                 INSERT INTO ""Bills"" (""BillId"", ""CompanyId"", ""Amount"") VALUES
                     (11, 1, 80), (12, 2, 95);
                 INSERT INTO ""BillLineItems"" (""LineItemId"", ""BillId"", ""MeterId"", ""MeterName"") VALUES
@@ -35,11 +35,11 @@ public class WorkspaceMeterResetTests
                 await tx.CommitAsync();
 
                 Assert.Equal(2, result.Meters);
-                Assert.Equal(3, result.RawReadings);
-                Assert.Equal(1, result.DailyReadings);
-                Assert.Equal(1, result.MonthlyReadings);
-                Assert.Equal(1, result.YearlyReadings);
-                Assert.Equal(6, result.Readings);
+                Assert.Equal(4, result.RawReadings);
+                Assert.Equal(2, result.DailyReadings);
+                Assert.Equal(2, result.MonthlyReadings);
+                Assert.Equal(2, result.YearlyReadings);
+                Assert.Equal(10, result.Readings);
                 Assert.Equal(1, result.InvoiceLinksDetached);
             }
 
@@ -49,6 +49,12 @@ public class WorkspaceMeterResetTests
                 Assert.Equal(0, await CountAsync(connection, table, 1));
                 Assert.Equal(1, await CountAsync(connection, table, 2));
             }
+
+            // Rows mislabeled as workspace 2 must not survive with a dangling
+            // foreign key to a deleted workspace 1 meter.
+            await using (var command = new NpgsqlCommand(@"
+                SELECT COUNT(*) FROM ""MeterReadings"" WHERE ""MeterId"" = 1", connection))
+                Assert.Equal(0L, (long)(await command.ExecuteScalarAsync())!);
 
             await using (var command = new NpgsqlCommand(@"
                 SELECT line.""MeterId"", line.""MeterName"", bill.""Amount""
