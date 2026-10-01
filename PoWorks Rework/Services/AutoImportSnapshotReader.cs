@@ -39,17 +39,55 @@ public sealed class AutoImportSnapshotReader
     {
         if (meters.Count == 0) return Array.Empty<Snapshot>();
 
+        var live = new List<Snapshot>(meters.Count);
+        var unresolved = new List<MeterForTrendsAnalysis>();
+        foreach (var batch in meters.Chunk(BatchSize))
+            await ReadWithUnknownVariableIsolationAsync(settings, batch, live, unresolved, cancellationToken);
+
+        if (unresolved.Count == 0) return live;
+
+        _logger?.LogWarning(
+            "PCVue real-time read could not resolve {Count}/{Total} variables; checking recent historical values. Examples: {Names}",
+            unresolved.Count, meters.Count,
+            string.Join(", ", unresolved.Take(5).Select(m => m.OriginalVariableName)));
+        var history = await ReadRecentHistoryAsync(settings, unresolved, intervalMinutes, cancellationToken);
+        var byId = live.Concat(history).ToDictionary(snapshot => snapshot.MeterId);
+        return meters.Where(m => byId.ContainsKey(m.MeterId))
+            .Select(m => byId[m.MeterId]).ToArray();
+    }
+
+    private async Task ReadWithUnknownVariableIsolationAsync(
+        PCVueWebServiceSettings settings,
+        IReadOnlyList<MeterForTrendsAnalysis> meters,
+        List<Snapshot> live,
+        List<MeterForTrendsAnalysis> unresolved,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            return await ReadRealTimeAsync(settings, meters, cancellationToken);
+            live.AddRange(await ReadRealTimeAsync(settings, meters, cancellationToken));
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException &&
-                                   _trendsService != null)
+        catch (Exception ex) when (meters.Count > 1 && IsUnknownVariable(ex) &&
+                                   (ex is JsonException or InvalidOperationException))
         {
-            _logger?.LogWarning("PCVue real-time read unavailable ({Reason}); checking recent historical values.", ex.Message);
-            return await ReadRecentHistoryAsync(settings, meters, intervalMinutes, cancellationToken);
+            // WST rejects an entire BulkRead when just one name is unknown.
+            // Narrow down the bad names without losing live values from the rest.
+            var half = meters.Count / 2;
+            await ReadWithUnknownVariableIsolationAsync(
+                settings, meters.Take(half).ToArray(), live, unresolved, cancellationToken);
+            await ReadWithUnknownVariableIsolationAsync(
+                settings, meters.Skip(half).ToArray(), live, unresolved, cancellationToken);
+        }
+        catch (Exception ex) when (_trendsService != null &&
+                                   (ex is JsonException or InvalidOperationException))
+        {
+            unresolved.AddRange(meters);
         }
     }
+
+    private static bool IsUnknownVariable(Exception ex) =>
+        ex.Message.Contains("E_UnknownVariable", StringComparison.Ordinal);
 
     private async Task<IReadOnlyList<Snapshot>> ReadRealTimeAsync(
         PCVueWebServiceSettings settings,
@@ -68,7 +106,7 @@ public sealed class AutoImportSnapshotReader
                     settings, variables, cancellationToken: cancellationToken);
                 values = ParseGoodNumericValues(response);
             }
-            catch (Exception ex) when (ex is JsonException ||
+            catch (Exception ex) when (ex is JsonException jsonError && !IsUnknownVariable(jsonError) ||
                                        ex is InvalidOperationException &&
                                        (ex.Message.Contains("HTTP 404", StringComparison.Ordinal) ||
                                         ex.Message.Contains("HTTP 405", StringComparison.Ordinal)))

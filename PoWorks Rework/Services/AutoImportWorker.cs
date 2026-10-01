@@ -51,9 +51,10 @@ namespace PoWorks_Rework.Services
                 }
 
                 var remaining = TimeSpan.FromMinutes(cycleDelayMinutes) - cycleTimer.Elapsed;
-                _logger.LogInformation("--- END OF CYCLE, NEXT CHECK IN {Delay} ---", remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
-                if (remaining > TimeSpan.Zero)
-                    await Task.Delay(remaining, stoppingToken);
+                var delay = _schedule.UntilNextDue(DateTimeOffset.UtcNow,
+                    remaining > TimeSpan.Zero ? remaining : TimeSpan.FromSeconds(1));
+                _logger.LogInformation("--- END OF CYCLE, NEXT CHECK IN {Delay} ---", delay);
+                await Task.Delay(delay, stoppingToken);
             }
         }
 
@@ -189,11 +190,12 @@ namespace PoWorks_Rework.Services
             using var cmd = new NpgsqlCommand(@"
                 SELECT MIN(""AutoImportIntervalMinutes"")
                 FROM (
-                    SELECT DISTINCT ON (""CompanyId"")
-                        ""AutoImportIntervalMinutes"", ""EnableAutomaticImport""
-                    FROM ""WebServiceConnections""
-                    WHERE ""IsActive"" = TRUE
-                    ORDER BY ""CompanyId"", ""IsDefault"" DESC, ""ConnectionId""
+                    SELECT DISTINCT ON (ws.""CompanyId"")
+                        ws.""AutoImportIntervalMinutes"", ws.""EnableAutomaticImport""
+                    FROM ""WebServiceConnections"" ws
+                    JOIN ""Companies"" c ON c.""CompanyId"" = ws.""CompanyId""
+                    WHERE ws.""IsActive"" = TRUE AND c.""Active"" = TRUE
+                    ORDER BY ws.""CompanyId"", ws.""IsDefault"" DESC, ws.""ConnectionId""
                 ) selected
                 WHERE ""EnableAutomaticImport"" = TRUE", conn);
             var result = await cmd.ExecuteScalarAsync(stoppingToken);

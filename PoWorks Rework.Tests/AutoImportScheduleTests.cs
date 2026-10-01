@@ -28,6 +28,8 @@ public class AutoImportScheduleTests
 
         Assert.True(schedule.TryStart(1, "original", 2, start));
         Assert.False(schedule.TryStart(1, "original", 3, start.AddMinutes(2)));
+        Assert.Equal(TimeSpan.FromMinutes(1),
+            schedule.UntilNextDue(start.AddMinutes(2), TimeSpan.FromMinutes(5)));
         Assert.True(schedule.TryStart(1, "original", 3, start.AddMinutes(3)));
         Assert.True(schedule.TryStart(1, "replacement", 3, start.AddMinutes(3)));
 
@@ -45,5 +47,22 @@ public class AutoImportScheduleTests
         for (var minute = 1; minute < 5; minute++)
             Assert.False(schedule.TryStart(1, "five-minute", 5, start.AddMinutes(minute)));
         Assert.True(schedule.TryStart(1, "five-minute", 5, start.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void OneMinuteGlobalChecks_WakeAtExactTwoMinuteDueTime()
+    {
+        var schedule = new AutoImportSchedule();
+        var start = new DateTimeOffset(2026, 10, 1, 9, 0, 0, 500, TimeSpan.Zero);
+        Assert.True(schedule.TryStart(1, "two-minute", 2, start));
+
+        var check = start.AddMinutes(1).AddSeconds(-1);
+        Assert.Equal(TimeSpan.FromMinutes(1),
+            schedule.UntilNextDue(check, TimeSpan.FromMinutes(1)));
+        check = check.AddMinutes(1);
+        Assert.False(schedule.TryStart(1, "two-minute", 2, check));
+        Assert.Equal(TimeSpan.FromSeconds(1),
+            schedule.UntilNextDue(check, TimeSpan.FromMinutes(1)));
+        Assert.True(schedule.TryStart(1, "two-minute", 2, check.AddSeconds(1)));
     }
 }

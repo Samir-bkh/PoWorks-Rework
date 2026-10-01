@@ -122,6 +122,63 @@ public class AutoImportSnapshotReaderTests
     }
 
     [Fact]
+    public async Task UnknownVariableInBulk_DoesNotHideOtherLiveMetersOrRecentArchivedMeter()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 1, 10, 0, 0, TimeSpan.Zero));
+        var calls = new List<string[]>();
+        using var handler = new PcVueHandler(async request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token")) return TokenResponse();
+            if (path.EndsWith("/BulkRead"))
+            {
+                using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                var names = payload.RootElement.GetProperty("Variables").EnumerateArray()
+                    .Select(v => v.GetString()!).ToArray();
+                calls.Add(names);
+                if (names.Any(n => n is "Missing" or "Archived"))
+                    return Json("[{\"code\":{\"value\":0,\"label\":\"E_UnknownVariable\"}}]");
+                return Json(JsonSerializer.Serialize(names.ToDictionary(n => n, _ => new
+                {
+                    result = new { code = new { value = 1 } },
+                    value = 42,
+                    quality = "Good",
+                    QualityValue = 192
+                })));
+            }
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+            {
+                var body = await request.Content!.ReadAsStringAsync();
+                return Json(body.Contains("Archived", StringComparison.Ordinal)
+                    ? "\"trend-archived\"" : "\"trend-missing\"");
+            }
+            if (request.Method == HttpMethod.Get && path.EndsWith("/trend-archived"))
+                return Json("""
+                    {"values":[{"value":7,"timestamp":"2026-10-01T09:59:00",
+                    "quality":"Good","qualityValue":192}],"maxNumberExceeded":false}
+                    """);
+            if (request.Method == HttpMethod.Get && path.EndsWith("/trend-missing"))
+                return Json("{\"values\":[],\"maxNumberExceeded\":false}");
+            if (request.Method == HttpMethod.Delete && path.Contains("/HistoricalData/v2/Trends/"))
+                return Json("{}");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var client = new HttpClient(handler);
+        var web = new PCVueWebService(client, NullLogger<PCVueWebService>.Instance, clock);
+        var reader = new AutoImportSnapshotReader(web, clock,
+            new TrendsService(web, NullLogger<TrendsService>.Instance));
+
+        var readings = await reader.ReadAsync(Settings(), Meters("LiveA", "Missing", "LiveB", "Archived"),
+            intervalMinutes: 2);
+
+        Assert.Equal(new[] { 1, 3, 4 }, readings.Select(r => r.MeterId));
+        Assert.Equal(new[] { 42m, 42m, 7m }, readings.Select(r => r.Value));
+        Assert.Contains(calls, batch => batch.SequenceEqual(new[] { "LiveA", "Missing", "LiveB", "Archived" }));
+        Assert.Contains(calls, batch => batch.SequenceEqual(new[] { "LiveA" }));
+        Assert.Contains(calls, batch => batch.SequenceEqual(new[] { "LiveB" }));
+    }
+
+    [Fact]
     public async Task RealTimeUnavailable_RecentPcVueHistorySuppliesOneSnapshotPerPoll()
     {
         var clock = new ManualClock(new DateTimeOffset(2026, 9, 30, 15, 0, 0, TimeSpan.Zero));
