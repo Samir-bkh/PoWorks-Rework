@@ -772,6 +772,7 @@
 
             if (payload.success === false) {
                 disposeChart();
+                updateChartHeader(null, null, request);
                 setChartEmpty(
                     true,
                     payload.validationError ? 'Selection needs attention' : 'Unable to calculate view',
@@ -784,6 +785,7 @@
 
             if (payload.noDataInRange || !payload.chartData?.datasets?.length) {
                 disposeChart();
+                updateChartHeader(payload.metadata, payload.summary, request);
                 setChartEmpty(
                     true,
                     'No compatible data',
@@ -825,6 +827,7 @@
         } catch (error) {
             console.error('Dashboard analytics request failed:', error);
             disposeChart();
+            updateChartHeader(null, null, request);
             setChartEmpty(true, 'Unable to load analytics', 'The dashboard request failed. Check server logs and the selected period.');
             updateDataStatus('Unable to load analytical data.', 'danger');
         } finally {
@@ -1481,9 +1484,14 @@
         const title = document.getElementById('chartTitle');
         const subtitle = document.getElementById('chartSubtitle');
 
-        if (title) title.textContent = metadata?.metricLabel || 'Building analytics';
+        if (title) title.textContent = metadata?.metricLabel || getMetricDefinition().label;
 
         if (subtitle) {
+            if (!summary) {
+                subtitle.textContent = 'Data unavailable for the selected filters';
+                return;
+            }
+
             let scopeLabel = 'Building aggregate';
             if (request.scopeMode === 'tenant') scopeLabel = 'Breakdown by tenant';
             else if (request.scopeMode === 'meter') scopeLabel = 'Individual meter view';

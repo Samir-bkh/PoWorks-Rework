@@ -49,7 +49,7 @@ namespace PoWorks_Rework.Services
                             includeMeterFilter: true) + @"
                             SELECT
                                 ""MeterId"",
-                                COALESCE(SUM(""ConsumptionDelta""), 0) AS ""TotalConsumption""
+                                COALESCE(ROUND(SUM(""ConsumptionDelta""), 12), 0) AS ""TotalConsumption""
                             FROM normalized
                             GROUP BY ""MeterId""";
 
@@ -110,9 +110,9 @@ namespace PoWorks_Rework.Services
                                     COALESCE(NULLIF(""TenantName"", ''), 'Unassigned') AS ""MeterName"",
                                     'kWh' AS ""Unit"",
                                     {bucket} AS ""ReadingDate"",
-                                    COALESCE(SUM(""ConsumptionDelta""), 0) AS ""TotalConsumption"",
-                                    COALESCE(AVG(""ConsumptionDelta""), 0) AS ""AvgConsumption"",
-                                    COALESCE(SUM(""ConsumptionDelta""), 0) AS ""MaxConsumption"",
+                                    COALESCE(ROUND(SUM(""ConsumptionDelta""), 12), 0) AS ""TotalConsumption"",
+                                    COALESCE(ROUND(AVG(""ConsumptionDelta""), 12), 0) AS ""AvgConsumption"",
+                                    COALESCE(ROUND(SUM(""ConsumptionDelta""), 12), 0) AS ""MaxConsumption"",
                                     ""TenantID"",
                                     COALESCE(""TenantName"", '') AS ""TenantName""
                                 FROM normalized
@@ -127,9 +127,9 @@ namespace PoWorks_Rework.Services
                                     ""MeterName"",
                                     'kWh' AS ""Unit"",
                                     {bucket} AS ""ReadingDate"",
-                                    COALESCE(SUM(""ConsumptionDelta""), 0) AS ""TotalConsumption"",
-                                    COALESCE(AVG(""ConsumptionDelta""), 0) AS ""AvgConsumption"",
-                                    COALESCE(SUM(""ConsumptionDelta""), 0) AS ""MaxConsumption"",
+                                    COALESCE(ROUND(SUM(""ConsumptionDelta""), 12), 0) AS ""TotalConsumption"",
+                                    COALESCE(ROUND(AVG(""ConsumptionDelta""), 12), 0) AS ""AvgConsumption"",
+                                    COALESCE(ROUND(SUM(""ConsumptionDelta""), 12), 0) AS ""MaxConsumption"",
                                     ""TenantID"",
                                     COALESCE(""TenantName"", '') AS ""TenantName""
                                 FROM normalized
