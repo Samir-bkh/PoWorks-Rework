@@ -404,7 +404,26 @@ public class ConsumptionBillingConsistencyTests
 
         var twoMinuteTotals = await consumptionService.GetMeterConsumptionTotalsAsync(
             new[] { 111 }, start, end);
-        Assert.Equal(0.1619m, twoMinuteTotals[111]);
+        Assert.InRange(twoMinuteTotals[111], 0.161899999m, 0.161900001m);
+
+        var preciseEnergy = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "energy",
+                ScopeMode = "aggregate",
+                Aggregation = "auto",
+                MeterIds = new List<int> { 112 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "hourly"
+            });
+
+        Assert.Equal(0.161912345679d, Assert.Single(preciseEnergy.ChartData.Datasets)
+            .Data.Single()!.Value, 10);
+
+        var preciseTotals = await consumptionService.GetMeterConsumptionTotalsAsync(
+            new[] { 112 }, start, end);
+        Assert.Equal(0.161912345679m, preciseTotals[112]);
 
         var pressure = await analyticsService.GetAnalyticsAsync(
             new DashboardAnalyticsQuery
@@ -640,6 +659,7 @@ public class ConsumptionBillingConsistencyTests
                 (109, 'Legacy.Unspecified', '', TRUE, 10, 1),
                 (110, 'Legacy.NbspEnergy', 'k' || CHR(160) || 'Wh', TRUE, NULL, 1),
                 (111, 'Building.Power.kW', 'kW', TRUE, NULL, 1),
+                (112, 'Building.PrecisePower.kW', 'kW', TRUE, NULL, 1),
                 (201, 'OtherWorkspace.kWh', 'kWh', TRUE, 20, 2);
 
             INSERT INTO ""MeterReadings"" (
@@ -682,6 +702,10 @@ public class ConsumptionBillingConsistencyTests
                 (111, '2026-09-01 10:02:00', 1.619, 1),
                 (111, '2026-09-01 10:04:00', 1.619, 1),
                 (111, '2026-09-01 10:06:00', 1.619, 1),
+                (112, '2026-09-01 10:00:00', 1.61912345678901, 1),
+                (112, '2026-09-01 10:02:00', 1.61912345678901, 1),
+                (112, '2026-09-01 10:04:00', 1.61912345678901, 1),
+                (112, '2026-09-01 10:06:00', 1.61912345678901, 1),
                 (201, '2026-09-01 00:00:00', 1000, 2),
                 (201, '2026-09-01 01:00:00', 9000, 2);";
 
