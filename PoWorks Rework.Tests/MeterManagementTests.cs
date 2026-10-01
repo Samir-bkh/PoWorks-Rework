@@ -59,6 +59,23 @@ public class MeterManagementTests
     }
 
     [Fact]
+    public void WorkspaceReset_RequiresAdminAndAntiforgeryConfirmation()
+    {
+        var method = typeof(MeterController).GetMethod(nameof(MeterController.ResetWorkspaceMeters));
+        Assert.NotNull(method);
+
+        Assert.Contains(method!.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
+            .Cast<AuthorizeAttribute>(), attribute => attribute.Policy == "AdminOnly");
+        Assert.NotNull(method.GetCustomAttributes(typeof(HttpPostAttribute), inherit: true).SingleOrDefault());
+        Assert.NotNull(method.GetCustomAttributes(typeof(ValidateAntiForgeryTokenAttribute), inherit: true).SingleOrDefault());
+
+        var view = ReadSource("Views", "Meter", "Management.cshtml");
+        Assert.Contains("asp-action=\"ResetWorkspaceMeters\"", view);
+        Assert.Contains("@Html.AntiForgeryToken()", view);
+        Assert.Contains("name=\"confirmation\"", view);
+    }
+
+    [Fact]
     public void MeterSearch_IsReadOnlyGet()
     {
         var method = typeof(MeterController).GetMethod(nameof(MeterController.Search));
@@ -92,7 +109,7 @@ public class MeterManagementTests
     }
 
     [Fact]
-    public void MeterDeletion_PreservesHistoryByBlockingPermanentDelete()
+    public void OrdinaryMeterDeletion_PreservesHistoryByBlockingPermanentDelete()
     {
         var source = ReadSource("Controllers", "MeterController.cs");
 

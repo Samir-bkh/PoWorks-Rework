@@ -585,6 +585,64 @@ namespace PoWorks_Rework.Controllers
             }
         }
 
+        /// <summary>
+        /// Explicit workspace-wide reset for preparing a new import. Ordinary
+        /// meter deletion remains protected so it cannot erase history by accident.
+        /// </summary>
+        [HttpPost]
+        [Authorize(Policy = "AdminOnly")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResetWorkspaceMeters(string confirmation)
+        {
+            if (!string.Equals(confirmation, "RESET", StringComparison.Ordinal))
+            {
+                TempData["ErrorMessage"] = "Type RESET to confirm deletion of all meters and readings in this workspace.";
+                return RedirectToAction(nameof(Management));
+            }
+
+            if (!_databaseService.IsInitialized)
+                return RedirectDatabaseNotConfigured();
+
+            var companyId = _companyContext.CurrentCompanyId;
+            try
+            {
+                await ImportLock.Gate.WaitAsync(HttpContext.RequestAborted);
+                WorkspaceMeterResetResult result;
+                try
+                {
+                    result = await _databaseService.ExecuteWithCompanyIsolationAsync(
+                        companyId,
+                        (connection, transaction) => WorkspaceMeterReset.ExecuteAsync(
+                            connection, transaction, companyId, HttpContext.RequestAborted));
+                }
+                finally
+                {
+                    ImportLock.Gate.Release();
+                }
+
+                await AuditTrail.LogAsync(_databaseService, HttpContext, new AuditEvent
+                {
+                    Action = "RESET_METERS",
+                    EntityType = "Meter",
+                    CompanyId = companyId,
+                    Summary = $"Workspace reset: {result.Meters} meters and {result.Readings} readings deleted; " +
+                              $"{result.InvoiceLinksDetached} invoice links detached. Invoices preserved."
+                });
+
+                TempData["SuccessMessage"] =
+                    $"Workspace cleared: {result.Meters} meters and {result.Readings} readings deleted. " +
+                    $"{result.InvoiceLinksDetached} invoice references detached; invoices were preserved.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Meter reset failed in workspace {CompanyId}", companyId);
+                TempData["ErrorMessage"] =
+                    "Workspace reset failed. No meters or readings were deleted; check the application logs.";
+            }
+
+            return RedirectToAction(nameof(Management));
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> BulkEditMeters([FromBody] BulkEditMetersRequest request)
