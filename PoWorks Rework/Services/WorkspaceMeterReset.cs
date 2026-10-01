@@ -41,8 +41,9 @@ namespace PoWorks_Rework.Services
                   AND bill.""CompanyId"" = @CompanyId", connection, transaction,
                 companyId, cancellationToken);
 
-            // Delete every reading owned by the workspace, including old rows
-            // whose MeterId was left NULL by an earlier import or migration.
+            // Legacy imports can have the wrong CompanyId even though their
+            // MeterId still references a meter in this workspace. Remove both
+            // kinds of rows so the meter foreign keys cannot block the reset.
             var raw = await DeleteReadingsAsync("MeterReadings", connection, transaction,
                 companyId, cancellationToken);
             var daily = await DeleteReadingsAsync("MeterReadingsDaily", connection, transaction,
@@ -75,7 +76,12 @@ namespace PoWorks_Rework.Services
             NpgsqlTransaction transaction,
             int companyId,
             CancellationToken cancellationToken) =>
-            ExecuteAsync($@"DELETE FROM ""{tableName}"" WHERE ""CompanyId"" = @CompanyId",
+            ExecuteAsync($@"
+                DELETE FROM ""{tableName}"" AS reading
+                WHERE reading.""CompanyId"" = @CompanyId
+                   OR reading.""MeterId"" IN (
+                       SELECT ""MeterId"" FROM ""Meters""
+                       WHERE ""CompanyId"" = @CompanyId)",
                 connection, transaction, companyId, cancellationToken);
 
         private static async Task<int> ExecuteAsync(
