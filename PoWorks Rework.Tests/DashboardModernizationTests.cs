@@ -198,7 +198,8 @@ public class DashboardModernizationTests
         Assert.Contains("series.bullets.push(function (bulletRoot, _series, dataItem)", script);
         Assert.Contains("hit.events.on('pointerover'", script);
         Assert.Contains("hit.events.on('pointerout'", script);
-        Assert.Contains("fillOpacity: .001", script);
+        Assert.Contains("if (!point || !Number.isFinite(point.y)) return undefined;", script);
+        Assert.Contains("fillOpacity: 1", script);
         Assert.Contains("hit.states.create('hover'", script);
         Assert.Contains("poworks-chart-hover-tooltip", script);
         Assert.Contains("chartCore.validateData(data)", script);
