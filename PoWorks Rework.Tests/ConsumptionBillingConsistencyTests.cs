@@ -387,6 +387,25 @@ public class ConsumptionBillingConsistencyTests
         Assert.Equal(new double?[] { 10d, 20d, 30d },
             Assert.Single(hourlyPower.ChartData.Datasets).Data);
 
+        var twoMinuteEnergy = await analyticsService.GetAnalyticsAsync(
+            new DashboardAnalyticsQuery
+            {
+                Metric = "energy",
+                ScopeMode = "aggregate",
+                Aggregation = "auto",
+                MeterIds = new List<int> { 111 },
+                StartDate = start,
+                EndDate = end,
+                DateFilter = "hourly"
+            });
+
+        Assert.Equal(0.1619d, Assert.Single(twoMinuteEnergy.ChartData.Datasets)
+            .Data.Single()!.Value, 6);
+
+        var twoMinuteTotals = await consumptionService.GetMeterConsumptionTotalsAsync(
+            new[] { 111 }, start, end);
+        Assert.Equal(0.1619m, twoMinuteTotals[111]);
+
         var pressure = await analyticsService.GetAnalyticsAsync(
             new DashboardAnalyticsQuery
             {
@@ -620,6 +639,7 @@ public class ConsumptionBillingConsistencyTests
                 (108, 'Motor.Speed', 'rpm', TRUE, 10, 1),
                 (109, 'Legacy.Unspecified', '', TRUE, 10, 1),
                 (110, 'Legacy.NbspEnergy', 'k' || CHR(160) || 'Wh', TRUE, NULL, 1),
+                (111, 'Building.Power.kW', 'kW', TRUE, NULL, 1),
                 (201, 'OtherWorkspace.kWh', 'kWh', TRUE, 20, 2);
 
             INSERT INTO ""MeterReadings"" (
@@ -658,6 +678,10 @@ public class ConsumptionBillingConsistencyTests
                 (110, '2026-09-01 00:00:00', 10, 1),
                 (110, '2026-09-01 01:00:00', 20, 1),
                 (110, '2026-09-01 02:00:00', 30, 1),
+                (111, '2026-09-01 10:00:00', 1.619, 1),
+                (111, '2026-09-01 10:02:00', 1.619, 1),
+                (111, '2026-09-01 10:04:00', 1.619, 1),
+                (111, '2026-09-01 10:06:00', 1.619, 1),
                 (201, '2026-09-01 00:00:00', 1000, 2),
                 (201, '2026-09-01 01:00:00', 9000, 2);";
 
