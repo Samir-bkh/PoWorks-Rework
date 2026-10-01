@@ -17,6 +17,9 @@ namespace PoWorks_Rework.Services
     public class TrendsService
     {
         private const int MaxSplitDepth = 24;
+        // PcVue's HistoricalData service caps a single trend reply at 4,000
+        // points, even if a larger ElementMaxNumber is requested.
+        private const int MaxTrendPointsPerRequest = 4000;
         private const int DefaultMaxConcurrentTrendRequests = 15;
         private static readonly TimeSpan MinimumSplitWindow = TimeSpan.FromSeconds(2);
 
@@ -69,8 +72,11 @@ namespace PoWorks_Rework.Services
                 var payload = new
                 {
                     VariableName = variableName,
-                    elementMaxNumber = 100000,
-                    properties = new[] { "VariableName", "Description", "StandardLabel" }
+                    elementMaxNumber = MaxTrendPointsPerRequest,
+                    aggregateFunction = 0, // Raw values, not graph decimation.
+                    aggregateParam1 = 0,
+                    includeStartBound = false,
+                    includeEndBound = false
                 };
                 var json = JsonSerializer.Serialize(payload);
 
@@ -190,8 +196,30 @@ namespace PoWorks_Rework.Services
                     };
                 }
 
-                var trendData = JsonSerializer.Deserialize<TrendApiResponse>(
-                    response.Content,
+                using var document = JsonDocument.Parse(response.Content);
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    document.RootElement.TryGetProperty("code", out _))
+                {
+                    return new TrendDataResult
+                    {
+                        Success = false,
+                        RequestId = requestId,
+                        ErrorMessage = $"PCVue rejected the trend query: {response.Content}"
+                    };
+                }
+
+                if (!document.RootElement.TryGetProperty("values", out var values) ||
+                    values.ValueKind != JsonValueKind.Array)
+                {
+                    return new TrendDataResult
+                    {
+                        Success = false,
+                        RequestId = requestId,
+                        ErrorMessage = $"PCVue returned no trend values array: {response.Content}"
+                    };
+                }
+
+                var trendData = document.RootElement.Deserialize<TrendApiResponse>(
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                 if (trendData == null)
@@ -409,7 +437,8 @@ namespace PoWorks_Rework.Services
             CancellationToken cancellationToken)
         {
             var page = await GetTrendDataAsync(requestId, startDate, endDate, settings, cancellationToken);
-            if (!page.Success || !page.MaxNumberExceeded)
+            if (!page.Success ||
+                (!page.MaxNumberExceeded && page.Values.Count < MaxTrendPointsPerRequest))
             {
                 return page;
             }

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using PoWorks_Rework.Models;
 using PoWorks_Rework.Services;
@@ -10,6 +11,39 @@ namespace PoWorks_Rework.Tests;
 
 public class TrendsServiceReliabilityTests
 {
+    [Fact]
+    public async Task TrendRequestUsesPcVueRawArchiveLimitAndNoUnsupportedProperties()
+    {
+        string? payload = null;
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase))
+                return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+            {
+                payload = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                return Text(HttpStatusCode.OK, "\"request-limit\"");
+            }
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/request-limit"))
+                return Json(HttpStatusCode.OK, TrendJson(false));
+            if (request.Method == HttpMethod.Delete && path.EndsWith("/Trends/request-limit"))
+                return Json(HttpStatusCode.OK, "{}");
+            return Text(HttpStatusCode.NotFound, "not found");
+        });
+
+        var result = Assert.Single(await CreateTrendsService(handler).ProcessVariablesTrendsAsync(
+            new List<string> { "Building.Power.kW" }, Utc(2024, 6, 11, 0), Utc(2024, 6, 12, 0), Settings()));
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.NotNull(payload);
+        using var json = JsonDocument.Parse(payload);
+        Assert.Equal(4000, json.RootElement.GetProperty("elementMaxNumber").GetInt32());
+        Assert.Equal(0, json.RootElement.GetProperty("aggregateFunction").GetInt32());
+        Assert.False(json.RootElement.GetProperty("includeEndBound").GetBoolean());
+        Assert.False(json.RootElement.TryGetProperty("properties", out _));
+    }
+
     [Fact]
     public async Task SuccessfulTrendImport_AlwaysDeletesPcVueRequest()
     {
@@ -69,6 +103,53 @@ public class TrendsServiceReliabilityTests
         Assert.False(result.Success);
         Assert.Contains("500", result.ErrorMessage);
         Assert.Equal(1, handler.Count(HttpMethod.Delete, "/HistoricalData/v2/Trends/request-fail"));
+    }
+
+    [Fact]
+    public async Task PcVueStatusObjectWithHttp200_IsReportedAsAnError()
+    {
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase)) return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Text(HttpStatusCode.OK, "\"request-status\"");
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/request-status"))
+                return Json(HttpStatusCode.OK, "{\"code\":{\"label\":\"E_UnknownVariable\"}}");
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var result = Assert.Single(await CreateTrendsService(handler).ProcessVariablesTrendsAsync(
+            new List<string> { "Missing" }, Utc(2024, 1, 15, 0), Utc(2024, 1, 16, 0), Settings()));
+
+        Assert.False(result.Success);
+        Assert.Contains("E_UnknownVariable", result.ErrorMessage);
+        Assert.Equal(1, handler.Count(HttpMethod.Delete, "/HistoricalData/v2/Trends/request-status"));
+    }
+
+    [Fact]
+    public async Task ExactlyFourThousandPoints_SplitsEvenIfPcVueFlagIsFalse()
+    {
+        var calls = 0;
+        var capped = TrendJson(false, Enumerable.Repeat(Point("2024-06-11T10:00:00", 1), 4000).ToArray());
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase)) return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Text(HttpStatusCode.OK, "\"request-cap\"");
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/request-cap"))
+                return Json(HttpStatusCode.OK, Interlocked.Increment(ref calls) == 1 ? capped :
+                    TrendJson(false, Point("2024-06-11T10:00:00", 1)));
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var result = Assert.Single(await CreateTrendsService(handler).ProcessVariablesTrendsAsync(
+            new List<string> { "Dense" }, Utc(2024, 6, 11, 0), Utc(2024, 6, 12, 0), Settings()));
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Equal(3, calls);
+        Assert.Single(result.TrendData);
     }
 
     [Fact]

@@ -21,6 +21,7 @@
                 status.textContent = `${prefix} ${progress.processedVariables}/${progress.totalVariables} variables processed; ` +
                     `${progress.variablesWithData} with archive data; ${progress.pointsReturned} points received; ` +
                     `${progress.insertedReadings} new readings saved; ${progress.failedVariables} failed.` +
+                    (progress.errors?.length ? ` PcVue errors: ${progress.errors.join(' | ')}.` : '') +
                     (progress.complete && !progress.pointsReturned ? ' No archived points were returned for this selection and date range.' : '') +
                     (progress.complete && progress.pointsReturned && !progress.insertedReadings ? ' The points may already exist in PoWorks.' : '');
             }
@@ -239,6 +240,12 @@
             const connectionInfo = typeof getStoredWebServiceConnectionInfo === 'function'
                 ? getStoredWebServiceConnectionInfo()
                 : {};
+            const selectedConnectionId = document.getElementById('webServiceConnection')?.value || '';
+
+            if (selectedConnectionId && connectionInfo.connectionId !== selectedConnectionId) {
+                alert('The PcVue connection changed. Browse variables again before importing them.');
+                return;
+            }
 
             const requestData = {
                 variables,
@@ -246,7 +253,7 @@
                 importTrendsData: document.getElementById('webServiceImportTrends')?.checked !== false,
                 trendsStartDate: dateRange.startDate,
                 trendsEndDate: dateRange.endDate,
-                connectionId: connectionInfo.connectionId || ''
+                connectionId: selectedConnectionId || connectionInfo.connectionId || ''
             };
 
             if (requestData.importTrendsData &&
@@ -256,6 +263,13 @@
                  Date.parse(requestData.trendsStartDate) >= Date.parse(requestData.trendsEndDate))) {
                 alert('Select a PcVue Web Service connection and a valid historical date range first.');
                 return;
+            }
+
+            if (requestData.importTrendsData) {
+                // datetime-local has no timezone. PcVue expects UTC; convert
+                // using the user's browser timezone before sending to ASP.NET.
+                requestData.trendsStartDate = new Date(requestData.trendsStartDate).toISOString();
+                requestData.trendsEndDate = new Date(requestData.trendsEndDate).toISOString();
             }
 
             const importBtn = document.getElementById('importSelectedBtn');
@@ -306,11 +320,55 @@
         installImportOverride();
     }
 
+    async function probeHistory() {
+        const status = document.getElementById('pcVueHistoryProbeStatus');
+        const button = document.getElementById('probePcVueHistoryBtn');
+        const connectionId = document.getElementById('webServiceConnection')?.value || '';
+        const variableName = document.getElementById('webServiceHistoryProbeVariable')?.value.trim() || '';
+        const startDate = document.getElementById('webServiceStartDate')?.value || '';
+        const endDate = document.getElementById('webServiceEndDate')?.value || '';
+        const duration = Date.parse(endDate) - Date.parse(startDate);
+
+        if (!connectionId || !variableName || !Number.isFinite(duration) ||
+            duration <= 0 || duration > 7 * 24 * 60 * 60 * 1000) {
+            if (status) status.textContent = 'Select a PcVue connection, a variable, and a valid date range of up to 7 days.';
+            return;
+        }
+
+        if (button) button.disabled = true;
+        if (status) status.textContent = 'Checking PcVue historical data…';
+        try {
+            const response = await fetch('/Import/ProbePcVueHistory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    connectionId, variableName,
+                    startDate: new Date(startDate).toISOString(),
+                    endDate: new Date(endDate).toISOString()
+                })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+            if (status) {
+                status.textContent = result.pointCount > 0
+                    ? `PcVue returned ${result.pointCount} original points: ` +
+                      `${new Date(result.firstUtc).toLocaleString('fr-FR')} – ${new Date(result.lastUtc).toLocaleString('fr-FR')}. ` +
+                      'You can now import this range.'
+                    : 'PcVue returned 0 points for this variable and range. PoWorks has nothing to import from this PcVue connection at these dates.';
+            }
+        } catch (error) {
+            if (status) status.textContent = `PcVue history check failed: ${error.message}`;
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+
     // The view scripts are rendered before this enhancement script. Install immediately,
     // then once more on DOMContentLoaded for pages where script ordering changes later.
     install();
     document.addEventListener('DOMContentLoaded', () => {
         install();
+        document.getElementById('probePcVueHistoryBtn')?.addEventListener('click', probeHistory);
         try {
             const pendingJob = sessionStorage.getItem('poworksHistoricalJobId');
             if (pendingJob) followHistoricalImport(pendingJob);

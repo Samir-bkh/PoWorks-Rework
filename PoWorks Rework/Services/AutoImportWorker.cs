@@ -60,122 +60,120 @@ namespace PoWorks_Rework.Services
 
         private async Task RunImportCycleAsync(CancellationToken stoppingToken)
         {
-            if (!await ImportLock.Gate.WaitAsync(0, stoppingToken))
+            using var scope = _serviceProvider.CreateScope();
+            var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+            var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
+            var snapshotReader = new AutoImportSnapshotReader(
+                webService,
+                trendsService: scope.ServiceProvider.GetRequiredService<TrendsService>(),
+                logger: scope.ServiceProvider.GetRequiredService<ILogger<AutoImportSnapshotReader>>());
+
+            var companyIds = await GetAllCompanyIdsAsync(dbService);
+            _logger.LogInformation(">> Found {Count} compan(y/ies) in the database.", companyIds.Count);
+
+            foreach (var companyId in companyIds)
             {
-                _logger.LogWarning("Manual import or another process is running, skipping this auto-import cycle.");
-                return;
-            }
-
-            try
-            {
-                using var scope = _serviceProvider.CreateScope();
-                var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-                var webService = scope.ServiceProvider.GetRequiredService<PCVueWebService>();
-                var snapshotReader = new AutoImportSnapshotReader(
-                    webService,
-                    trendsService: scope.ServiceProvider.GetRequiredService<TrendsService>(),
-                    logger: scope.ServiceProvider.GetRequiredService<ILogger<AutoImportSnapshotReader>>());
-
-                var companyIds = await GetAllCompanyIdsAsync(dbService);
-                _logger.LogInformation(">> Found {Count} compan(y/ies) in the database.", companyIds.Count);
-
-                foreach (var companyId in companyIds)
+                stoppingToken.ThrowIfCancellationRequested();
+                _logger.LogInformation(">> Processing company ID: {CompanyId}", companyId);
+                try
                 {
-                    stoppingToken.ThrowIfCancellationRequested();
-                    _logger.LogInformation(">> Processing company ID: {CompanyId}", companyId);
+
+                var apiSettings = await GetApiSettingsAsync(dbService, companyId);
+                if (apiSettings == null)
+                {
+                    _schedule.Forget(companyId);
+                    _logger.LogWarning(">> No WebService settings found for company {Id}.", companyId);
+                    continue;
+                }
+
+                if (!apiSettings.EnableAutomaticImport)
+                {
+                    _schedule.Forget(companyId);
+                    _logger.LogInformation(">> Auto-import disabled for company {Id}.", companyId);
+                    continue;
+                }
+
+                if (!_schedule.TryStart(companyId, apiSettings.ConnectionId,
+                        apiSettings.AutoImportIntervalMinutes, DateTimeOffset.UtcNow))
+                {
+                    _logger.LogDebug(">> Auto-import not due yet for company {Id}, connection {ConnectionId} ({Interval} min).",
+                        companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
+                    continue;
+                }
+
+                _logger.LogInformation(">> Auto-import starting for company {Id}, connection {ConnectionId} ({Interval} min).",
+                    companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
+
+                // A slow/unavailable PcVue must not hold the shared import lock
+                // for several minutes or prevent the next configured poll.
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                deadline.CancelAfter(TimeSpan.FromSeconds(
+                    Math.Clamp(Math.Clamp(apiSettings.AutoImportIntervalMinutes, 1, 1440) * 60 - 15, 30, 90)));
+                var testToken = await webService.GetValidAccessTokenAsync(
+                    apiSettings, cancellationToken: deadline.Token);
+                if (string.IsNullOrEmpty(testToken))
+                {
+                    _logger.LogWarning(">> Unable to retrieve the PCVue token for company {Id}.", companyId);
+                    continue;
+                }
+
+                var metersToImport = await dbService.ExecuteWithCompanyIsolationAsync(
+                    companyId, (connection, transaction) =>
+                        GetMetersForCurrentCompanyAsync(connection, transaction, companyId));
+                _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
+                if (metersToImport.Count == 0) continue;
+
+                var received = 0;
+                var insertedTotal = 0;
+                var processed = 0;
+                foreach (var batch in metersToImport.Chunk(WriteBatchSize))
+                {
+                    deadline.Token.ThrowIfCancellationRequested();
+                    var snapshots = await snapshotReader.ReadAsync(
+                        apiSettings, batch, deadline.Token,
+                        apiSettings.AutoImportIntervalMinutes);
+                    processed += batch.Length;
+                    received += snapshots.Count;
+                    if (snapshots.Count == 0) continue;
+
+                    // Historical Web Service requests can be slow. Only serialize
+                    // the database write, leaving the polling schedule unaffected.
+                    await ImportLock.Gate.WaitAsync(stoppingToken);
+                    int inserted;
                     try
                     {
-
-                    var apiSettings = await GetApiSettingsAsync(dbService, companyId);
-                    if (apiSettings == null)
-                    {
-                        _schedule.Forget(companyId);
-                        _logger.LogWarning(">> No WebService settings found for company {Id}.", companyId);
-                        continue;
-                    }
-
-                    if (!apiSettings.EnableAutomaticImport)
-                    {
-                        _schedule.Forget(companyId);
-                        _logger.LogInformation(">> Auto-import disabled for company {Id}.", companyId);
-                        continue;
-                    }
-
-                    if (!_schedule.TryStart(companyId, apiSettings.ConnectionId,
-                            apiSettings.AutoImportIntervalMinutes, DateTimeOffset.UtcNow))
-                    {
-                        _logger.LogDebug(">> Auto-import not due yet for company {Id}, connection {ConnectionId} ({Interval} min).",
-                            companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
-                        continue;
-                    }
-
-                    _logger.LogInformation(">> Auto-import starting for company {Id}, connection {ConnectionId} ({Interval} min).",
-                        companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
-
-                    // A slow/unavailable PcVue must not hold the shared import lock
-                    // for several minutes or prevent the next configured poll.
-                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                    deadline.CancelAfter(TimeSpan.FromSeconds(
-                        Math.Clamp(Math.Clamp(apiSettings.AutoImportIntervalMinutes, 1, 1440) * 60 - 15, 30, 90)));
-                    var testToken = await webService.GetValidAccessTokenAsync(
-                        apiSettings, cancellationToken: deadline.Token);
-                    if (string.IsNullOrEmpty(testToken))
-                    {
-                        _logger.LogWarning(">> Unable to retrieve the PCVue token for company {Id}.", companyId);
-                        continue;
-                    }
-
-                    var metersToImport = await dbService.ExecuteWithCompanyIsolationAsync(
-                        companyId, (connection, transaction) =>
-                            GetMetersForCurrentCompanyAsync(connection, transaction, companyId));
-                    _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
-                    if (metersToImport.Count == 0) continue;
-
-                    var received = 0;
-                    var insertedTotal = 0;
-                    var processed = 0;
-                    foreach (var batch in metersToImport.Chunk(WriteBatchSize))
-                    {
-                        deadline.Token.ThrowIfCancellationRequested();
-                        var snapshots = await snapshotReader.ReadAsync(
-                            apiSettings, batch, deadline.Token,
-                            apiSettings.AutoImportIntervalMinutes);
-                        processed += batch.Length;
-                        received += snapshots.Count;
-                        if (snapshots.Count == 0) continue;
-
-                        var inserted = await dbService.ExecuteWithCompanyIsolationAsync(
+                        inserted = await dbService.ExecuteWithCompanyIsolationAsync(
                             companyId, (connection, transaction) =>
                                 AutoImportSnapshotWriter.InsertAsync(
                                     connection, transaction, companyId, snapshots, stoppingToken));
-                        insertedTotal += inserted;
-                        _logger.LogInformation(">> Imported {Inserted} reading(s), {Processed}/{Total} meters processed.",
-                            inserted, processed, metersToImport.Count);
                     }
-                    if (received == 0)
-                        _logger.LogWarning(">> Import completed: no recent, valid PcVue values; no readings written.");
-                    else
-                        _logger.LogInformation(
-                            ">> Import completed: {Received} current PcVue values received, {Inserted} new database rows, {Skipped} meter(s) with no valid value.",
-                            received, insertedTotal, metersToImport.Count - received);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    finally
                     {
-                        throw;
+                        ImportLock.Gate.Release();
                     }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.LogWarning("Auto-import timed out for company {CompanyId}; next poll will retry without blocking manual imports.", companyId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Auto-import failed for company {CompanyId}; other companies will continue.", companyId);
-                    }
+                    insertedTotal += inserted;
+                    _logger.LogInformation(">> Imported {Inserted} reading(s), {Processed}/{Total} meters processed.",
+                        inserted, processed, metersToImport.Count);
                 }
-            }
-            finally
-            {
-                ImportLock.Gate.Release();
+                if (received == 0)
+                    _logger.LogWarning(">> Import completed: no recent, valid PcVue values; no readings written.");
+                else
+                    _logger.LogInformation(
+                        ">> Import completed: {Received} current PcVue values received, {Inserted} new database rows, {Skipped} meter(s) with no valid value.",
+                        received, insertedTotal, metersToImport.Count - received);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("Auto-import timed out for company {CompanyId}; next poll will retry without blocking manual imports.", companyId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Auto-import failed for company {CompanyId}; other companies will continue.", companyId);
+                }
             }
         }
 

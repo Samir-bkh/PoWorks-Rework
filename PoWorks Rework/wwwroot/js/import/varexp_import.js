@@ -447,8 +447,8 @@ async function handleVarexpImport() {
                         active: meter.active
                     })),
                     importTrendsData: true,
-                    trendsStartDate: startDate,
-                    trendsEndDate: endDate,
+                    trendsStartDate: new Date(startDate).toISOString(),
+                    trendsEndDate: new Date(endDate).toISOString(),
                     connectionId
                 })
             });

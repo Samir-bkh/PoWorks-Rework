@@ -184,6 +184,16 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     </div>
                                 </div>
 
+                                <div class="mb-3">
+                                    <label for="webServiceHistoryProbeVariable" class="form-label small">Check archived points on PcVue</label>
+                                    <div class="input-group input-group-sm">
+                                        <input id="webServiceHistoryProbeVariable" class="form-control" value="Building.Power.kW" aria-label="PcVue variable name">
+                                        <button type="button" class="btn btn-outline-secondary" id="probePcVueHistoryBtn">Check 7 days</button>
+                                    </div>
+                                    <div class="form-text">Uses the selected connection and dates above. Reads PcVue history without changing PoWorks data.</div>
+                                    <div id="pcVueHistoryProbeStatus" class="small mt-2" role="status" aria-live="polite"></div>
+                                </div>
+
                                 @* Execute Variable Browsing *@
                                 <div class="d-grid gap-2">
                                     <button type="button" class="btn btn-primary" id="browseVariablesBtn" disabled>

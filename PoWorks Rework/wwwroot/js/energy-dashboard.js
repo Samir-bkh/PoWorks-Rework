@@ -1059,16 +1059,18 @@
                     if (!point || !Number.isFinite(point.y)) return undefined;
 
                     const hit = am5.Circle.new(bulletRoot, {
-                        radius: 9,
+                        radius: 4,
                         fill: color,
-                        fillOpacity: .001,
-                        stroke: color,
-                        strokeOpacity: 0,
+                        fillOpacity: 1,
+                        stroke: am5.color(0xFFFFFF),
+                        strokeOpacity: 1,
+                        strokeWidth: 1,
                         interactive: true,
                         cursorOverStyle: 'pointer'
                     });
 
                     hit.states.create('hover', {
+                        radius: 7,
                         fillOpacity: .16,
                         strokeOpacity: 1,
                         strokeWidth: 2

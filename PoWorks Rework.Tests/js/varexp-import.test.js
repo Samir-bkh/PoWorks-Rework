@@ -95,8 +95,8 @@ test('VAREXP imports existing meter history using selected PcVue connection and 
     assert.equal(requests[1].url, '/Import/UpsertWebServiceVariablesWithTrends');
     assert.equal(requests[1].body.variables[0].variableName, 'Building.Power.kW');
     assert.equal(requests[1].body.connectionId, 'pcvue-1');
-    assert.equal(requests[1].body.trendsStartDate, '2025-06-01T00:00');
-    assert.equal(requests[1].body.trendsEndDate, '2025-06-08T00:00');
+    assert.equal(requests[1].body.trendsStartDate, new Date('2025-06-01T00:00').toISOString());
+    assert.equal(requests[1].body.trendsEndDate, new Date('2025-06-08T00:00').toISOString());
     assert.deepEqual(follow, ['history-1']);
 });
 
