@@ -181,6 +181,14 @@ public class WebServiceImportWorkflowTests
         Assert.Contains("webservices_import_v2.js", layout);
     }
 
+    [Fact]
+    public void ImportPage_VersionsClientScripts_WhenDateValidationChanges()
+    {
+        var view = ReadSource("Views", "Import", "Index.cshtml");
+        Assert.Contains("webservices_import.js\" asp-append-version=\"true\"", view);
+        Assert.Contains("varexp_import.js\" asp-append-version=\"true\"", view);
+    }
+
     private static string ReadSource(params string[] parts)
     {
         var root = FindRepositoryRoot();
