@@ -135,7 +135,8 @@ namespace PoWorks_Rework.Controllers
                             else if (request.UpdateExisting)
                             {
                                 if (await VarexpUnitUpdater.UpdateAsync(
-                                        connection, companyId, existingMeter.MeterId, meter.Unit))
+                                        connection, _companyContext.CurrentCompanyId,
+                                        existingMeter.MeterId, meter.Unit))
                                 {
                                     updatedCount++;
                                     _logger.LogInformation("Updated unit for meter: {Name}", meter.MeterName);
