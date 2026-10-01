@@ -34,4 +34,16 @@ public class AutoImportScheduleTests
         schedule.Forget(1);
         Assert.True(schedule.TryStart(1, "replacement", 3, start.AddMinutes(3)));
     }
+
+    [Fact]
+    public void FiveMinuteWorkspace_IsNotSampledOnOneMinuteGlobalChecks()
+    {
+        var schedule = new AutoImportSchedule();
+        var start = new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.True(schedule.TryStart(1, "five-minute", 5, start));
+        for (var minute = 1; minute < 5; minute++)
+            Assert.False(schedule.TryStart(1, "five-minute", 5, start.AddMinutes(minute)));
+        Assert.True(schedule.TryStart(1, "five-minute", 5, start.AddMinutes(5)));
+    }
 }

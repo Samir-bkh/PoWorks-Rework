@@ -216,10 +216,11 @@ namespace PoWorks_Rework.Controllers
 
                                         foreach (var point in res.TrendData)
                                         {
-                                            if (!point.TimestampParsed.HasValue) continue;
+                                            if (!PcVueTimestamp.TryToLocalDatabaseTime(
+                                                    point.Timestamp, TimeZoneInfo.Local, out var localTimestamp)) continue;
                                             await writer.StartRowAsync();
                                             await writer.WriteAsync(currentMeterId, NpgsqlDbType.Integer);
-                                            await writer.WriteAsync(point.TimestampParsed.Value, NpgsqlDbType.Timestamp);
+                                            await writer.WriteAsync(localTimestamp, NpgsqlDbType.Timestamp);
                                             await writer.WriteAsync(Convert.ToDecimal(point.Value), NpgsqlDbType.Numeric);
                                             await writer.WriteAsync(point.IsGoodQuality ? 192 : 0, NpgsqlDbType.Integer);
                                             await writer.WriteAsync(bgCompanyId, NpgsqlDbType.Integer);

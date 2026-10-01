@@ -226,19 +226,23 @@ public class WebServicesMeterImportV2Controller : Controller
                     "Web Service trends import started for {Count} meter(s).",
                     variableNames.Count);
 
-                var results = await trendsService.ProcessVariablesTrendsAsync(
-                    variableNames,
-                    startDate.ToUniversalTime(),
-                    endDate.ToUniversalTime(),
-                    settings,
-                    $"Manual company {companyId}");
-
-                await using var connection = new NpgsqlConnection(databaseService.GetConnectionString());
-                await connection.OpenAsync();
-                await using var transaction = await connection.BeginTransactionAsync();
-
-                try
+                var processed = 0;
+                var insertedTotal = 0;
+                foreach (var batch in variableNames.Chunk(25))
                 {
+                    var results = await trendsService.ProcessVariablesTrendsAsync(
+                        batch.ToList(),
+                        startDate.ToUniversalTime(),
+                        endDate.ToUniversalTime(),
+                        settings,
+                        $"Manual company {companyId}");
+
+                    await using var connection = new NpgsqlConnection(databaseService.GetConnectionString());
+                    await connection.OpenAsync();
+                    await using var transaction = await connection.BeginTransactionAsync();
+
+                    try
+                    {
                     await using (var temp = new NpgsqlCommand(
                         """
                         CREATE TEMP TABLE "TempMeterReadingsManualV2"
@@ -269,12 +273,13 @@ public class WebServicesMeterImportV2Controller : Controller
 
                             foreach (var point in result.TrendData)
                             {
-                                if (!point.TimestampParsed.HasValue) continue;
+                                if (!PcVueTimestamp.TryToLocalDatabaseTime(
+                                        point.Timestamp, TimeZoneInfo.Local, out var localTimestamp)) continue;
 
                                 await writer.StartRowAsync();
                                 await writer.WriteAsync(meterId, NpgsqlDbType.Integer);
                                 await writer.WriteAsync(
-                                    point.TimestampParsed.Value,
+                                    localTimestamp,
                                     NpgsqlDbType.Timestamp);
                                 await writer.WriteAsync(
                                     Convert.ToDecimal(point.Value),
@@ -300,18 +305,22 @@ public class WebServicesMeterImportV2Controller : Controller
                         connection,
                         transaction);
                     insert.CommandTimeout = 300;
-                    await insert.ExecuteNonQueryAsync();
+                    var inserted = await insert.ExecuteNonQueryAsync();
                     await transaction.CommitAsync();
-
+                    processed += batch.Length;
+                    insertedTotal += inserted;
                     logger.LogInformation(
-                        "Web Service trends import completed for company {CompanyId}.",
-                        companyId);
+                        "Web Service trends import: {Inserted} readings saved; {Processed}/{Total} meters processed for company {CompanyId}.",
+                        inserted, processed, variableNames.Count, companyId);
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
                 }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
+                logger.LogInformation("Web Service trends import completed for company {CompanyId}: {Inserted} new readings.",
+                    companyId, insertedTotal);
             }
             catch (Exception ex)
             {

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Npgsql;
 using PoWorks_Rework.Models;
 
@@ -14,6 +15,7 @@ namespace PoWorks_Rework.Services
         private readonly EncryptionService _encryptionService;
         private readonly AutoImportSchedule _schedule = new();
         private const int DefaultCycleDelayMinutes = 1;
+        private const int WriteBatchSize = 25;
 
         public AutoImportWorker(ILogger<AutoImportWorker> logger, IServiceProvider serviceProvider, EncryptionService encryptionService)
         {
@@ -27,6 +29,7 @@ namespace PoWorks_Rework.Services
             _logger.LogInformation("PILOT START - The import service has started.");
             while (!stoppingToken.IsCancellationRequested)
             {
+                var cycleTimer = Stopwatch.StartNew();
                 int cycleDelayMinutes = DefaultCycleDelayMinutes;
                 try
                 {
@@ -37,7 +40,7 @@ namespace PoWorks_Rework.Services
                     _logger.LogWarning(ex, "Unable to read auto-import interval from database, using default ({Default} min).", DefaultCycleDelayMinutes);
                 }
 
-                _logger.LogInformation("--- START OF AN IMPORT CYCLE ({Delay} min) ---", cycleDelayMinutes);
+                _logger.LogInformation("--- AUTO-IMPORT CHECK (minimum selected connection interval {Delay} min) ---", cycleDelayMinutes);
                 try
                 {
                     await RunImportCycleAsync(stoppingToken);
@@ -47,8 +50,10 @@ namespace PoWorks_Rework.Services
                     _logger.LogError(ex, "IMPORT CYCLE FAILED");
                 }
 
-                _logger.LogInformation("--- END OF CYCLE, GOING TO SLEEP ({Delay} min) ---", cycleDelayMinutes);
-                await Task.Delay(TimeSpan.FromMinutes(cycleDelayMinutes), stoppingToken);
+                var remaining = TimeSpan.FromMinutes(cycleDelayMinutes) - cycleTimer.Elapsed;
+                _logger.LogInformation("--- END OF CYCLE, NEXT CHECK IN {Delay} ---", remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+                if (remaining > TimeSpan.Zero)
+                    await Task.Delay(remaining, stoppingToken);
             }
         }
 
@@ -106,40 +111,60 @@ namespace PoWorks_Rework.Services
                     _logger.LogInformation(">> Auto-import starting for company {Id}, connection {ConnectionId} ({Interval} min).",
                         companyId, apiSettings.ConnectionId, apiSettings.AutoImportIntervalMinutes);
 
-                    var testToken = await webService.GetValidAccessTokenAsync(apiSettings);
+                    // A slow/unavailable PcVue must not hold the shared import lock
+                    // for several minutes or prevent the next configured poll.
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    deadline.CancelAfter(TimeSpan.FromSeconds(
+                        Math.Clamp(Math.Clamp(apiSettings.AutoImportIntervalMinutes, 1, 1440) * 60 - 15, 30, 90)));
+                    var testToken = await webService.GetValidAccessTokenAsync(
+                        apiSettings, cancellationToken: deadline.Token);
                     if (string.IsNullOrEmpty(testToken))
                     {
                         _logger.LogWarning(">> Unable to retrieve the PCVue token for company {Id}.", companyId);
                         continue;
                     }
 
-                    await dbService.ExecuteWithCompanyIsolationAsync(companyId, async (connection, transaction) =>
+                    var metersToImport = await dbService.ExecuteWithCompanyIsolationAsync(
+                        companyId, (connection, transaction) =>
+                            GetMetersForCurrentCompanyAsync(connection, transaction, companyId));
+                    _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
+                    if (metersToImport.Count == 0) continue;
+
+                    var received = 0;
+                    var insertedTotal = 0;
+                    var processed = 0;
+                    foreach (var batch in metersToImport.Chunk(WriteBatchSize))
                     {
-                        var metersToImport = await GetMetersForCurrentCompanyAsync(connection, transaction, companyId);
-                        _logger.LogInformation(">> Found {Count} active meter(s) to import for company {Id}.", metersToImport.Count, companyId);
-                        if (metersToImport.Count == 0) return;
-
+                        deadline.Token.ThrowIfCancellationRequested();
                         var snapshots = await snapshotReader.ReadAsync(
-                            apiSettings, metersToImport, stoppingToken,
+                            apiSettings, batch, deadline.Token,
                             apiSettings.AutoImportIntervalMinutes);
+                        processed += batch.Length;
+                        received += snapshots.Count;
+                        if (snapshots.Count == 0) continue;
 
-                        if (snapshots.Count == 0)
-                        {
-                            _logger.LogInformation(
-                                ">> Import completed: 0 valid current PCVue values. No readings written.");
-                            return;
-                        }
-
-                        var inserted = await AutoImportSnapshotWriter.InsertAsync(
-                            connection, transaction, companyId, snapshots, stoppingToken);
+                        var inserted = await dbService.ExecuteWithCompanyIsolationAsync(
+                            companyId, (connection, transaction) =>
+                                AutoImportSnapshotWriter.InsertAsync(
+                                    connection, transaction, companyId, snapshots, stoppingToken));
+                        insertedTotal += inserted;
+                        _logger.LogInformation(">> Imported {Inserted} reading(s), {Processed}/{Total} meters processed.",
+                            inserted, processed, metersToImport.Count);
+                    }
+                    if (received == 0)
+                        _logger.LogWarning(">> Import completed: no recent, valid PcVue values; no readings written.");
+                    else
                         _logger.LogInformation(
-                            ">> Import completed: {Received} current PCVue values received, {Inserted} new database rows, {Skipped} meter(s) with no valid value.",
-                            snapshots.Count, inserted, metersToImport.Count - snapshots.Count);
-                    });
+                            ">> Import completed: {Received} current PcVue values received, {Inserted} new database rows, {Skipped} meter(s) with no valid value.",
+                            received, insertedTotal, metersToImport.Count - received);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
                         throw;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("Auto-import timed out for company {CompanyId}; next poll will retry without blocking manual imports.", companyId);
                     }
                     catch (Exception ex)
                     {
@@ -163,9 +188,14 @@ namespace PoWorks_Rework.Services
             await conn.OpenAsync(stoppingToken);
             using var cmd = new NpgsqlCommand(@"
                 SELECT MIN(""AutoImportIntervalMinutes"")
-                FROM ""WebServiceConnections""
-                WHERE ""EnableAutomaticImport"" = TRUE
-                  AND ""IsActive"" = TRUE", conn);
+                FROM (
+                    SELECT DISTINCT ON (""CompanyId"")
+                        ""AutoImportIntervalMinutes"", ""EnableAutomaticImport""
+                    FROM ""WebServiceConnections""
+                    WHERE ""IsActive"" = TRUE
+                    ORDER BY ""CompanyId"", ""IsDefault"" DESC, ""ConnectionId""
+                ) selected
+                WHERE ""EnableAutomaticImport"" = TRUE", conn);
             var result = await cmd.ExecuteScalarAsync(stoppingToken);
             return result is null or DBNull
                 ? DefaultCycleDelayMinutes

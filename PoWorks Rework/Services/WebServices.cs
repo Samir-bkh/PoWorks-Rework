@@ -43,9 +43,10 @@ namespace PoWorks_Rework.Services
 
         public async Task<string?> GetValidAccessTokenAsync(
             PCVueWebServiceSettings settings,
-            bool forceRefresh = false)
+            bool forceRefresh = false,
+            CancellationToken cancellationToken = default)
         {
-            var response = await AcquireTokenAsync(settings, forceRefresh);
+            var response = await AcquireTokenAsync(settings, forceRefresh, cancellationToken);
             return response.Success ? response.AccessToken : null;
         }
 
@@ -57,7 +58,8 @@ namespace PoWorks_Rework.Services
 
         private async Task<OAuthTokenResponse> AcquireTokenAsync(
             PCVueWebServiceSettings settings,
-            bool forceRefresh)
+            bool forceRefresh,
+            CancellationToken cancellationToken = default)
         {
             var validation = ValidateSettings(settings);
             if (!validation.IsValid)
@@ -79,7 +81,7 @@ namespace PoWorks_Rework.Services
                 return CachedResponse(state);
             }
 
-            await state.Gate.WaitAsync();
+            await state.Gate.WaitAsync(cancellationToken);
             try
             {
                 now = _timeProvider.GetUtcNow();
@@ -104,7 +106,7 @@ namespace PoWorks_Rework.Services
 
                 if (!string.IsNullOrWhiteSpace(state.RefreshToken))
                 {
-                    var refreshAttempt = await RequestRefreshTokenAsync(settings, state);
+                    var refreshAttempt = await RequestRefreshTokenAsync(settings, state, cancellationToken);
                     if (refreshAttempt.Success)
                     {
                         return refreshAttempt.Response;
@@ -135,7 +137,7 @@ namespace PoWorks_Rework.Services
                     state.ClearTokens();
                 }
 
-                var passwordAttempt = await RequestPasswordTokenAsync(settings, state);
+                var passwordAttempt = await RequestPasswordTokenAsync(settings, state, cancellationToken);
                 if (!passwordAttempt.Success)
                 {
                     ApplyAuthenticationBackoff(
@@ -185,7 +187,8 @@ namespace PoWorks_Rework.Services
 
         private async Task<OAuthTokenResponse> RequestPasswordTokenAsync(
             PCVueWebServiceSettings settings,
-            PCVueSessionState state)
+            PCVueSessionState state,
+            CancellationToken cancellationToken)
         {
             var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
             _logger.LogInformation(
@@ -203,7 +206,7 @@ namespace PoWorks_Rework.Services
                 ["scope"] = "RealtimeData RealtimeAlarm HistoricalData GraphicalData"
             };
 
-            var attempt = await SendTokenRequestAsync(endpoint, form);
+            var attempt = await SendTokenRequestAsync(endpoint, form, cancellationToken);
             if (!attempt.Success)
             {
                 LogAuthenticationFailure(settings, attempt, isRefresh: false);
@@ -220,7 +223,8 @@ namespace PoWorks_Rework.Services
 
         private async Task<TokenAttempt> RequestRefreshTokenAsync(
             PCVueWebServiceSettings settings,
-            PCVueSessionState state)
+            PCVueSessionState state,
+            CancellationToken cancellationToken)
         {
             var endpoint = $"{NormalizeBaseUrl(settings.BaseUrl)}/OAuth/token";
             var form = new Dictionary<string, string>
@@ -235,7 +239,7 @@ namespace PoWorks_Rework.Services
                 "Refreshing PCVue OAuth session for {Connection}.",
                 SafeConnectionLabel(settings));
 
-            var attempt = await SendTokenRequestAsync(endpoint, form);
+            var attempt = await SendTokenRequestAsync(endpoint, form, cancellationToken);
             if (attempt.Success)
             {
                 ApplySuccessfulToken(state, attempt.Response, preserveExistingRefreshToken: true);
@@ -248,13 +252,14 @@ namespace PoWorks_Rework.Services
 
         private async Task<TokenAttempt> SendTokenRequestAsync(
             string endpoint,
-            Dictionary<string, string> form)
+            Dictionary<string, string> form,
+            CancellationToken cancellationToken)
         {
             try
             {
                 using var content = new FormUrlEncodedContent(form);
-                using var response = await _httpClient.PostAsync(endpoint, content);
-                var raw = await response.Content.ReadAsStringAsync();
+                using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+                var raw = await response.Content.ReadAsStringAsync(cancellationToken);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -320,6 +325,10 @@ namespace PoWorks_Rework.Services
                 return TokenAttempt.Failure(
                     null,
                     $"Network error while contacting PCVue OAuth: {ex.Message}");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (TaskCanceledException ex)
             {
@@ -561,7 +570,8 @@ namespace PoWorks_Rework.Services
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var token = await GetValidAccessTokenAsync(settings, forceRefresh: attempt == 1);
+                var token = await GetValidAccessTokenAsync(settings,
+                    forceRefresh: attempt == 1, cancellationToken: cancellationToken);
                 if (string.IsNullOrWhiteSpace(token))
                     throw new InvalidOperationException("Failed to get a valid PCVue access token.");
 
@@ -600,7 +610,8 @@ namespace PoWorks_Rework.Services
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var token = await GetValidAccessTokenAsync(settings, forceRefresh: attempt == 1);
+                var token = await GetValidAccessTokenAsync(settings,
+                    forceRefresh: attempt == 1, cancellationToken: cancellationToken);
                 if (string.IsNullOrWhiteSpace(token))
                     throw new InvalidOperationException("Failed to get a valid PCVue access token.");
 

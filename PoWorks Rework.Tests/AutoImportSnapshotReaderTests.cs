@@ -10,6 +10,86 @@ namespace PoWorks_Rework.Tests;
 
 public class AutoImportSnapshotReaderTests
 {
+    [Theory]
+    [InlineData("2026-10-01T09:20:00", 2026, 10, 1, 11, 20)]
+    [InlineData("2026-10-01T11:20:00+02:00", 2026, 10, 1, 11, 20)]
+    [InlineData("2026-01-01T09:20:00Z", 2026, 1, 1, 10, 20)]
+    public void PcVueUtcTimestamp_ConvertsToParisLocalWithoutDatabaseTimeZone(
+        string response, int year, int month, int day, int hour, int minute)
+    {
+        Assert.True(PcVueTimestamp.TryToLocalDatabaseTime(response,
+            TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris"), out var local));
+        Assert.Equal(new DateTime(year, month, day, hour, minute, 0), local);
+        Assert.Equal(DateTimeKind.Unspecified, local.Kind);
+    }
+
+    [Fact]
+    public async Task ParisClock_RecentUtcHistoryIsAcceptedAndStampedWithLocalPollTime()
+    {
+        var paris = TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris");
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 1, 9, 20, 0, TimeSpan.Zero), paris);
+        using var handler = new PcVueHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token")) return TokenResponse();
+            if (path.EndsWith("/BulkRead")) return Json("[]");
+            if (path.EndsWith("/Values/")) return new HttpResponseMessage(HttpStatusCode.NotFound);
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends")) return Json("\"request-1\"");
+            if (request.Method == HttpMethod.Delete && path.EndsWith("/HistoricalData/v2/Trends/request-1")) return Json("{}");
+            if (request.Method == HttpMethod.Get && path.EndsWith("/HistoricalData/v2/Trends/request-1"))
+            {
+                Assert.Contains("09:15:00", Uri.UnescapeDataString(request.RequestUri.Query));
+                return Json("""
+                    {"values":[{"value":0.54,"timestamp":"2026-10-01T09:19:56",
+                    "quality":"Good","qualityValue":192}],"maxNumberExceeded":false}
+                    """);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var client = new HttpClient(handler);
+        var web = new PCVueWebService(client, NullLogger<PCVueWebService>.Instance, clock);
+        var reader = new AutoImportSnapshotReader(web, clock,
+            new TrendsService(web, NullLogger<TrendsService>.Instance));
+
+        var reading = Assert.Single(await reader.ReadAsync(Settings(), Meters("Building.Power.kW"), intervalMinutes: 2));
+
+        Assert.Equal(0.54m, reading.Value);
+        Assert.Equal(new DateTime(2026, 10, 1, 11, 20, 0), reading.Timestamp);
+        Assert.Equal(192, reading.Quality);
+    }
+
+    [Fact]
+    public async Task CancelledHistoricalRead_StopsHttpRequestAndReleasesPcVueTrend()
+    {
+        var trendDeleted = false;
+        using var handler = new PcVueHandler(async (request, cancellationToken) =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token")) return TokenResponse();
+            if (path.EndsWith("/BulkRead")) return Json("[]");
+            if (path.EndsWith("/Values/")) return new HttpResponseMessage(HttpStatusCode.NotFound);
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Json("\"request-1\"");
+            if (request.Method == HttpMethod.Delete && path.EndsWith("/HistoricalData/v2/Trends/request-1"))
+            {
+                trendDeleted = true;
+                return Json("{}");
+            }
+            if (request.Method == HttpMethod.Get && path.EndsWith("/HistoricalData/v2/Trends/request-1"))
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
+        var web = new PCVueWebService(client, NullLogger<PCVueWebService>.Instance);
+        var reader = new AutoImportSnapshotReader(web,
+            trendsService: new TrendsService(web, NullLogger<TrendsService>.Instance));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            reader.ReadAsync(Settings(), Meters("Building.Power.kW"), deadline.Token));
+        Assert.True(trendDeleted);
+    }
+
     [Fact]
     public async Task BulkReturnsUnexpectedArray_ValuesGetReadsLiveValueEveryTwoMinutes()
     {
@@ -333,24 +413,32 @@ public class AutoImportSnapshotReaderTests
 
     private sealed class PcVueHandler : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _respond;
+        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _respond;
 
         public PcVueHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
             : this(request => Task.FromResult(respond(request))) { }
 
         public PcVueHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond)
+            : this((request, _) => respond(request)) { }
+
+        public PcVueHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond)
             => _respond = respond;
 
         protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) => _respond(request);
+            HttpRequestMessage request, CancellationToken cancellationToken) => _respond(request, cancellationToken);
     }
 
     private sealed class ManualClock : TimeProvider
     {
         private DateTimeOffset _now;
-        public ManualClock(DateTimeOffset now) => _now = now;
+        private readonly TimeZoneInfo _zone;
+        public ManualClock(DateTimeOffset now, TimeZoneInfo? zone = null)
+        {
+            _now = now;
+            _zone = zone ?? TimeZoneInfo.Utc;
+        }
         public override DateTimeOffset GetUtcNow() => _now;
-        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+        public override TimeZoneInfo LocalTimeZone => _zone;
         public void Advance(TimeSpan duration) => _now = _now.Add(duration);
     }
 }

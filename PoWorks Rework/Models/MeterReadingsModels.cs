@@ -183,10 +183,10 @@ namespace PoWorks_Rework.Models
         {
             return viewType switch
             {
-                "daily" => Timestamp.ToString("yyyy-MM-dd"),
-                "monthly" => Timestamp.ToString("yyyy-MM"),
+                "daily" => Timestamp.ToString("dd/MM/yyyy"),
+                "monthly" => Timestamp.ToString("MM/yyyy"),
                 "yearly" => Timestamp.ToString("yyyy"),
-                _ => Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
+                _ => Timestamp.ToString("dd/MM/yyyy HH:mm:ss")
             };
         }
 

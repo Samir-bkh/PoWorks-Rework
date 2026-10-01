@@ -76,3 +76,11 @@ test('a custom end date remains fixed during automatic refresh', async () => {
     await settle();
     assert.equal(state.requests.at(-1).searchParams.get('endDate'), '2026-09-15T12:00');
 });
+
+test('raw readings and statistics display French day/month/year dates', () => {
+    const { manager } = page();
+    assert.match(manager.formatTimestamp('2026-10-01T11:20:00'), /^01\/10\/2026 11:20:00$/);
+    assert.match(manager.formatDateTime('2026-10-01T11:20:00'), /^01\/10\/2026 11:20:00$/);
+    manager.config.currentViewType = 'daily';
+    assert.equal(manager.formatTimestamp('2026-10-01T11:20:00'), '01/10/2026');
+});

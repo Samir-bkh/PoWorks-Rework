@@ -109,11 +109,11 @@ public sealed class AutoImportSnapshotReader
         int intervalMinutes,
         CancellationToken cancellationToken)
     {
-        var now = _clock.GetLocalNow().DateTime;
-        var start = now.AddMinutes(-Math.Max(5, Math.Clamp(intervalMinutes, 1, 1440) * 2 + 1));
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        var startUtc = nowUtc.AddMinutes(-Math.Max(5, Math.Clamp(intervalMinutes, 1, 1440) * 2 + 1));
         var names = meters.Select(m => m.OriginalVariableName).Distinct(StringComparer.Ordinal).ToList();
         var results = await _trendsService!.ProcessVariablesTrendsAsync(
-            names, start.ToUniversalTime(), now.ToUniversalTime(), settings,
+            names, startUtc, nowUtc, settings,
             "Auto-import recent snapshot", cancellationToken);
         var byName = results.ToDictionary(r => r.VariableName, StringComparer.Ordinal);
         var snapshots = new List<Snapshot>(meters.Count);
@@ -123,16 +123,17 @@ public sealed class AutoImportSnapshotReader
                 continue;
 
             var point = result.TrendData
-                .Where(p => p.IsGoodQuality && p.TimestampParsed is { } timestamp &&
-                            timestamp >= start && timestamp <= now.AddSeconds(10) &&
-                            double.IsFinite(p.Value))
-                .OrderByDescending(p => p.TimestampParsed)
+                .Select(p => (Point: p, Parsed: PcVueTimestamp.TryParseUtc(p.Timestamp, out var utc), Utc: utc))
+                .Where(item => item.Point.IsGoodQuality && item.Parsed &&
+                               item.Utc >= startUtc && item.Utc <= nowUtc.AddSeconds(10) &&
+                               double.IsFinite(item.Point.Value))
+                .OrderByDescending(item => item.Utc)
                 .FirstOrDefault();
-            if (point == null) continue;
+            if (point.Point == null) continue;
             try
             {
                 snapshots.Add(new Snapshot(meter.MeterId, _clock.GetLocalNow().DateTime,
-                    Convert.ToDecimal(point.Value), point.QualityValue));
+                    Convert.ToDecimal(point.Point.Value), point.Point.QualityValue));
             }
             catch (OverflowException) { /* PCVue value cannot fit in the database. */ }
         }
@@ -146,7 +147,11 @@ public sealed class AutoImportSnapshotReader
     {
         using var document = JsonDocument.Parse(response);
         if (document.RootElement.ValueKind != JsonValueKind.Object)
-            throw new JsonException("PCVue BulkRead must return an object keyed by variable name.");
+            throw new JsonException(DescribeUnexpectedResponse(document.RootElement));
+
+        // A WST error can also be returned as an object with a top-level code.
+        if (document.RootElement.TryGetProperty("code", out var errorCode))
+            throw new JsonException("PCVue value read returned a status object" + SafeResultCode(errorCode));
 
         var values = new Dictionary<string, (decimal Value, int Quality)>(StringComparer.Ordinal);
         foreach (var variable in document.RootElement.EnumerateObject())
@@ -188,5 +193,29 @@ public sealed class AutoImportSnapshotReader
         }
 
         return values;
+    }
+
+    private static string DescribeUnexpectedResponse(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            if (root.GetArrayLength() > 0 && root[0].ValueKind == JsonValueKind.Object &&
+                root[0].TryGetProperty("code", out var code))
+                return "PCVue value read returned a status array" + SafeResultCode(code);
+            return "PCVue value read returned an array rather than values keyed by variable";
+        }
+        return $"PCVue value read returned {root.ValueKind} rather than values keyed by variable";
+    }
+
+    private static string SafeResultCode(JsonElement code)
+    {
+        if (code.ValueKind != JsonValueKind.Object ||
+            !code.TryGetProperty("label", out var label) || label.ValueKind != JsonValueKind.String)
+            return string.Empty;
+        var value = label.GetString();
+        return value is { Length: > 0 and <= 64 } &&
+               value.All(c => char.IsAsciiLetterOrDigit(c) || c == '_')
+            ? $": {value}"
+            : string.Empty;
     }
 }

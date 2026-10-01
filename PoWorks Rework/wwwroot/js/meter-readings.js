@@ -441,15 +441,29 @@ const MeterReadings = {
     formatTimestamp: function (timestamp) {
         if (!timestamp) return '-';
         const date = new Date(timestamp);
-        return this.config.currentViewType === 'daily' ? date.toISOString().split('T')[0] : 
-               this.config.currentViewType === 'monthly' ? date.toISOString().substr(0, 7) : 
+        return this.config.currentViewType === 'daily' ? this.formatFrenchDate(date) :
+               this.config.currentViewType === 'monthly' ?
+                   `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}` :
                this.config.currentViewType === 'yearly' ? date.getFullYear().toString() : 
-               date.toLocaleString();
+               this.formatFrenchDateTime(date);
     },
 
     formatDateTime: function (dateTime) {
         if (!dateTime || dateTime === '0001-01-01T00:00:00') return 'No data';
-        return new Date(dateTime).toLocaleString();
+        return this.formatFrenchDateTime(new Date(dateTime));
+    },
+
+    formatFrenchDate: function (date) {
+        return new Intl.DateTimeFormat('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        }).format(date);
+    },
+
+    formatFrenchDateTime: function (date) {
+        return new Intl.DateTimeFormat('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+        }).format(date);
     },
 
     formatQuality: function (quality) {

@@ -50,7 +50,8 @@ namespace PoWorks_Rework.Services
 
         public async Task<TrendRequestResult> CreateTrendRequestAsync(
             string variableName,
-            PCVueWebServiceSettings settings)
+            PCVueWebServiceSettings settings,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(variableName))
             {
@@ -82,7 +83,8 @@ namespace PoWorks_Rework.Services
                         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
                         return request;
                     },
-                    $"create trend request for {variableName}");
+                    $"create trend request for {variableName}",
+                    cancellationToken: cancellationToken);
 
                 if (!response.Success)
                 {
@@ -112,6 +114,10 @@ namespace PoWorks_Rework.Services
                     VariableName = variableName
                 };
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unable to create PCVue trend request for {VariableName}.", variableName);
@@ -133,7 +139,8 @@ namespace PoWorks_Rework.Services
             string requestId,
             DateTime startDate,
             DateTime endDate,
-            PCVueWebServiceSettings settings)
+            PCVueWebServiceSettings settings,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(requestId))
             {
@@ -170,7 +177,8 @@ namespace PoWorks_Rework.Services
                         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                         return request;
                     },
-                    $"read trend request {cleanRequestId}");
+                    $"read trend request {cleanRequestId}",
+                    cancellationToken: cancellationToken);
 
                 if (!response.Success)
                 {
@@ -204,6 +212,10 @@ namespace PoWorks_Rework.Services
                     MaxNumberExceeded = trendData.MaxNumberExceeded
                 };
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (JsonException ex)
             {
                 _logger.LogWarning(ex, "Unable to parse PCVue trend response for request {RequestId}.", requestId);
@@ -233,7 +245,8 @@ namespace PoWorks_Rework.Services
         /// </summary>
         public async Task<bool> DeleteTrendRequestAsync(
             string requestId,
-            PCVueWebServiceSettings settings)
+            PCVueWebServiceSettings settings,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(requestId)) return true;
 
@@ -250,7 +263,8 @@ namespace PoWorks_Rework.Services
                         return request;
                     },
                     $"delete trend request {cleanRequestId}",
-                    treatNotFoundAsSuccess: true);
+                    treatNotFoundAsSuccess: true,
+                    cancellationToken: cancellationToken);
 
                 if (!response.Success)
                 {
@@ -305,7 +319,8 @@ namespace PoWorks_Rework.Services
                         startDate,
                         endDate,
                         settings,
-                        logContext);
+                        logContext,
+                        cancellationToken);
                 });
 
             return results.ToList();
@@ -316,19 +331,21 @@ namespace PoWorks_Rework.Services
             DateTime startDate,
             DateTime endDate,
             PCVueWebServiceSettings settings,
-            string? logContext)
+            string? logContext,
+            CancellationToken cancellationToken)
         {
             TrendRequestResult? requestResult = null;
             try
             {
-                requestResult = await CreateTrendRequestAsync(variableName, settings);
+                requestResult = await CreateTrendRequestAsync(variableName, settings, cancellationToken);
                 var contextPrefix = string.IsNullOrWhiteSpace(logContext)
                     ? string.Empty
                     : $"[{logContext}]";
 
-                Console.WriteLine(
-                    $"[TRENDS]{contextPrefix} {variableName} -> request " +
-                    (requestResult.Success ? "OK" : "FAIL: " + requestResult.ErrorMessage));
+                if (!string.Equals(logContext, "Auto-import recent snapshot", StringComparison.Ordinal))
+                    Console.WriteLine(
+                        $"[TRENDS]{contextPrefix} {variableName} -> request " +
+                        (requestResult.Success ? "OK" : "FAIL: " + requestResult.ErrorMessage));
 
                 if (!requestResult.Success || string.IsNullOrWhiteSpace(requestResult.RequestId))
                 {
@@ -345,7 +362,8 @@ namespace PoWorks_Rework.Services
                     startDate,
                     endDate,
                     settings,
-                    depth: 0);
+                    depth: 0,
+                    cancellationToken: cancellationToken);
 
                 return new VariableTrendResult
                 {
@@ -356,6 +374,10 @@ namespace PoWorks_Rework.Services
                     MaxNumberExceeded = complete.MaxNumberExceeded,
                     ErrorMessage = complete.ErrorMessage
                 };
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -372,7 +394,8 @@ namespace PoWorks_Rework.Services
             {
                 if (!string.IsNullOrWhiteSpace(requestResult?.RequestId))
                 {
-                    await DeleteTrendRequestAsync(requestResult.RequestId, settings);
+                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                    await DeleteTrendRequestAsync(requestResult.RequestId, settings, cleanup.Token);
                 }
             }
         }
@@ -382,9 +405,10 @@ namespace PoWorks_Rework.Services
             DateTime startDate,
             DateTime endDate,
             PCVueWebServiceSettings settings,
-            int depth)
+            int depth,
+            CancellationToken cancellationToken)
         {
-            var page = await GetTrendDataAsync(requestId, startDate, endDate, settings);
+            var page = await GetTrendDataAsync(requestId, startDate, endDate, settings, cancellationToken);
             if (!page.Success || !page.MaxNumberExceeded)
             {
                 return page;
@@ -438,7 +462,8 @@ namespace PoWorks_Rework.Services
                 startDate,
                 midpoint,
                 settings,
-                depth + 1);
+                depth + 1,
+                cancellationToken);
             if (!left.Success)
             {
                 return left;
@@ -449,7 +474,8 @@ namespace PoWorks_Rework.Services
                 midpoint,
                 endDate,
                 settings,
-                depth + 1);
+                depth + 1,
+                cancellationToken);
             if (!right.Success)
             {
                 return right;
@@ -497,28 +523,30 @@ namespace PoWorks_Rework.Services
             PCVueWebServiceSettings settings,
             Func<string, HttpRequestMessage> requestFactory,
             string operation,
-            bool treatNotFoundAsSuccess = false)
+            bool treatNotFoundAsSuccess = false,
+            CancellationToken cancellationToken = default)
         {
-            var token = await _pcvueWebService.GetValidAccessTokenAsync(settings);
+            var token = await _pcvueWebService.GetValidAccessTokenAsync(
+                settings, cancellationToken: cancellationToken);
             if (string.IsNullOrWhiteSpace(token))
             {
                 return AuthorizedResponse.Failed("Failed to obtain valid PCVue access token.");
             }
 
-            var response = await SendAsync(requestFactory(token));
+            var response = await SendAsync(requestFactory(token), cancellationToken);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 _logger.LogWarning(
                     "PCVue returned 401 while attempting to {Operation}; refreshing OAuth session once.",
                     operation);
 
-                token = await RefreshAfterUnauthorizedAsync(settings, token);
+                token = await RefreshAfterUnauthorizedAsync(settings, token, cancellationToken);
                 if (string.IsNullOrWhiteSpace(token))
                 {
                     return AuthorizedResponse.Failed("Failed to refresh PCVue access token.");
                 }
 
-                response = await SendAsync(requestFactory(token));
+                response = await SendAsync(requestFactory(token), cancellationToken);
             }
 
             var success = response.IsSuccessStatusCode ||
@@ -543,17 +571,19 @@ namespace PoWorks_Rework.Services
         /// </summary>
         private async Task<string?> RefreshAfterUnauthorizedAsync(
             PCVueWebServiceSettings settings,
-            string rejectedToken)
+            string rejectedToken,
+            CancellationToken cancellationToken)
         {
             var identity = BuildRefreshIdentity(settings);
             var gate = _unauthorizedRefreshGates.GetOrAdd(
                 identity,
                 _ => new SemaphoreSlim(1, 1));
 
-            await gate.WaitAsync();
+            await gate.WaitAsync(cancellationToken);
             try
             {
-                var currentToken = await _pcvueWebService.GetValidAccessTokenAsync(settings);
+                var currentToken = await _pcvueWebService.GetValidAccessTokenAsync(
+                    settings, cancellationToken: cancellationToken);
                 if (!string.IsNullOrWhiteSpace(currentToken) &&
                     !string.Equals(currentToken, rejectedToken, StringComparison.Ordinal))
                 {
@@ -562,7 +592,8 @@ namespace PoWorks_Rework.Services
 
                 return await _pcvueWebService.GetValidAccessTokenAsync(
                     settings,
-                    forceRefresh: true);
+                    forceRefresh: true,
+                    cancellationToken: cancellationToken);
             }
             finally
             {
@@ -577,12 +608,12 @@ namespace PoWorks_Rework.Services
                 (settings.ClientId ?? string.Empty).Trim().ToLowerInvariant(),
                 (settings.Username ?? string.Empty).Trim().ToLowerInvariant());
 
-        private async Task<HttpPayload> SendAsync(HttpRequestMessage request)
+        private async Task<HttpPayload> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             using (request)
-            using (var response = await _pcvueWebService.HttpClient.SendAsync(request))
+            using (var response = await _pcvueWebService.HttpClient.SendAsync(request, cancellationToken))
             {
-                var content = await response.Content.ReadAsStringAsync();
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 return new HttpPayload(response.StatusCode, response.IsSuccessStatusCode, content);
             }
         }
