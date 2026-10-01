@@ -21,6 +21,8 @@
     let viewGranularity = 'auto';
     let rangeRequestSequence = 0;
     let chartRequestSequence = 0;
+    let manualRange = false;
+    let lastRangeRefresh = 0;
 
     document.addEventListener('DOMContentLoaded', async function () {
         if (!chartCore) {
@@ -59,6 +61,7 @@
 
     function bindEvents() {
         bindAsyncChange('tenantFilter', async function () {
+            manualRange = false;
             await loadSelectedRange(true);
             await loadMetersForCurrentDateRange();
             await loadSelectedRange();
@@ -66,6 +69,7 @@
         });
 
         bindAsyncChange('measurementMetric', async function () {
+            manualRange = false;
             refreshAggregationOptions();
             populateMeterDropdown();
             savePreferences();
@@ -102,6 +106,7 @@
 
         document.getElementById('applyFilters')?.addEventListener('click', async function () {
             if (!validateDateRange()) return;
+            manualRange = true;
             if (viewGranularity === 'auto') {
                 document.getElementById('dateFilter').value = chartCore.chooseGranularity(valueOf('startDate'), valueOf('endDate'));
             }
@@ -257,6 +262,7 @@
             if (!response.ok) throw new Error('Unable to determine source history.');
             const payload = await response.json();
             if (sequence !== rangeRequestSequence) return;
+            lastRangeRefresh = Date.now();
 
             if (payload.success && payload.hasData && payload.earliestReading && payload.latestReading) {
                 availableRange = { startDate: payload.earliestReading, endDate: payload.latestReading };
@@ -771,6 +777,7 @@
     function scheduleChartReload() {
         window.clearTimeout(reloadTimer);
         reloadTimer = window.setTimeout(async function () {
+            manualRange = false;
             viewGranularity = 'auto';
             setActiveGranularity(viewGranularity);
             await loadSelectedRange();
@@ -779,9 +786,9 @@
     }
 
     async function refreshMeters() {
-        await loadSelectedRange();
+        if (!manualRange) await loadSelectedRange(true);
         await loadMetersForCurrentDateRange();
-        await loadSelectedRange();
+        if (!manualRange) await loadSelectedRange();
         await loadChartData();
         showNotification('Source catalogue refreshed.', 'success');
     }
@@ -1429,6 +1436,7 @@
 
     async function drillIntoRanking(key) {
         if (!key) return;
+        manualRange = false;
 
         if (key.startsWith('tenant:')) {
             const tenantToken = key.substring('tenant:'.length);
@@ -1664,6 +1672,7 @@
     }
 
     function switchGranularity(value) {
+        manualRange = false;
         viewGranularity = value;
         setActiveGranularity(value);
         if (!availableRange && value !== 'auto') document.getElementById('dateFilter').value = value;
@@ -1703,6 +1712,7 @@
         document.getElementById('maxCurves').value = '10';
         document.getElementById('meterLimit').value = '5';
         viewGranularity = 'auto';
+        manualRange = false;
         document.getElementById('modeStandard').checked = true;
         document.getElementById('comparePreset').value = 'previous';
         document.getElementById('compareStartDate').value = '';
@@ -1741,7 +1751,14 @@
         autoRefreshInterval = window.setInterval(function () {
             if (document.hidden || backgroundRefreshInProgress) return;
             backgroundRefreshInProgress = true;
-            Promise.resolve(loadChartData()).finally(function () {
+            Promise.resolve((async function () {
+                if (!manualRange &&
+                    availableRange?.endDate !== formatLocalDate(new Date()) &&
+                    Date.now() - lastRangeRefresh >= 60000) {
+                    await loadSelectedRange();
+                }
+                await loadChartData();
+            })()).finally(function () {
                 backgroundRefreshInProgress = false;
             });
         }, 30000);
