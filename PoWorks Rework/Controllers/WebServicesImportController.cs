@@ -349,12 +349,56 @@ namespace PoWorks_Rework.Controllers
                     var jsonData = JsonSerializer.Deserialize<JsonElement>(responseContent);
                     var parseResult = _variableBrowseParsingService.ParseBrowseVariablesResponse(jsonData, request.IncludeSystemVariables);
 
+                    if (!parseResult.Success)
+                        return Json(new { success = false, message = parseResult.ErrorMessage });
+
+                    var unitsComplete = true;
+                    var unitsFound = 0;
+                    if (parseResult.Variables.Count > 0)
+                    {
+                        // PcVue browse omits Unit. Read only this property from
+                        // the same OAuth session in bounded batches. A bad/NS
+                        // current value does not hide its configured unit.
+                        using var unitDeadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+                        unitDeadline.CancelAfter(TimeSpan.FromSeconds(25));
+                        try
+                        {
+                            var unitReader = new PcVueVariableUnitReader((names, ct) =>
+                                _pcvueWebService.BulkReadVariablesAsync(connection, names,
+                                    new[] { "Unit" }, ct));
+                            var unitResult = await unitReader.ReadAsync(
+                                parseResult.Variables.Select(v => v.FullPath), unitDeadline.Token);
+                            if (HttpContext.RequestAborted.IsCancellationRequested)
+                                HttpContext.RequestAborted.ThrowIfCancellationRequested();
+                            unitsComplete = unitResult.Complete;
+                            foreach (var variable in parseResult.Variables)
+                            {
+                                if (unitResult.Units.TryGetValue(variable.FullPath, out var unit))
+                                {
+                                    variable.Unit = unit;
+                                    unitsFound++;
+                                }
+                            }
+                            if (!unitsComplete)
+                                _logger.LogWarning("PcVue unit lookup incomplete: {Count}/{Total} non-empty units received.",
+                                    unitsFound, parseResult.TotalCount);
+                        }
+                        catch (Exception ex) when (ex is InvalidOperationException or JsonException or HttpRequestException or TaskCanceledException)
+                        {
+                            if (HttpContext.RequestAborted.IsCancellationRequested) throw;
+                            unitsComplete = false;
+                            _logger.LogWarning("PcVue unit lookup incomplete ({ErrorType}).", ex.GetType().Name);
+                        }
+                    }
+
                     return Json(new
                     {
                         success = true,
                         message = $"Variables browse completed! Found {parseResult.TotalCount} variables.",
                         variables = parseResult.Variables,
-                        totalVariables = parseResult.TotalCount
+                        totalVariables = parseResult.TotalCount,
+                        unitsFound,
+                        unitsComplete
                     });
                 }
                 return Json(new { success = false, message = $"API call failed: {response.StatusCode}" });

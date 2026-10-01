@@ -43,6 +43,9 @@ namespace PoWorks_Rework.Services
             /// </summary>
             public string VariableType { get; set; } = "";
 
+            /// <summary>The configured PcVue unit, when available.</summary>
+            public string Unit { get; set; } = "";
+
             /// <summary>
             /// Whether the variable is read-only.
             /// </summary>

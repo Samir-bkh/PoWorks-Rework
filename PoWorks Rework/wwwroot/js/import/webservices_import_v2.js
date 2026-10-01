@@ -60,6 +60,12 @@
                 <small class="text-muted ms-auto" id="bulkUnitStatus">
                     Existing meter units are updated only when you explicitly provide a non-empty unit.
                 </small>
+                <div class="form-check w-100">
+                    <input class="form-check-input" type="checkbox" id="webServiceImportTrends" checked>
+                    <label class="form-check-label small" for="webServiceImportTrends">
+                        Import historical trends (uncheck for a quick meter and unit update)
+                    </label>
+                </div>
             </div>`;
         return wrapper;
     }
@@ -197,7 +203,7 @@
             const requestData = {
                 variables,
                 includeSystemVariables,
-                importTrendsData: true,
+                importTrendsData: document.getElementById('webServiceImportTrends')?.checked !== false,
                 trendsStartDate: dateRange.startDate,
                 trendsEndDate: dateRange.endDate,
                 connectionId: connectionInfo.connectionId || ''

@@ -258,6 +258,20 @@ function handleWebServiceBrowseResponse(data) {
                 data.connectionInfo || {}
             );
 
+            if (typeof data.unitsFound === 'number') {
+                const unitCount = document.createElement('div');
+                unitCount.className = 'small text-muted mt-1';
+                unitCount.textContent = `${data.unitsFound} PcVue unit${data.unitsFound === 1 ? '' : 's'} retrieved; variables without a configured unit remain empty.`;
+                statusDiv.appendChild(unitCount);
+            }
+
+            if (data.unitsComplete === false) {
+                const notice = document.createElement('div');
+                notice.className = 'small text-warning mt-1';
+                notice.textContent = 'Some PcVue units could not be retrieved. Check empty units before importing.';
+                statusDiv.appendChild(notice);
+            }
+
             document.getElementById('meterSelectionSection')?.scrollIntoView({
                 behavior: 'smooth',
                 block: 'start'
