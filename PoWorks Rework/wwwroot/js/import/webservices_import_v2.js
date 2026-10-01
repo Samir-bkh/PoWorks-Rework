@@ -19,8 +19,13 @@
                 status.className = `alert ${progress.complete && (progress.failed || progress.failedVariables || !progress.pointsReturned) ? 'alert-warning' : 'alert-info'}`;
                 const prefix = progress.complete ? 'Historical import finished.' : 'Historical import in progress.';
                 status.textContent = `${prefix} ${progress.processedVariables}/${progress.totalVariables} variables processed; ` +
+                    `${progress.processedWindows || 0}/${progress.totalWindows || 0} date windows checked; ` +
                     `${progress.variablesWithData} with archive data; ${progress.pointsReturned} points received; ` +
-                    `${progress.insertedReadings} new readings saved; ${progress.failedVariables} failed.` +
+                    `${progress.insertedReadings} new readings saved; ${progress.failedVariables} variables and ` +
+                    `${progress.failedWindows || 0} windows failed.` +
+                    (!progress.complete && progress.lastWindowEndUtc
+                        ? ` Last checked: ${progress.lastVariable} through ${new Date(progress.lastWindowEndUtc).toLocaleString('fr-FR')}.`
+                        : '') +
                     (progress.errors?.length ? ` PcVue errors: ${progress.errors.join(' | ')}.` : '') +
                     (progress.complete && !progress.pointsReturned ? ' No archived points were returned for this selection and date range.' : '') +
                     (progress.complete && progress.pointsReturned && !progress.insertedReadings ? ' The points may already exist in PoWorks.' : '');
@@ -106,8 +111,51 @@
                         Import historical trends (uncheck for a quick meter and unit update)
                     </label>
                 </div>
+                <div class="d-flex flex-wrap align-items-end gap-2 w-100">
+                    <div class="flex-grow-1">
+                        <label for="webServiceVariableFilter" class="form-label small fw-semibold mb-1">Find a variable</label>
+                        <input id="webServiceVariableFilter" class="form-control form-control-sm"
+                               placeholder="Building.Power.kW" autocomplete="off" />
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="selectMatchingWebServiceMeters">
+                        Select only matches
+                    </button>
+                    <small id="webServiceVariableFilterStatus" class="text-muted w-100">
+                        All variables are selected initially. For a long backfill, select just the meters you need.
+                    </small>
+                </div>
             </div>`;
         return wrapper;
+    }
+
+    function updateVariableFilter() {
+        const query = (document.getElementById('webServiceVariableFilter')?.value || '').trim().toLowerCase();
+        const rows = [...document.querySelectorAll('.web-service-variable-row')];
+        let matches = 0;
+        rows.forEach(row => {
+            const match = !query || (row.cells?.[2]?.textContent || '').toLowerCase().includes(query);
+            row.style.display = match ? '' : 'none';
+            if (match) matches++;
+        });
+        const status = document.getElementById('webServiceVariableFilterStatus');
+        if (status) status.textContent = `${matches} matching variable${matches === 1 ? '' : 's'}.`;
+    }
+
+    function selectMatchingVariables() {
+        const query = (document.getElementById('webServiceVariableFilter')?.value || '').trim();
+        const rows = [...document.querySelectorAll('.web-service-variable-row')];
+        const matches = query ? rows.filter(row => row.style.display !== 'none') : [];
+        const status = document.getElementById('webServiceVariableFilterStatus');
+        if (!matches.length) {
+            if (status) status.textContent = 'Enter a meter name and find a matching variable first.';
+            return;
+        }
+        rows.forEach(row => {
+            const checkbox = row.querySelector('.web-service-variable-checkbox');
+            if (checkbox) checkbox.checked = matches.includes(row);
+        });
+        if (status) status.textContent = `Only ${matches.length} matching variable${matches.length === 1 ? ' is' : 's are'} selected.`;
+        if (typeof updateMeterCounter === 'function') updateMeterCounter();
     }
 
     function applyBulkUnit(fillOnlyEmpty) {
@@ -146,6 +194,8 @@
 
         document.getElementById('applyUnitToSelected')?.addEventListener('click', () => applyBulkUnit(false));
         document.getElementById('fillMissingUnits')?.addEventListener('click', () => applyBulkUnit(true));
+        document.getElementById('webServiceVariableFilter')?.addEventListener('input', updateVariableFilter);
+        document.getElementById('selectMatchingWebServiceMeters')?.addEventListener('click', selectMatchingVariables);
 
         // Preserve a future unit supplied by the API/parser automatically.
         variables.forEach((variable, index) => {

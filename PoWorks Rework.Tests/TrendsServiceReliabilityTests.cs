@@ -243,6 +243,85 @@ public class TrendsServiceReliabilityTests
     }
 
     [Fact]
+    public async Task MultiYearBackfillFindsPointsWhenPcVueReturnsEmptyForBroadQueries()
+    {
+        var observed = new List<(DateTime Start, DateTime End)>();
+        var archivePoint = Utc(2024, 8, 9, 12);
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase)) return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Text(HttpStatusCode.OK, "\"window-request\"");
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/window-request"))
+            {
+                DateTime Bound(string name)
+                {
+                    var pair = request.RequestUri.Query.TrimStart('?').Split('&')
+                        .Single(part => part.StartsWith(name + "=", StringComparison.Ordinal));
+                    var value = Uri.UnescapeDataString(pair[(name.Length + 1)..]);
+                    return DateTime.ParseExact(value, "yyyy-MM-dd HH:mm:ss",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal |
+                        System.Globalization.DateTimeStyles.AdjustToUniversal);
+                }
+
+                var start = Bound("Start");
+                var end = Bound("End");
+                observed.Add((start, end));
+                // Reproduce a PcVue server that silently reports zero points
+                // for a long period while a short range has real archived data.
+                return Json(HttpStatusCode.OK, end - start <= TimeSpan.FromDays(7) &&
+                    start <= archivePoint && end >= archivePoint
+                    ? TrendJson(false, Point("2024-08-09T12:00:00", 1.58))
+                    : TrendJson(false));
+            }
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var windows = TrendsService.PlanHistoricalWindows(Utc(2024, 1, 1, 0), Utc(2026, 10, 1, 0));
+        var points = new List<TrendDataPoint>();
+        var service = CreateTrendsService(handler);
+        await service.ProcessVariableTrendWindowsAsync("Building.Power.kW", windows, Settings(),
+            (window, result) =>
+            {
+                Assert.True(result.Success, result.ErrorMessage);
+                points.AddRange(result.TrendData);
+                return Task.CompletedTask;
+            });
+
+        Assert.Contains(points, point => point.Timestamp == "2024-08-09T12:00:00");
+        Assert.Equal(windows.Count, observed.Count);
+        Assert.All(observed, range => Assert.True(range.End - range.Start <= TimeSpan.FromDays(7)));
+        Assert.Contains(windows.Zip(windows.Skip(1)), pair => pair.First.EndUtc > pair.Second.StartUtc);
+        Assert.Equal(1, handler.Count(HttpMethod.Post, "/HistoricalData/v2/Trends"));
+        Assert.Equal(1, handler.Count(HttpMethod.Delete, "/HistoricalData/v2/Trends/window-request"));
+    }
+
+    [Fact]
+    public async Task FailedBackfillWriteStillReleasesPcVueTrendRequest()
+    {
+        var handler = new TrendRecordingHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/OAuth/token", StringComparison.OrdinalIgnoreCase)) return TokenResponse();
+            if (request.Method == HttpMethod.Post && path.EndsWith("/HistoricalData/v2/Trends"))
+                return Text(HttpStatusCode.OK, "\"write-failure-request\"");
+            if (request.Method == HttpMethod.Get && path.Contains("/Trends/write-failure-request"))
+                return Json(HttpStatusCode.OK, TrendJson(false, Point("2024-08-09T12:00:00", 1.58)));
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var windows = TrendsService.PlanHistoricalWindows(Utc(2024, 8, 9, 11), Utc(2024, 8, 9, 13));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateTrendsService(handler).ProcessVariableTrendWindowsAsync(
+                "Building.Power.kW", windows, Settings(), (_, _) =>
+                    throw new InvalidOperationException("database unavailable")));
+
+        Assert.Equal(1, handler.Count(HttpMethod.Delete, "/HistoricalData/v2/Trends/write-failure-request"));
+    }
+
+    [Fact]
     public async Task UnsplittableDenseRange_FailsInsteadOfSilentlyImportingPartialData()
     {
         var handler = new TrendRecordingHandler(request =>

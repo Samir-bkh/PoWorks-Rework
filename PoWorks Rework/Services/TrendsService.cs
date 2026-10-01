@@ -17,6 +17,8 @@ namespace PoWorks_Rework.Services
     public class TrendsService
     {
         private const int MaxSplitDepth = 24;
+        private static readonly TimeSpan HistoricalWindowSize = TimeSpan.FromDays(7);
+        private static readonly TimeSpan HistoricalWindowOverlap = TimeSpan.FromSeconds(2);
         // PcVue's HistoricalData service caps a single trend reply at 4,000
         // points, even if a larger ElementMaxNumber is requested.
         private const int MaxTrendPointsPerRequest = 4000;
@@ -367,6 +369,84 @@ namespace PoWorks_Rework.Services
             return results.ToList();
         }
 
+        /// <summary>
+        /// A broad PcVue query can return an empty or incomplete result even when a
+        /// short query within the same range has archived points. Query bounded
+        /// windows with one PcVue request per variable and let the caller persist
+        /// each window before retrieving the next one.
+        /// </summary>
+        public static IReadOnlyList<HistoricalTrendWindow> PlanHistoricalWindows(
+            DateTime startUtc, DateTime endUtc)
+        {
+            if (endUtc <= startUtc)
+                throw new ArgumentException("The historical end must be after the start.");
+
+            var windows = new List<HistoricalTrendWindow>();
+            var cursor = startUtc;
+            while (cursor < endUtc)
+            {
+                var remaining = endUtc - cursor;
+                var windowEnd = remaining <= HistoricalWindowSize
+                    ? endUtc
+                    : cursor.Add(HistoricalWindowSize);
+                windows.Add(new HistoricalTrendWindow(cursor, windowEnd));
+                if (windowEnd == endUtc) break;
+
+                // Include real readings on both sides of a split boundary. The
+                // database's (MeterId, Timestamp) constraint removes duplicates.
+                cursor = windowEnd.Subtract(HistoricalWindowOverlap);
+            }
+
+            return windows;
+        }
+
+        public async Task ProcessVariableTrendWindowsAsync(
+            string variableName,
+            IReadOnlyList<HistoricalTrendWindow> windows,
+            PCVueWebServiceSettings settings,
+            Func<HistoricalTrendWindow, VariableTrendResult, Task> onWindow,
+            CancellationToken cancellationToken = default)
+        {
+            if (windows.Count == 0) return;
+
+            var request = await CreateTrendRequestAsync(variableName, settings, cancellationToken);
+            if (!request.Success || string.IsNullOrWhiteSpace(request.RequestId))
+            {
+                await onWindow(windows[0], new VariableTrendResult
+                {
+                    VariableName = variableName,
+                    Success = false,
+                    ErrorMessage = request.ErrorMessage ?? "PcVue did not create a trend request."
+                });
+                return;
+            }
+
+            try
+            {
+                foreach (var window in windows)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await GetCompleteTrendDataAsync(
+                        request.RequestId, window.StartUtc, window.EndUtc,
+                        settings, depth: 0, cancellationToken: cancellationToken);
+                    await onWindow(window, new VariableTrendResult
+                    {
+                        VariableName = variableName,
+                        RequestId = request.RequestId,
+                        Success = result.Success,
+                        TrendData = result.Values,
+                        MaxNumberExceeded = result.MaxNumberExceeded,
+                        ErrorMessage = result.ErrorMessage
+                    });
+                }
+            }
+            finally
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                await DeleteTrendRequestAsync(request.RequestId, settings, cleanup.Token);
+            }
+        }
+
         private async Task<VariableTrendResult> ProcessSingleVariableAsync(
             string variableName,
             DateTime startDate,
@@ -682,4 +762,6 @@ namespace PoWorks_Rework.Services
                 => new(false, string.Empty, error);
         }
     }
+
+    public sealed record HistoricalTrendWindow(DateTime StartUtc, DateTime EndUtc);
 }
