@@ -40,14 +40,10 @@ function setupWebServiceEventListeners() {
         webServiceConnection.addEventListener('change', function () {
             const selectedConnection = this.value;
             const browseBtn = document.getElementById('browseVariablesBtn');
-            const statusSpan = document.getElementById('webServiceConnectionStatus');
-
             if (selectedConnection) {
                 browseBtn.disabled = false;
-                statusSpan.innerHTML = '<i class="bi bi-check-circle text-success"></i> Connection selected - ready to browse variables';
             } else {
                 browseBtn.disabled = true;
-                statusSpan.innerHTML = '<i class="bi bi-info-circle"></i> Select a web service connection';
             }
         });
     }

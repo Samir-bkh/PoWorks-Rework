@@ -23,17 +23,6 @@
                     <span id="dashboardWorkspaceContext">@ViewData["CurrentTenant"]</span>
                 </span>
             </div>
-            <div class="analytics-context-line" aria-label="Current dashboard context">
-                <span><strong id="dashboardTenantContext">All tenants</strong></span>
-                <span class="analytics-context-separator">/</span>
-                <span><strong id="dashboardMetricContext">Energy consumption</strong></span>
-                <span class="analytics-context-separator">/</span>
-                <span id="dashboardViewContext">Aggregate</span>
-                <span class="analytics-context-separator">/</span>
-                <span id="dashboardPeriodContext">Loading…</span>
-                <span class="analytics-context-separator">/</span>
-                <span id="dashboardUnitContext">—</span>
-            </div>
         </div>
 
         <div class="analytics-header-actions">
@@ -92,7 +81,7 @@
                 <button class="form-select form-select-sm text-start d-flex justify-content-between align-items-center"
                         type="button" id="meterDropdownBtn" data-bs-toggle="dropdown"
                         aria-expanded="false" data-bs-auto-close="outside">
-                    <span id="meterDropdownText" class="text-truncate text-muted">All compatible sources</span>
+                    <span id="meterDropdownText" class="text-truncate">All sources</span>
                     <i class="bi bi-chevron-down"></i>
                 </button>
                 <ul class="dropdown-menu w-100 p-2 shadow-sm" aria-labelledby="meterDropdownBtn"
@@ -100,7 +89,6 @@
                     <li><span class="dropdown-item-text text-muted">Loading sources…</span></li>
                 </ul>
             </div>
-            <small id="meterCompatibilityHint">Choose a source to see its full history.</small>
         </div>
 
         <div class="analytics-filter analytics-filter-period">
@@ -143,9 +131,7 @@
         </button>
     </section>
 
-    <div id="dashboardRangeHint" class="small text-muted px-3 pb-2" aria-live="polite">
-        All available readings · choose Hour, Day, Month or Year to focus the chart. Dates can also be edited manually.
-    </div>
+    <div id="dashboardRangeHint" class="small text-danger px-3 pb-2 d-none" role="status" aria-live="polite"></div>
 
     <section class="collapse analytics-advanced-panel" id="advancedAnalyticsPanel">
         <div class="analytics-advanced-grid">
@@ -156,13 +142,11 @@
                     <option value="tenant">Break down by tenant</option>
                     <option value="meter">Individual meters</option>
                 </select>
-                <small id="scopeDescription">One physically meaningful line for the selected scope.</small>
             </div>
 
             <div class="analytics-filter">
                 <label for="aggregationMode">Aggregation</label>
                 <select id="aggregationMode" class="form-select form-select-sm"></select>
-                <small id="metricDescription"></small>
             </div>
 
             <div class="analytics-filter">
@@ -234,7 +218,6 @@
             <article class="analytics-kpi">
                 <div class="analytics-kpi-label" id="kpi@(i)Label">—</div>
                 <div class="analytics-kpi-value" id="kpi@(i)Value">—</div>
-                <div class="analytics-kpi-detail" id="kpi@(i)Detail">Waiting for data</div>
                 <div class="dashboard-kpi-compare d-none" id="kpi@(i)Compare"></div>
             </article>
         }
@@ -249,14 +232,11 @@
                         <span class="analytics-unit-badge" id="chartUnitBadge">
                             <span>—</span>
                         </span>
-                        <span class="dashboard-quality-pill" id="coverageBadge"
+                        <span class="dashboard-quality-pill d-none" id="coverageBadge"
                               title="Share of expected meter/bucket combinations containing data">
                             <i class="bi bi-database-check"></i>
                             <span>Coverage —</span>
                         </span>
-                    </div>
-                    <div id="chartSubtitle" class="analytics-panel-subtitle">
-                        Building aggregate
                     </div>
                 </div>
 
@@ -275,9 +255,9 @@
                 <span id="curveLimitWarningText"></span>
             </div>
 
-            <div id="dataStatus" class="analytics-status">
+            <div id="dataStatus" class="analytics-status d-none" role="status" aria-live="polite">
                 <span class="analytics-status-dot"></span>
-                <span id="dataStatusText">Loading dashboard context…</span>
+                <span id="dataStatusText"></span>
             </div>
 
             <div class="chart-stage">
@@ -308,11 +288,7 @@
                     <h2 id="topConsumersTitle">
                         <i class="bi bi-bar-chart-fill"></i> Ranking
                     </h2>
-                    <div class="analytics-panel-subtitle" id="rankingDescription">
-                        Ranked within the current analytical scope.
-                    </div>
                 </div>
-                <span id="rankingScopeBadge" class="analytics-scope-badge">Workspace</span>
             </header>
 
             <div class="analytics-ranking-body" id="topConsumersList">

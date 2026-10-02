@@ -115,7 +115,6 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h3 class="mb-1">Meter Management</h3>
-            <p class="text-muted mb-0">Configure meters, tenant assignments and lifecycle within the current workspace.</p>
         </div>
         <div class="d-flex gap-2">
             <a asp-controller="Meter" asp-action="Readings" class="btn btn-outline-secondary">
@@ -477,7 +476,6 @@
                             <div class="col-md-4">
                                 <label class="form-label">Last reading</label>
                                 <div class="form-control bg-body-tertiary">@selected.LastReading</div>
-                                <div class="form-text">Read-only. Updated by imported meter data.</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="meterTenant">Tenant</label>
@@ -491,7 +489,6 @@
                                         </option>
                                     }
                                 </select>
-                                <div class="form-text">A tenant can own multiple meters. Disabled tenants cannot receive new assignments.</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="meterParent">Parent meter</label>
@@ -505,7 +502,6 @@
                                         </option>
                                     }
                                 </select>
-                                <div class="form-text">Only Main meters from this workspace can be selected as parents.</div>
                             </div>
                             <div class="col-12">
                                 <div class="form-check">
@@ -602,7 +598,6 @@
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <div>
                     <strong>Sub meters</strong>
-                    <div class="small text-muted">Direct children of this meter in the current workspace.</div>
                 </div>
                 <span class="badge text-bg-light border">@Model.SubMeters.Count</span>
             </div>

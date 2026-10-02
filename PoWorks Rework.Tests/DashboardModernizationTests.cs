@@ -167,10 +167,11 @@ public class DashboardModernizationTests
         Assert.Contains("Custom start", view);
         Assert.DoesNotContain("compareEndDate", view);
         Assert.Contains("coverageBadge", view);
-        Assert.Contains("meterCompatibilityHint", view);
+        Assert.DoesNotContain("Choose a source to see its full history", view);
+        Assert.DoesNotContain("One physically meaningful line", view);
         Assert.Contains("id=\"kpi@(i)Label\"", view);
         Assert.Contains("id=\"kpi@(i)Value\"", view);
-        Assert.Contains("id=\"kpi@(i)Detail\"", view);
+        Assert.DoesNotContain("id=\"kpi@(i)Detail\"", view);
         Assert.Contains("topConsumersList", view);
         Assert.Contains("exportChart", view);
         Assert.Contains("exportCsv", view);
