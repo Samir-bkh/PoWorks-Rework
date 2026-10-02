@@ -296,12 +296,8 @@
     function updateRangeHint(manual, message) {
         const hint = document.getElementById('dashboardRangeHint');
         if (!hint) return;
-        if (message) { hint.textContent = message; return; }
-        const labels = { hourly: 'hour', daily: 'day', monthly: 'month', yearly: 'year' };
-        const resolution = labels[valueOf('dateFilter', 'daily')];
-        const range = formatDashboardDate(valueOf('startDate')) + ' → ' + formatDashboardDate(valueOf('endDate'));
-        hint.textContent = (manual ? 'Custom period' : viewGranularity === 'auto'
-            ? 'All available readings' : 'Focused period') + ': ' + range + ' · grouped by ' + resolution + '.';
+        hint.textContent = message || '';
+        hint.classList.toggle('d-none', !message);
     }
 
     function restorePreferences() {
@@ -762,8 +758,8 @@
         if (!button) return;
 
         if (selected.length === 0) {
-            button.textContent = 'All compatible sources';
-            button.classList.add('text-muted');
+            button.textContent = 'All sources';
+            button.classList.remove('text-muted');
         } else if (selected.length === 1) {
             const meter = meters.find(function (item) { return Number(item.id) === selected[0]; });
             button.textContent = meter?.displayName || meter?.name || '1 source selected';
@@ -1342,7 +1338,9 @@
         const span = badge?.querySelector('span');
         const coverage = Number(summary?.coveragePercent);
 
-        if (!badge || !span || !Number.isFinite(coverage)) return;
+        if (!badge || !span) return;
+        badge.classList.toggle('d-none', !Number.isFinite(coverage) || coverage >= 100);
+        if (!Number.isFinite(coverage)) return;
 
         span.textContent = 'Coverage ' + coverage.toFixed(0) + '%';
         badge.classList.remove('is-good', 'is-warning');
@@ -1937,6 +1935,12 @@
         if (!container || !text) return;
 
         const actualType = type || 'info';
+        if (actualType !== 'warning' && actualType !== 'danger') {
+            text.textContent = '';
+            container.className = 'analytics-status d-none';
+            container.style.display = 'none';
+            return;
+        }
         text.textContent = message;
         container.className = 'analytics-status dashboard-status alert alert-' + actualType + ' mb-0';
         container.style.display = 'block';

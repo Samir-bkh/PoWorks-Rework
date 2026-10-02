@@ -51,11 +51,6 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     <select class="form-select" id="hdsConnection">
                                         <option value="">Select a connection...</option>
                                     </select>
-                                    <div class="form-text">
-                                        <span id="connectionStatus" class="text-muted">
-                                            <i class="bi bi-info-circle"></i> Select a connection to continue
-                                        </span>
-                                    </div>
                                 </div>
 
                                 @* HDS Table Selection *@
@@ -64,7 +59,6 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     <select class="form-select" id="hdsTable" disabled>
                                         <option value="">Select a table...</option>
                                     </select>
-                                    <div class="form-text">Available when connected</div>
                                 </div>
 
                                 @* HDS Date Range Filtering *@
@@ -82,7 +76,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                             <input type="datetime-local" class="form-control form-control-sm" id="hdsEndDate">
                                         </div>
                                     </div>
-                                    <div class="form-text">Optional: Leave blank to import everything</div>
+                                    <div class="form-text">Leave blank to import all available history.</div>
                                 </div>
 
                                 @* Load HDS Meters Action *@
@@ -107,7 +101,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                 <button type="button" class="btn btn-sm btn-secondary" id="parseVarexpBtn">
                                     <i class="bi bi-file-earmark-text"></i> Import VAREXP.DAT
                                 </button>
-                                <div class="form-text mt-2">VAREXP contains variable names and units. For older readings, select the PcVue Web Service connection and dates in the next panel, then tick “Import historical readings” below the selection table.</div>
+                                <div class="form-text mt-2">Variables and units only; historical readings come from Web Services.</div>
                             </div>
                         </div>
                     </div>
@@ -126,25 +120,18 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     <select class="form-select" id="webServiceConnection">
                                         <option value="">Select a connection...</option>
                                     </select>
-                                    <div class="form-text">
-                                        <span id="webServiceConnectionStatus" class="text-muted">
-                                            <i class="bi bi-info-circle"></i> Select a web service connection
-                                        </span>
-                                    </div>
                                 </div>
 
                                 @* Query Limits & Filter Options *@
                                 <div class="mb-3">
                                     <label for="maxVariables" class="form-label">Max Variables</label>
                                     <input type="number" class="form-control" id="maxVariables" value="100000" min="1" max="1000000">
-                                    <div class="form-text">Maximum variables to retrieve (default: 100,000)</div>
                                 </div>
 
                                 @* Branch Path Filter *@
                                 <div class="mb-3">
                                     <label for="branchFilter" class="form-label">Branch Filter (Optional)</label>
                                     <input type="text" class="form-control" id="branchFilter" placeholder="e.g., Production.Line1">
-                                    <div class="form-text">Filter by specific branch/area</div>
                                 </div>
 
                                 @* Include System Variables Flag *@
@@ -152,7 +139,6 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     <input class="form-check-input" type="checkbox" id="includeSystemVariables" value="true">
                                     <label class="form-check-label" for="includeSystemVariables">
                                         <strong>Include System Variables</strong>
-                                        <small class="text-muted d-block">By default, variables with 'System' branches are filtered out</small>
                                     </label>
                                 </div>
 
@@ -171,7 +157,6 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                             <input type="datetime-local" class="form-control form-control-sm" id="webServiceEndDate">
                                         </div>
                                     </div>
-                                    <div class="form-text">Select the dates of the PcVue archive. Multi-year history is supported and imported progressively by meter; large ranges can take time.</div>
                                 </div>
 
                                 @* Web Services Preset Timeframe Controls *@
@@ -190,7 +175,6 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                         <input id="webServiceHistoryProbeVariable" class="form-control" value="Building.Power.kW" aria-label="PcVue variable name">
                                         <button type="button" class="btn btn-outline-secondary" id="probePcVueHistoryBtn">Check up to 7 days</button>
                                     </div>
-                                    <div class="form-text">Uses the selected connection and dates above. Reads PcVue history without changing PoWorks data.</div>
                                     <div id="pcVueHistoryProbeStatus" class="small mt-2" role="status" aria-live="polite"></div>
                                 </div>
 
@@ -201,10 +185,6 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                     </button>
                                 </div>
 
-                                <div class="alert alert-info mt-3 mb-0">
-                                    <i class="bi bi-info-circle"></i>
-                                    <small><strong>Note:</strong> Results are displayed in the server terminal/console for detailed analysis.</small>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -248,7 +228,7 @@ Provides a comprehensive tabbed interface for importing meter structures and his
                                 </div>
                                 <div class="col-md-6">
                                     <div class="d-flex align-items-center h-100">
-                                        <small class="text-muted" id="meterFilterStatus">Ready to filter meters</small>
+                                        <small class="text-muted" id="meterFilterStatus"></small>
                                     </div>
                                 </div>
                             </div>
